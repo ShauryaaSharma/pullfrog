@@ -246,8 +246,10 @@ export interface WriteablePayload {
   "~pullfrog": true;
   /** agent slug identifier (e.g., "claude", "codex", "gemini") */
   agent: AgentName | null;
-  /** the prompt/instructions for the agent to execute */
+  /** the prompt/instructions for the agent to execute (body if @pullfrog tagged + per-trigger instructions) */
   prompt: string;
+  /** repo-level instructions (macro-expanded server-side) */
+  repoInstructions?: string | undefined;
   /** event data from webhook payload - discriminated union based on trigger field */
   event: PayloadEvent;
   /** effort level for model selection (mini, auto, max) - defaults to "auto" */

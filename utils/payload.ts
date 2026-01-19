@@ -21,6 +21,7 @@ const JsonPayload = type({
   "~pullfrog": "true",
   "agent?": AgentName.or("null"),
   "prompt?": "string",
+  "repoInstructions?": "string",
   "event?": "object",
   "effort?": Effort,
 });
@@ -123,6 +124,7 @@ export function resolvePayload(repoSettings: RepoSettings) {
     // inverted: jsonPayload.prompt extracts the text from the JSON payload,
     // whereas inputs.prompt IS the raw JSON string when internally dispatched
     prompt: jsonPayload?.prompt ?? inputs.prompt,
+    repoInstructions: jsonPayload?.repoInstructions,
     event,
     effort: inputs.effort ?? jsonPayload?.effort ?? "auto",
     cwd: resolveCwd(inputs.cwd),

@@ -11,6 +11,7 @@ export interface Mode {
 export interface RepoSettings {
   defaultAgent: AgentName | null;
   modes: Mode[];
+  repoInstructions: string;
   web: ToolPermission;
   search: ToolPermission;
   write: ToolPermission;
@@ -49,6 +50,7 @@ export async function fetchRepoSettings(params: {
       return {
         defaultAgent: null,
         modes: [],
+        repoInstructions: "",
         web: "enabled",
         search: "enabled",
         write: "enabled",
@@ -61,6 +63,7 @@ export async function fetchRepoSettings(params: {
       return {
         defaultAgent: null,
         modes: [],
+        repoInstructions: "",
         web: "enabled",
         search: "enabled",
         write: "enabled",
@@ -74,6 +77,7 @@ export async function fetchRepoSettings(params: {
     return {
       defaultAgent: null,
       modes: [],
+      repoInstructions: "",
       web: "enabled",
       search: "enabled",
       write: "enabled",

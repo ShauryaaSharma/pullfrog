@@ -63,6 +63,7 @@ export interface ResolvedInstructions {
   full: string;
   system: string;
   user: string;
+  repo: string;
   event: string;
   runtime: string;
 }
@@ -82,7 +83,11 @@ export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructi
 
   const runtime = buildRuntimeContext(ctx);
 
+  // user prompt is constructed server-side (body if @pullfrog tagged + per-trigger instructions)
   const user = ctx.payload.prompt;
+
+  // repo-level instructions are macro-expanded server-side and passed separately
+  const repo = ctx.payload.repoInstructions ?? "";
 
   const userQuoted = user
     .split("\n")
@@ -163,12 +168,22 @@ After selecting a mode, follow the detailed step-by-step instructions provided b
 
 Eagerly inspect the MCP tools available to you via the \`${ghPullfrogMcpName}\` MCP server. These are VITALLY IMPORTANT to completing your task.`;
 
+  // build repo instructions section (only if non-empty)
+  const repoSection = repo
+    ? `
+
+************* REPO-LEVEL INSTRUCTIONS *************
+
+${repo}`
+    : "";
+
   const full = `
 ${system}
 
 ************* USER PROMPT *************
 
 ${userQuoted}
+${repoSection}
 
 ************* EVENT DATA *************
 
@@ -180,5 +195,5 @@ ${event}
 
 ${runtime}`;
 
-  return { full, system, user, event, runtime };
+  return { full, system, user, repo, event, runtime };
 }
