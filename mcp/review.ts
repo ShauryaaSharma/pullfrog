@@ -20,7 +20,7 @@ export const CreatePullRequestReview = type({
   comments: type({
     path: type.string.describe("The file path to comment on (relative to repo root)"),
     line: type.number.describe(
-      "End line of the comment range (or the only line if no start_line). From diff format 'OLD | NEW | TYPE | CODE', use the NEW column."
+      "End line of the comment range. For single-line comments, set equal to 'start_line'. Use NEW column from diff format."
     ),
     side: type
       .enumerated("LEFT", "RIGHT")
@@ -33,14 +33,12 @@ export const CreatePullRequestReview = type({
       .optional(),
     suggestion: type.string
       .describe(
-        "Full replacement code for the line range. Replaces the commented lines entirely - can be more, fewer, or same number of lines."
+        "Full replacement code for the line range [start_line, line]. MUST preserve the exact indentation of the original code."
       )
       .optional(),
-    start_line: type.number
-      .describe(
-        "Start line for multi-line comments/suggestions. The range [start_line, line] defines which lines get replaced."
-      )
-      .optional(),
+    start_line: type.number.describe(
+      "Start line of the comment range. For single-line comments, set equal to 'line'. The range [start_line, line] defines which lines a suggestion replaces."
+    ),
   })
     .array()
     .describe(
@@ -56,7 +54,9 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       "Submit a review for an existing pull request. " +
       "IMPORTANT: 95%+ of feedback should be in 'comments' array with file paths and line numbers. " +
       "Only use 'body' for a 1-2 sentence summary with urgency and critical callouts. " +
-      "Use 'suggestion' field to suggest a FULL REPLACEMENT of the associated line range. This will show up for users as a one-click apply suggestion. It doesn't need to be the same length as the original range, but the suggested code must work when applied.",
+      "Use 'suggestion' to propose replacement code - MUST preserve exact indentation of original code. " +
+      "Example replacing lines 42-44 (3 lines) with 5 lines: " +
+      `{ path: 'src/api.ts', start_line: 42, line: 44, suggestion: '    const result = await fetch(url);\\n    if (!result.ok) {\\n      log.error(result.status);\\n      throw new Error("request failed");\\n    }' }`,
     parameters: CreatePullRequestReview,
     execute: execute(async ({ pull_number, body, commit_id, comments = [] }) => {
       // set PR context
@@ -92,16 +92,15 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
             commentBody = commentBody ? commentBody + "\n\n" + suggestionBlock : suggestionBlock;
           }
 
+          const side = comment.side || "RIGHT";
           const reviewComment: ReviewComment = {
             path: comment.path,
             line: comment.line,
             body: commentBody,
+            side,
+            start_line: comment.start_line,
+            start_side: side,
           };
-          reviewComment.side = comment.side || "RIGHT";
-          if (comment.start_line) {
-            reviewComment.start_line = comment.start_line;
-            reviewComment.start_side = comment.side || "RIGHT";
-          }
           return reviewComment;
         });
       }
