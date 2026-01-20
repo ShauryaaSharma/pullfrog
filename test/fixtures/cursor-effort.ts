@@ -1,4 +1,5 @@
 import type { Effort, Payload } from "../../external.ts";
+import packageJson from "../../package.json" with { type: "json" };
 
 /**
  * Test fixture for Cursor effort levels.
@@ -20,6 +21,7 @@ const efforts: Effort[] = ["mini", "auto", "max"];
 
 export default efforts.map((effort) => ({
   "~pullfrog": true,
+  version: packageJson.version,
   agent: "cursor",
   prompt: "What is 2 + 2? Reply with just the number.",
   event: {

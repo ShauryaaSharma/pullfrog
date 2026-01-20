@@ -241,6 +241,8 @@ export type PayloadEvent =
 // writeable payload type for building payloads
 export interface WriteablePayload {
   "~pullfrog": true;
+  /** semantic version of the payload to ensure compatibility */
+  version: string;
   /** agent slug identifier (e.g., "claude", "codex", "gemini") */
   agent?: AgentName | undefined;
   /** the prompt/instructions for the agent to execute (body if @pullfrog tagged + per-trigger instructions) */

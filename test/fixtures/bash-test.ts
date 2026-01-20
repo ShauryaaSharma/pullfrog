@@ -1,4 +1,5 @@
 import type { Payload } from "../../external.ts";
+import packageJson from "../../package.json" with { type: "json" };
 
 /**
  * test fixture: verifies agents use MCP bash tool for shell commands.
@@ -14,6 +15,7 @@ import type { Payload } from "../../external.ts";
  */
 export default {
   "~pullfrog": true,
+  version: packageJson.version,
   prompt: `Create a file called test-runner.js with the following content:
 
 \`\`\`javascript

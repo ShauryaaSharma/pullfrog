@@ -59,6 +59,9 @@ importers:
       package-manager-detector:
         specifier: ^1.6.0
         version: 1.6.0
+      semver:
+        specifier: ^7.7.3
+        version: 7.7.3
       table:
         specifier: ^6.9.0
         version: 6.9.0
@@ -66,6 +69,9 @@ importers:
       '@types/node':
         specifier: ^24.7.2
         version: 24.7.2
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       arg:
         specifier: ^5.0.2
         version: 5.0.2
@@ -817,6 +823,9 @@ packages:
   '@types/node@24.7.2':
     resolution: {integrity: sha512-/NbVmcGTP+lj5oa4yiYxxeBjRivKQ5Ns1eSZeB99ExsEQ6rX5XYU1Zy/gGxY/ilqtD4Etx9mKyrPxZRetiahhA==}
 
+  '@types/semver@7.7.1':
+    resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
+
   '@vitest/expect@4.0.17':
     resolution: {integrity: sha512-mEoqP3RqhKlbmUmntNDDCJeTDavDR+fVYkSOw8qRwJFaW/0/5zA9zFeTrHqNtcmwh6j26yMmwx2PqUDPzt5ZAQ==}
 
@@ -1363,6 +1372,11 @@ packages:
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
+
+  semver@7.7.3:
+    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
+    engines: {node: '>=10'}
+    hasBin: true
 
   send@1.2.0:
     resolution: {integrity: sha512-uaW0WwXKpL9blXE2o0bRhoL2EGXIrZxQ2ZQ4mgcfoBxdFmQold+qWsD2jLrfZ0trjKL6vOw0j//eAwcALFjKSw==}
@@ -2210,6 +2224,8 @@ snapshots:
     dependencies:
       undici-types: 7.14.0
 
+  '@types/semver@7.7.1': {}
+
   '@vitest/expect@4.0.17':
     dependencies:
       '@standard-schema/spec': 1.0.0
@@ -2823,6 +2839,8 @@ snapshots:
   safe-buffer@5.2.1: {}
 
   safer-buffer@2.1.2: {}
+
+  semver@7.7.3: {}
 
   send@1.2.0:
     dependencies:

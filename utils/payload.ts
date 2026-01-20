@@ -2,7 +2,9 @@ import { isAbsolute, resolve } from "node:path";
 import * as core from "@actions/core";
 import { type } from "arktype";
 import { AgentName, type AuthorPermission, Effort, type PayloadEvent } from "../external.ts";
+import packageJson from "../package.json" with { type: "json" };
 import type { RepoSettings } from "./repoSettings.ts";
+import { validateCompatibility } from "./versioning.ts";
 
 // tool permission enum types for inputs
 const ToolPermissionInput = type.enumerated("disabled", "enabled");
@@ -11,8 +13,9 @@ const BashPermissionInput = type.enumerated("disabled", "restricted", "enabled")
 // schema for JSON payload passed via prompt (internal dispatch invocation)
 // note: permissions are intentionally NOT included here to prevent injection attacks
 // permissions are derived from event.authorPermission instead
-const JsonPayload = type({
+export const JsonPayload = type({
   "~pullfrog": "true",
+  "version": "string",
   "agent?": AgentName.or("undefined"),
   "prompt?": "string",
   "repoInstructions?": "string",
@@ -94,6 +97,9 @@ export function resolvePayload(repoSettings: RepoSettings) {
     // not JSON, treat as plain string prompt
   }
 
+  // validate version compatibility from jsonPayload
+  if (jsonPayload) validateCompatibility(jsonPayload.version, packageJson.version);
+
   // resolve event - use type guard for jsonPayload.event, fallback to unknown trigger
   const rawEvent = jsonPayload?.event;
   const event: PayloadEvent = isPayloadEvent(rawEvent) ? rawEvent : { trigger: "unknown" };
@@ -111,6 +117,7 @@ export function resolvePayload(repoSettings: RepoSettings) {
   // note: modes are NOT in payload - they come from repoSettings in main()
   return {
     "~pullfrog": true as const,
+    version: jsonPayload?.version ?? packageJson.version,
     agent: resolvedAgent,
     // inverted: jsonPayload.prompt extracts the text from the JSON payload,
     // whereas inputs.prompt IS the raw JSON string when internally dispatched
