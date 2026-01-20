@@ -70,42 +70,40 @@ on:
       prompt:
         type: string
         description: 'Agent prompt'
-  workflow_call:
-    inputs:
-      prompt:
-        description: 'Agent prompt'
-        type: string
-    secrets: inherit
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  checks: read
 
 jobs:
   pullfrog:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
-
-      # optionally, setup your repo here
-      # the agent can figure this out itself, but pre-setup is more efficient
-      # - uses: actions/setup-node@v6
-      
       - name: Run agent
         uses: pullfrog/pullfrog@v0
         with:
           prompt: ${{ inputs.prompt }}
         env:
-          # feel free to comment out any you won't use
+          # add any additional keys your agent(s) need
+          # optionally, comment out any you won't use
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
 ```
 
 #### 2. Create `triggers.yml`
