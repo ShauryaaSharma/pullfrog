@@ -101,7 +101,7 @@ export async function main(): Promise<MainResult> {
 
     // write last progress body to job summary
     if (toolState.lastProgressBody) {
-      writeSummary(toolState.lastProgressBody);
+      await writeSummary(toolState.lastProgressBody);
     }
 
     const mainResult = await handleAgentResult(result);

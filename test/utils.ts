@@ -20,7 +20,7 @@ interface Spinner {
   stop: () => void;
 }
 
-function startSpinner(message: string): Spinner {
+export function startSpinner(message: string): Spinner {
   const startTime = Date.now();
 
   // skip animated spinner in CI
@@ -170,12 +170,12 @@ export async function runTests(options: TestRunnerOptions): Promise<void> {
   process.exit(failed.length > 0 ? 1 : 0);
 }
 
-function printSingleValidation(validation: ValidationResult): void {
+export function printSingleValidation(validation: ValidationResult): void {
   const checksStr = validation.checks.map((c) => `${c.name}=${c.passed ? "✓" : "✗"}`).join(" ");
   console.log(`\nvalidation: ${checksStr}`);
 }
 
-function printResults(validations: ValidationResult[]): void {
+export function printResults(validations: ValidationResult[]): void {
   // build header from check names
   const checkNames = validations[0]?.checks.map((c) => c.name) ?? [];
   const headerCols = checkNames.map((n) => n.toUpperCase().padEnd(12)).join("");
@@ -196,7 +196,7 @@ function printResults(validations: ValidationResult[]): void {
   console.log(`\n${passed.length}/${validations.length} passed`);
 }
 
-function printFailedOutputs(failed: ValidationResult[]): void {
+export function printFailedOutputs(failed: ValidationResult[]): void {
   console.log(`\nFailed agents output:\n`);
   for (const v of failed) {
     console.log(`${"=".repeat(60)}`);

@@ -99,6 +99,12 @@ export const cursor = agent({
   name: "cursor",
   install: installCursor,
   run: async (ctx) => {
+    // validate API key exists for headless/CI authentication
+    const apiKey = process.env.CURSOR_API_KEY;
+    if (!apiKey) {
+      throw new Error("CURSOR_API_KEY is required for cursor agent");
+    }
+
     // install CLI at start of run
     const cliPath = await installCursor();
 
@@ -203,12 +209,15 @@ export const cursor = agent({
 
     try {
       // build CLI args
+      // IMPORTANT: prompt is a POSITIONAL argument and must come LAST
+      // --print is a FLAG (not an option that takes a value)
       const baseArgs = [
         "--print",
-        ctx.instructions.full,
         "--output-format",
         "stream-json",
         "--approve-mcps",
+        "--api-key",
+        apiKey,
       ];
 
       // add model flag if we have an override
@@ -217,17 +226,23 @@ export const cursor = agent({
       }
 
       // always use --force since permissions are controlled via cli-config.json
-      const cursorArgs = [...baseArgs, "--force"];
+      // prompt MUST be last as a positional argument
+      const cursorArgs = [...baseArgs, "--force", ctx.instructions.full];
 
       log.info("» running Cursor CLI...");
 
       const startTime = Date.now();
 
+      // create env without XDG_CONFIG_HOME so CLI uses $HOME/.cursor/ where we wrote config
+      const cliEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => key !== "XDG_CONFIG_HOME")
+      );
+
       return new Promise((resolve) => {
         const child = spawn(cliPath, cursorArgs, {
           cwd: process.cwd(),
-          env: process.env,
-          stdio: ["ignore", "pipe", "pipe"], // Ignore stdin, pipe stdout/stderr
+          env: cliEnv,
+          stdio: ["ignore", "pipe", "pipe"],
         });
 
         let stdout = "";
@@ -315,12 +330,18 @@ export const cursor = agent({
   },
 });
 
+// get the cursor config directory
+// always use $HOME/.cursor/ for consistency
+// when spawning the CLI, we unset XDG_CONFIG_HOME so it looks here too
+function getCursorConfigDir(): string {
+  return join(homedir(), ".cursor");
+}
+
 // There was an issue on macOS when you set HOME to a temp directory
 // it was unable to find the macOS keychain and would fail
 // temp solution is to stick with the actual $HOME
 function configureCursorMcpServers(ctx: AgentRunContext): void {
-  const realHome = homedir();
-  const cursorConfigDir = join(realHome, ".cursor");
+  const cursorConfigDir = getCursorConfigDir();
   const mcpConfigPath = join(cursorConfigDir, "mcp.json");
   mkdirSync(cursorConfigDir, { recursive: true });
 
@@ -345,11 +366,10 @@ interface CursorCliConfig {
 /**
  * Configure Cursor CLI tool permissions via cli-config.json.
  *
- * Config path: $HOME/.config/cursor/ (not ~/.cursor/).
+ * Config path: $HOME/.cursor/cli-config.json
  */
 function configureCursorTools(ctx: AgentRunContext): void {
-  const realHome = homedir();
-  const cursorConfigDir = join(realHome, ".config", "cursor");
+  const cursorConfigDir = getCursorConfigDir();
   const cliConfigPath = join(cursorConfigDir, "cli-config.json");
   mkdirSync(cursorConfigDir, { recursive: true });
 

@@ -2,10 +2,14 @@
  * Logging utilities that work well in both local and GitHub Actions environments
  */
 
+import { existsSync } from "node:fs";
 import * as core from "@actions/core";
 import { table } from "table";
 
 const isGitHubActions = !!process.env.GITHUB_ACTIONS;
+
+// detect if running inside Docker container (CI tests run in Docker with host env vars)
+const isInsideDocker = existsSync("/.dockerenv");
 
 const isDebugEnabled = () =>
   process.env.LOG_LEVEL === "debug" ||
@@ -152,10 +156,22 @@ function box(
 
 /**
  * Overwrite the job summary with the given text.
+ * Skips if:
+ * - Not in GitHub Actions
+ * - Running inside Docker (CI tests inherit host env vars but can't access host paths)
+ * - GITHUB_STEP_SUMMARY not set
  */
-export function writeSummary(text: string): void {
+export async function writeSummary(text: string): Promise<void> {
   if (!isGitHubActions) return;
-  core.summary.addRaw(text).write({ overwrite: true });
+
+  // CI tests run in Docker with GITHUB_ACTIONS=true inherited from host,
+  // but the GITHUB_STEP_SUMMARY path points to a host filesystem location
+  // that doesn't exist inside the container
+  if (isInsideDocker) return;
+
+  if (!process.env.GITHUB_STEP_SUMMARY) return;
+
+  await core.summary.addRaw(text).write({ overwrite: true });
 }
 
 /**
