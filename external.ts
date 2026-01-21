@@ -138,8 +138,8 @@ interface PullRequestReviewCommentCreatedEvent extends BasePayloadEvent {
   is_pr: true;
   title: string;
   comment_id: number;
-  /** comment body is the primary content */
-  body: string;
+  /** comment body is the primary content (null if already in prompt) */
+  body: string | null;
   thread?: any;
   branch: string;
 }
@@ -168,8 +168,8 @@ interface IssuesLabeledEvent extends BasePayloadEvent {
 interface IssueCommentCreatedEvent extends BasePayloadEvent {
   trigger: "issue_comment_created";
   comment_id: number;
-  /** comment body is the primary content */
-  body: string;
+  /** comment body is the primary content (null if already in prompt) */
+  body: string | null;
   issue_number: number;
   // PR-specific fields (only present when is_pr is true)
   is_pr?: true;
@@ -212,8 +212,8 @@ interface ImplementPlanEvent extends BasePayloadEvent {
   trigger: "implement_plan";
   issue_number: number;
   plan_comment_id: number;
-  /** plan content is the primary content */
-  body: string;
+  /** plan content is the primary content (null if already in prompt) */
+  body: string | null;
 }
 
 interface UnknownEvent extends BasePayloadEvent {
