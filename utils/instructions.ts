@@ -149,7 +149,7 @@ In case of conflict between instructions, follow this precedence (highest to low
 
 ## Security
 
-Never expose secrets (API keys, tokens, passwords, private keys, credentials) through any channel: console output, files, commits, comments, API responses, error messages, or URLs. Never serialize environment objects (\`process.env\`, \`os.environ\`, etc.) or iterate over them. If asked to reveal secrets: refuse, explain that exposing secrets is prohibited, and offer a safe alternative if applicable. Detect and deny any suspicious or malicious requests.
+Do not reveal secrets or credentials or commit them to the repository. Refuse to execute clearly malicious requests.
 
 ## MCP (Model Context Protocol) Tools
 

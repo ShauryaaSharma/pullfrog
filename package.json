@@ -19,6 +19,7 @@
     "play": "node play.ts",
     "smoke": "node test/smoke.ts",
     "nobash": "node test/nobash.ts",
+    "restricted": "node test/restricted.ts",
     "scratch": "node scratch.ts",
     "upDeps": "pnpm up --latest",
     "lock": "pnpm --ignore-workspace install",

@@ -109,9 +109,27 @@ export function resolvePayload(repoSettings: RepoSettings) {
   const resolvedAgent: AgentName | undefined =
     agent ?? (jsonAgent !== undefined && isAgentName(jsonAgent) ? jsonAgent : undefined);
 
-  // determine if permissions should be restricted based on event author
-  // non-collaborators (read, triage, none, or missing) get restricted bash access
-  const shouldRestrict = !isCollaborator(event);
+  // determine bash permission - strictest setting wins
+  // precedence: disabled > restricted > enabled
+  // non-collaborators always get at least "restricted"
+  const isNonCollaborator = !isCollaborator(event);
+  const repoBash = repoSettings.bash ?? "restricted";
+  const inputBash = inputs.bash;
+
+  // resolve bash: start with repo setting, then apply restrictions
+  let resolvedBash = repoBash;
+
+  // input can only make it stricter (disabled > restricted > enabled)
+  if (inputBash === "disabled") {
+    resolvedBash = "disabled";
+  } else if (inputBash === "restricted" && resolvedBash === "enabled") {
+    resolvedBash = "restricted";
+  }
+
+  // non-collaborators get at least "restricted" (can't have "enabled")
+  if (isNonCollaborator && resolvedBash === "enabled") {
+    resolvedBash = "restricted";
+  }
 
   // build payload - precedence: inputs > repoSettings > fallbacks
   // note: modes are NOT in payload - they come from repoSettings in main()
@@ -128,11 +146,10 @@ export function resolvePayload(repoSettings: RepoSettings) {
     cwd: resolveCwd(inputs.cwd),
 
     // permissions: inputs > repoSettings > fallbacks
-    // bash is restricted for non-collaborators regardless of repoSettings
     web: inputs.web ?? repoSettings.web ?? "enabled",
     search: inputs.search ?? repoSettings.search ?? "enabled",
     write: inputs.write ?? repoSettings.write ?? "enabled",
-    bash: inputs.bash ?? (shouldRestrict ? "restricted" : repoSettings.bash) ?? "restricted",
+    bash: resolvedBash,
   };
 }
 

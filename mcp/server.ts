@@ -184,12 +184,11 @@ export async function startMcpHttpServer(
     PushBranchTool(ctx),
   ];
 
-  // only add BashTool and KillBackgroundTool if bash is not disabled
-  // - "enabled": native bash + MCP bash
-  // - "restricted": MCP bash only (native blocked by agent)
+  // only add BashTool when bash is "restricted"
+  // - "enabled": native bash only (no MCP bash needed)
+  // - "restricted": MCP bash only (native blocked, env filtered)
   // - "disabled": no bash at all
-  const bash = ctx.payload.bash ?? "enabled";
-  if (bash !== "disabled") {
+  if (ctx.payload.bash === "restricted") {
     tools.push(BashTool(ctx));
     tools.push(KillBackgroundTool(ctx));
   }

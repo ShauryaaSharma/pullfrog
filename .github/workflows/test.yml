@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         agent: [claude, codex, cursor, gemini, opencode]
-        test: [smoke, nobash]
+        test: [smoke, nobash, restricted]
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

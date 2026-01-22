@@ -1,16 +1,28 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { fromHere } from "@ark/fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import arg from "arg";
 import { config } from "dotenv";
 import type { AgentResult } from "./agents/shared.ts";
 import { type Inputs, main } from "./main.ts";
+import { defineFixture } from "./test/utils.ts";
 import { log } from "./utils/cli.ts";
 import { setupTestRepo } from "./utils/setup.ts";
+
+/**
+ * default play fixture for ad-hoc testing.
+ * change this freely without affecting any tests.
+ */
+export const playFixture = defineFixture(
+  {
+    prompt: `What is 2 + 2? Reply with just the number.`,
+    effort: "mini",
+  },
+  { localOnly: true }
+);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -77,25 +89,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   if (args["--help"]) {
     log.info(`
-Usage: tsx play.ts [file] [options]
+Usage: node play.ts [options]
 
-Test the Pullfrog action with various prompts.
-
-Arguments:
-  file                    Prompt file to use (.txt, .json, or .ts) [default: fixtures/basic.txt]
+Test the Pullfrog action with the inline playFixture.
 
 Options:
-  --raw [prompt]          Use raw string as prompt instead of loading from file
+  --raw [prompt]          Use raw string as prompt instead of playFixture
   --local, -l             Run locally (default: runs in Docker)
   -h, --help              Show this help message
 
 Environment:
   PLAY_LOCAL=1            Same as --local
+  PLAY_FIXTURE            JSON fixture passed by test runner (internal)
 
 Examples:
-  tsx play.ts bash-test.ts           # Run in Docker (default)
-  tsx play.ts --local bash-test.ts   # Run locally on macOS
-  tsx play.ts --raw "Hello world"    # Use raw string as prompt
+  node play.ts                       # Run inline playFixture
+  node play.ts --raw "Hello world"   # Use raw string as prompt
     `);
     process.exit(0);
   }
@@ -219,104 +228,19 @@ Examples:
     process.exit(result.status ?? 1);
   }
 
-  let prompt: string;
+  // check for fixture passed via env var (from test runner)
+  if (process.env.PLAY_FIXTURE) {
+    const fixtureFromEnv = JSON.parse(process.env.PLAY_FIXTURE) as Inputs;
+    const result = await run(fixtureFromEnv);
+    process.exit(result.success ? 0 : 1);
+  }
 
   if (args["--raw"]) {
-    prompt = args["--raw"];
-  } else {
-    const filePath = args._[0] || "basic.txt";
-
-    const ext = extname(filePath).toLowerCase();
-    let resolvedPath: string;
-
-    const fixturesPath = fromHere("test", "fixtures", filePath);
-    if (existsSync(fixturesPath)) {
-      resolvedPath = fixturesPath;
-    } else if (existsSync(filePath)) {
-      resolvedPath = resolve(filePath);
-    } else {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    switch (ext) {
-      case ".txt": {
-        prompt = readFileSync(resolvedPath, "utf8").trim();
-        break;
-      }
-
-      case ".json": {
-        const content = readFileSync(resolvedPath, "utf8");
-        const parsed = JSON.parse(content);
-        prompt = JSON.stringify(parsed, null, 2);
-        break;
-      }
-
-      case ".ts": {
-        const fileUrl = pathToFileURL(resolvedPath).href;
-        const module = await import(fileUrl);
-
-        if (!module.default) {
-          throw new Error(`TypeScript file ${filePath} must have a default export`);
-        }
-
-        if (typeof module.default === "string") {
-          prompt = module.default;
-        } else if (Array.isArray(module.default)) {
-          // Array of Payloads - run each in sequence
-          const payloads = module.default;
-          log.info(`Running ${payloads.length} payloads in sequence...`);
-
-          let allSuccess = true;
-          for (let i = 0; i < payloads.length; i++) {
-            const payload = payloads[i];
-            const label = payload.effort
-              ? `[${i + 1}/${payloads.length}] effort=${payload.effort}`
-              : `[${i + 1}/${payloads.length}]`;
-            log.info(`\n${"=".repeat(60)}`);
-            log.info(`${label}`);
-            log.info(`${"=".repeat(60)}\n`);
-
-            const payloadPrompt = JSON.stringify(payload, null, 2);
-            const result = await run(payloadPrompt);
-            if (!result.success) {
-              allSuccess = false;
-              log.error(`Payload ${i + 1} failed`);
-            }
-          }
-
-          process.exit(allSuccess ? 0 : 1);
-        } else if (typeof module.default === "object") {
-          const obj = module.default as Record<string, unknown>;
-          // Inputs objects have `prompt` field and optional tool permission fields
-          // Payload objects have `~pullfrog` field
-          if ("prompt" in obj && !("~pullfrog" in obj)) {
-            // this is an Inputs object - run directly with tool permissions
-            const result = await run(obj as Inputs);
-            process.exit(result.success ? 0 : 1);
-          }
-          // Payload objects (with ~pullfrog) should be stringified
-          prompt = JSON.stringify(module.default, null, 2);
-        } else {
-          throw new Error(`Unsupported default export type: ${typeof module.default}`);
-        }
-        break;
-      }
-
-      default:
-        throw new Error(`Unsupported file type: ${ext}. Supported types: .txt, .json, .ts`);
-    }
+    const result = await run(args["--raw"]);
+    process.exit(result.success ? 0 : 1);
   }
 
-  try {
-    const result = await run(prompt);
-
-    if (!result.success) {
-      process.exit(1);
-    }
-
-    process.exit(0);
-  } catch (err) {
-    log.error((err as Error).message);
-    process.exit(1);
-  }
+  // no args - use inline playFixture
+  const result = await run(playFixture);
+  process.exit(result.success ? 0 : 1);
 }

@@ -190,9 +190,16 @@ export const cursor = agent({
             });
           }
         } else if (event.subtype === "completed") {
-          const isError = event.tool_call?.mcpToolCall?.result?.success?.isError;
+          const result = event.tool_call?.mcpToolCall?.result?.success;
+          const isError = result?.isError;
           if (isError) {
             log.warning("Tool call failed");
+          } else {
+            // log successful tool result so it appears in output
+            const text = result?.content?.[0]?.text?.text;
+            if (text) {
+              console.log(text);
+            }
           }
         }
       },

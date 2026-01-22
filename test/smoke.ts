@@ -1,10 +1,20 @@
 import type { AgentResult, ValidationCheck } from "./utils.ts";
-import { runTests } from "./utils.ts";
+import { defineFixture, runTests } from "./utils.ts";
 
 /**
  * smoke test - validates agent can connect to API and call MCP tools.
  * verifies select_mode tool is called with correct params.
  */
+
+const fixture = defineFixture(
+  {
+    prompt: `Call the select_mode tool with modeName "Build" and confirm you received the mode's prompt instructions.
+
+Then say "SMOKE TEST PASSED".`,
+    effort: "mini",
+  },
+  { localOnly: true }
+);
 
 function validator(result: AgentResult): ValidationCheck[] {
   // verify MCP tool was called with correct params:
@@ -21,6 +31,6 @@ function validator(result: AgentResult): ValidationCheck[] {
 
 runTests({
   name: "smoke tests",
-  fixture: "smoke.ts",
+  fixture,
   validator,
 });

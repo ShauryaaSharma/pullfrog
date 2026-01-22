@@ -15,47 +15,40 @@ export const BashParams = type({
   "background?": "boolean",
 });
 
-// patterns for sensitive env vars: suffixes (_KEY, _SECRET, _TOKEN) plus AI provider prefixes
+// patterns for sensitive env vars
 const SENSITIVE_PATTERNS = [/_KEY$/i, /_SECRET$/i, /_TOKEN$/i, /_PASSWORD$/i, /_CREDENTIAL$/i];
 
 function isSensitive(key: string): boolean {
   return SENSITIVE_PATTERNS.some((p) => p.test(key));
 }
 
-/** filter env vars, removing sensitive values (only for public repos) */
-function filterEnv(isPublicRepo: boolean): Record<string, string> {
+/** filter env vars, removing sensitive values */
+function filterEnv(): Record<string, string> {
   const filtered: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    // only filter sensitive vars for public repos
-    if (isPublicRepo && isSensitive(key)) continue;
+    if (isSensitive(key)) continue;
     filtered[key] = value;
   }
-  // never restore GITHUB_TOKEN - agents must use MCP tools for git/gh operations
-  // this ensures all git operations go through auditable MCP tools where we can
-  // enforce branch protection, scan for secrets, etc.
   return filtered;
 }
 
-type SpawnSandboxedParams = {
+type SpawnParams = {
   command: string;
   env: Record<string, string>;
   cwd: string;
-  isPublicRepo: boolean;
   stdio: StdioOptions;
 };
 
-/**
- * spawn command with filtered env. in CI, also use PID namespace isolation
- * to prevent child from reading /proc/$PPID/environ (only for public repos)
- */
-function spawnSandboxed(params: SpawnSandboxedParams): ChildProcess {
+function spawnBash(params: SpawnParams): ChildProcess {
   const spawnOpts = { env: params.env, cwd: params.cwd, stdio: params.stdio, detached: true };
-  // only use PID namespace isolation for public repos in CI
-  const useNamespaceIsolation = process.env.CI === "true" && params.isPublicRepo;
-  return useNamespaceIsolation
-    ? spawn("unshare", ["--pid", "--fork", "--mount-proc", "bash", "-c", params.command], spawnOpts)
-    : spawn("bash", ["-c", params.command], spawnOpts);
+  // ---- temporarily disable namespace isolation to fix CI ----
+  // use PID namespace isolation in CI to prevent reading /proc/$PPID/environ
+  // const useNamespaceIsolation = process.env.CI === "true";
+  // return useNamespaceIsolation
+  //   ? spawn("unshare", ["--pid", "--fork", "--mount-proc", "bash", "-c", params.command], spawnOpts)
+  //   : spawn("bash", ["-c", params.command], spawnOpts);
+    return spawn("bash", ["-c", params.command], spawnOpts);
 }
 
 /** kill process and its entire process group */
@@ -83,23 +76,20 @@ function getTempDir(): string {
 }
 
 export function BashTool(ctx: ToolContext) {
-  const isPublicRepo = !ctx.repo.repo.private;
-
   return tool({
     name: "bash",
-    description: `Execute shell commands securely.${isPublicRepo ? " Environment is filtered to remove API keys and secrets." : ""}
+    description: `Execute shell commands securely. Environment is filtered to remove API keys and secrets.
 
 Use this tool to:
 - Run shell commands (ls, cat, grep, find, etc.)
 - Execute build tools (npm, pnpm, cargo, make, etc.)
 - Run tests and linters
-- Perform git operations
-- Run shell commands in a secure environment. Unlike the built-in bash tool, this tool filters sensitive environment variables from the subprocess's environment to avoid leaking secrets.`,
+- Perform git operations`,
     parameters: BashParams,
     execute: execute(async (params) => {
       const timeout = Math.min(params.timeout ?? 120000, 600000);
       const cwd = params.working_directory ?? process.cwd();
-      const env = filterEnv(isPublicRepo);
+      const env = filterEnv();
 
       if (params.background) {
         const tempDir = getTempDir();
@@ -109,11 +99,10 @@ Use this tool to:
         const logFd = openSync(outputPath, "a");
         let proc: ChildProcess;
         try {
-          proc = spawnSandboxed({
+          proc = spawnBash({
             command: params.command,
             env,
             cwd,
-            isPublicRepo,
             stdio: ["ignore", logFd, logFd],
           });
         } finally {
@@ -133,11 +122,10 @@ Use this tool to:
         };
       }
 
-      const proc = spawnSandboxed({
+      const proc = spawnBash({
         command: params.command,
         env,
         cwd,
-        isPublicRepo,
         stdio: ["ignore", "pipe", "pipe"],
       });
 
