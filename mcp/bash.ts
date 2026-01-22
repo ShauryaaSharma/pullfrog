@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type } from "arktype";
+import { log } from "../utils/log.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -174,9 +175,15 @@ Use this tool to:
           ? `${output}\n[timed out after ${timeout}ms]`
           : `[timed out after ${timeout}ms]`;
 
+      const finalExitCode = exitCode ?? (timedOut ? 124 : -1);
+      if (finalExitCode !== 0) {
+        log.error(`bash command failed with exit code ${finalExitCode}: ${params.command}`);
+        if (output) log.error(`output: ${output.trim()}`);
+      }
+
       return {
         output: output.trim(),
-        exit_code: exitCode ?? (timedOut ? 124 : -1),
+        exit_code: finalExitCode,
         timed_out: timedOut,
       };
     }),
