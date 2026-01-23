@@ -28,7 +28,7 @@ export function CommitInfoTool(ctx: ToolContext) {
       const files = data.files ?? [];
 
       // format diff with line numbers and write to file
-      const diffContent = formatFilesWithLineNumbers(files);
+      const formatResult = formatFilesWithLineNumbers(files);
       const tempDir = process.env.PULLFROG_TEMP_DIR;
       if (!tempDir) {
         throw new Error(
@@ -36,8 +36,8 @@ export function CommitInfoTool(ctx: ToolContext) {
         );
       }
       const diffFile = join(tempDir, `commit-${sha.slice(0, 7)}.diff`);
-      writeFileSync(diffFile, diffContent);
-      log.debug(`wrote commit diff to ${diffFile} (${diffContent.length} bytes)`);
+      writeFileSync(diffFile, formatResult.content);
+      log.debug(`wrote commit diff to ${diffFile} (${formatResult.content.length} bytes)`);
 
       return {
         sha: data.sha,

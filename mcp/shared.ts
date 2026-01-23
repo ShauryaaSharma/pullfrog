@@ -4,7 +4,9 @@ import type { FastMCP, Tool } from "fastmcp";
 import { formatJsonValue, log } from "../utils/cli.ts";
 import type { ToolContext } from "./server.ts";
 
-export const tool = <const params>(toolDef: Tool<any, StandardSchemaV1<params>>) => toolDef;
+export const tool = <const params>(
+  toolDef: Tool<any, StandardSchemaV1<params>>
+): Tool<any, StandardSchemaV1<params>> => toolDef;
 
 export interface ToolResult {
   content: {
@@ -40,11 +42,11 @@ export const handleToolError = (error: unknown): ToolResult => {
  * @param fn - the function to execute
  * @param toolName - optional tool name for error logging
  */
-export const execute = <T>(
-  fn: (params: T) => Promise<Record<string, any> | string>,
+export const execute = <T, R extends Record<string, any> | string>(
+  fn: (params: T) => Promise<R>,
   toolName?: string
 ) => {
-  return async (params: T): Promise<ToolResult> => {
+  const _fn = async (params: T): Promise<ToolResult> => {
     try {
       const result = await fn(params);
       return handleToolSuccess(result);
@@ -56,6 +58,8 @@ export const execute = <T>(
       return handleToolError(error);
     }
   };
+  (_fn as any).raw = fn;
+  return _fn;
 };
 
 /**

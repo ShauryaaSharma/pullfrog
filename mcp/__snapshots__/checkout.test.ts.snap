@@ -1,0 +1,146 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fetchAndFormatPrDiff > fetches PR files and generates TOC with formatted diff > content 1`] = `
+"## Files (3)
+- .github/workflows/test.yml → lines 7-47
+- index.test.ts → lines 48-110
+- index.ts → lines 111-132
+
+---
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -0,0 +1,36 @@
+|      |    1 | + | name: Test
+|      |    2 | + | 
+|      |    3 | + | on:
+|      |    4 | + |   push:
+|      |    5 | + |     branches: [main]
+|      |    6 | + |   pull_request:
+|      |    7 | + |     branches: [main]
+|      |    8 | + | 
+|      |    9 | + | jobs:
+|      |   10 | + |   test:
+|      |   11 | + |     runs-on: ubuntu-latest
+|      |   12 | + | 
+|      |   13 | + |     strategy:
+|      |   14 | + |       matrix:
+|      |   15 | + |         node-version: [22.x]
+|      |   16 | + | 
+|      |   17 | + |     steps:
+|      |   18 | + |       - name: Checkout code
+|      |   19 | + |         uses: actions/checkout@v4
+|      |   20 | + | 
+|      |   21 | + |       - name: Setup pnpm
+|      |   22 | + |         uses: pnpm/action-setup@v2
+|      |   23 | + |         with:
+|      |   24 | + |           version: 8
+|      |   25 | + | 
+|      |   26 | + |       - name: Setup Node.js \${{ matrix.node-version }}
+|      |   27 | + |         uses: actions/setup-node@v4
+|      |   28 | + |         with:
+|      |   29 | + |           node-version: \${{ matrix.node-version }}
+|      |   30 | + |           cache: 'pnpm'
+|      |   31 | + | 
+|      |   32 | + |       - name: Install dependencies
+|      |   33 | + |         run: pnpm install
+|      |   34 | + | 
+|      |   35 | + |       - name: Run tests
+|      |   36 | + |         run: pnpm test
+
+diff --git a/index.test.ts b/index.test.ts
+--- a/index.test.ts
++++ b/index.test.ts
+@@ -1,5 +1,5 @@
+|    1 |    1 |   | import { describe, it, expect } from 'vitest'
+|    2 |      | - | import { add } from './index.js'
+|      |    2 | + | import { add, multiply, subtract, divide } from './index.js'
+|    3 |    3 |   | 
+|    4 |    4 |   | describe('add function', () => {
+|    5 |    5 |   |   it('should add two positive numbers correctly', () => {
+@@ -25,3 +25,51 @@ describe('add function', () => {
+|   25 |   25 |   |     expect(add(0.1, 0.2)).toBeCloseTo(0.3)
+|   26 |   26 |   |   })
+|   27 |   27 |   | })
+|      |   28 | + | 
+|      |   29 | + | describe('multiply function', () => {
+|      |   30 | + |   it('should multiply two positive numbers correctly', () => {
+|      |   31 | + |     expect(multiply(3, 4)).toBe(12)
+|      |   32 | + |   })
+|      |   33 | + | 
+|      |   34 | + |   it('should multiply negative numbers correctly', () => {
+|      |   35 | + |     expect(multiply(-2, 3)).toBe(-6)
+|      |   36 | + |     expect(multiply(-2, -3)).toBe(6)
+|      |   37 | + |   })
+|      |   38 | + | 
+|      |   39 | + |   it('should handle zero correctly', () => {
+|      |   40 | + |     expect(multiply(5, 0)).toBe(0)
+|      |   41 | + |     expect(multiply(0, 5)).toBe(0)
+|      |   42 | + |   })
+|      |   43 | + | })
+|      |   44 | + | 
+|      |   45 | + | describe('subtract function', () => {
+|      |   46 | + |   it('should subtract two positive numbers correctly', () => {
+|      |   47 | + |     expect(subtract(10, 3)).toBe(7)
+|      |   48 | + |   })
+|      |   49 | + | 
+|      |   50 | + |   it('should handle negative numbers correctly', () => {
+|      |   51 | + |     expect(subtract(5, -3)).toBe(8)
+|      |   52 | + |     expect(subtract(-5, 3)).toBe(-8)
+|      |   53 | + |   })
+|      |   54 | + | 
+|      |   55 | + |   it('should handle zero correctly', () => {
+|      |   56 | + |     expect(subtract(5, 0)).toBe(5)
+|      |   57 | + |     expect(subtract(0, 5)).toBe(-5)
+|      |   58 | + |   })
+|      |   59 | + | })
+|      |   60 | + | 
+|      |   61 | + | describe('divide function', () => {
+|      |   62 | + |   it('should divide two positive numbers correctly', () => {
+|      |   63 | + |     expect(divide(10, 2)).toBe(5)
+|      |   64 | + |   })
+|      |   65 | + | 
+|      |   66 | + |   it('should handle negative numbers correctly', () => {
+|      |   67 | + |     expect(divide(-10, 2)).toBe(-5)
+|      |   68 | + |     expect(divide(10, -2)).toBe(-5)
+|      |   69 | + |   })
+|      |   70 | + | 
+|      |   71 | + |   it('should handle decimal results correctly', () => {
+|      |   72 | + |     expect(divide(10, 3)).toBeCloseTo(3.333, 2)
+|      |   73 | + |     expect(divide(7, 2)).toBe(3.5)
+|      |   74 | + |   })
+|      |   75 | + | })
+
+diff --git a/index.ts b/index.ts
+--- a/index.ts
++++ b/index.ts
+@@ -3,11 +3,13 @@ export function add(a: number, b: number) {
+|    3 |    3 |   | }
+|    4 |    4 |   | 
+|    5 |    5 |   | export function multiply(a: number, b: number) {
+|    6 |      | - |   // Bug: accidentally adding 1 to the result
+|    7 |      | - |   return a * b + 1;
+|      |    6 | + |   return a * b;
+|    8 |    7 |   | }
+|    9 |    8 |   | 
+|   10 |    9 |   | export function subtract(a: number, b: number) {
+|   11 |      | - |   // Bug: accidentally adding instead of subtracting
+|   12 |      | - |   return a + b;
+|      |   10 | + |   return a - b;
+|      |   11 | + | }
+|      |   12 | + | 
+|      |   13 | + | export function divide(a: number, b: number) {
+|      |   14 | + |   return a / b;
+|   13 |   15 |   | }
+"
+`;
+
+exports[`fetchAndFormatPrDiff > fetches PR files and generates TOC with formatted diff > toc 1`] = `
+"## Files (3)
+- .github/workflows/test.yml → lines 7-47
+- index.test.ts → lines 48-110
+- index.ts → lines 111-132
+
+---
+"
+`;

@@ -9,23 +9,43 @@ import { execute, tool } from "./shared.ts";
 
 type PullFile = RestEndpointMethodTypes["pulls"]["listFiles"]["response"]["data"][number];
 
+export type FormatFilesResult = {
+  content: string;
+  toc: string;
+};
+
 /**
  * formats PR files with explicit line numbers for each code line.
  * preserves all original diff info (file headers, hunk headers) and adds:
  * | OLD | NEW | TYPE | code
+ * returns both the formatted content and a TOC with line ranges per file.
  */
-export function formatFilesWithLineNumbers(files: PullFile[]): string {
+export function formatFilesWithLineNumbers(files: PullFile[]): FormatFilesResult {
   const output: string[] = [];
+  const tocEntries: Array<{ filename: string; startLine: number; endLine: number }> = [];
+
+  // calculate TOC header size: "## Files (N)\n" + N entries + "\n---\n\n"
+  const tocHeaderSize = 1 + files.length + 2;
+  let currentLine = tocHeaderSize + 1;
 
   for (const file of files) {
+    const fileStartLine = currentLine;
+
     // file header
     output.push(`diff --git a/${file.filename} b/${file.filename}`);
     output.push(`--- a/${file.filename}`);
     output.push(`+++ b/${file.filename}`);
+    currentLine += 3;
 
     if (!file.patch) {
       output.push("(binary file or no changes)");
       output.push("");
+      currentLine += 2;
+      tocEntries.push({
+        filename: file.filename,
+        startLine: fileStartLine,
+        endLine: currentLine - 1,
+      });
       continue;
     }
 
@@ -41,6 +61,7 @@ export function formatFilesWithLineNumbers(files: PullFile[]): string {
         oldLine = parseInt(hunkMatch[1], 10);
         newLine = parseInt(hunkMatch[2], 10);
         output.push(line); // pass through unchanged
+        currentLine++;
         continue;
       }
 
@@ -69,11 +90,31 @@ export function formatFilesWithLineNumbers(files: PullFile[]): string {
         // unknown line type, pass through
         output.push(line);
       }
+      currentLine++;
     }
     output.push(""); // blank line between files
+    currentLine++;
+
+    tocEntries.push({
+      filename: file.filename,
+      startLine: fileStartLine,
+      endLine: currentLine - 1,
+    });
   }
 
-  return output.join("\n");
+  // build TOC
+  const tocLines = [`## Files (${files.length})`];
+  for (const entry of tocEntries) {
+    tocLines.push(`- ${entry.filename} → lines ${entry.startLine}-${entry.endLine}`);
+  }
+  tocLines.push("");
+  tocLines.push("---");
+  tocLines.push("");
+
+  const toc = tocLines.join("\n");
+  const content = toc + output.join("\n");
+
+  return { content, toc };
 }
 
 function padNum(n: number): string {
@@ -96,6 +137,27 @@ export type CheckoutPrResult = {
   headRepo: string;
   diffPath: string;
 };
+
+type FetchPrDiffParams = {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+};
+
+/**
+ * fetches PR files from GitHub and formats them with line numbers and TOC.
+ * this is the core diff formatting logic, extracted for testability.
+ */
+export async function fetchAndFormatPrDiff(params: FetchPrDiffParams): Promise<FormatFilesResult> {
+  const filesResponse = await params.octokit.rest.pulls.listFiles({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100,
+  });
+  return formatFilesWithLineNumbers(filesResponse.data);
+}
 
 interface CheckoutPrBranchParams {
   octokit: Octokit;
@@ -243,14 +305,13 @@ export function CheckoutPrTool(ctx: ToolContext) {
       }
 
       // fetch PR files and format with line numbers
-      const filesResponse = await ctx.octokit.rest.pulls.listFiles({
+      const formatResult = await fetchAndFormatPrDiff({
+        octokit: ctx.octokit,
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
-        pull_number,
-        per_page: 100,
+        pullNumber: pull_number,
       });
-      const diffContent = formatFilesWithLineNumbers(filesResponse.data);
-      const diffPreview = diffContent.split("\n").slice(0, 100).join("\n");
+      const diffPreview = formatResult.content.split("\n").slice(0, 100).join("\n");
       log.debug(`formatted diff preview (first 100 lines):\n${diffPreview}`);
       const tempDir = process.env.PULLFROG_TEMP_DIR;
       if (!tempDir) {
@@ -259,8 +320,8 @@ export function CheckoutPrTool(ctx: ToolContext) {
         );
       }
       const diffPath = join(tempDir, `pr-${pull_number}.diff`);
-      writeFileSync(diffPath, diffContent);
-      log.debug(`wrote diff to ${diffPath} (${diffContent.length} bytes)`);
+      writeFileSync(diffPath, formatResult.content);
+      log.debug(`wrote diff to ${diffPath} (${formatResult.content.length} bytes)`);
 
       return {
         success: true,

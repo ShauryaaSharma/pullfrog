@@ -5,64 +5,42 @@ import { log } from "../utils/log.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
-// fragment for nested replyTo (5 levels deep covers most threads)
-// because in_reply_to_id generally points to the top-level comment
-// this doesn't actually work as expected
-// TOD: implement an API endpoint with aggressive caching that fetches the PR's reviewThreads via graphql
-// separately fetch all the comments associated with the particular review
-// merge them, then construct the full thread context
-const REPLY_TO_FRAGMENT = `
-  replyTo {
-    databaseId
-    body
-    author { login }
-    replyTo {
-      databaseId
-      body
-      author { login }
-      replyTo {
-        databaseId
-        body
-        author { login }
-        replyTo {
-          databaseId
-          body
-          author { login }
-          replyTo {
-            databaseId
-            body
-            author { login }
-          }
-        }
-      }
-    }
-  }
-`;
-
-// fetch specific review by node ID with nested thread context (single efficient query)
-const REVIEW_QUERY = `
-query ($nodeId: ID!) {
-  node(id: $nodeId) {
-    ... on PullRequestReview {
-      databaseId
-      author { login }
-      comments(first: 100) {
+// GraphQL query to fetch all review threads for a PR with full comment history
+export const REVIEW_THREADS_QUERY = `
+query ($owner: String!, $name: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $prNumber) {
+      reviewThreads(first: 100) {
         nodes {
-          databaseId
-          body
+          id
           path
           line
           startLine
-          diffHunk
-          url
-          author { login }
-          createdAt
-          ${REPLY_TO_FRAGMENT}
-          reactionGroups {
-            content
-            reactors(first: 10) {
-              nodes {
-                ... on Actor { login }
+          diffSide
+          isResolved
+          isOutdated
+          comments(first: 50) {
+            nodes {
+              fullDatabaseId
+              body
+              createdAt
+              diffHunk
+              line
+              startLine
+              originalLine
+              originalStartLine
+              author { login }
+              pullRequestReview {
+                databaseId
+                author { login }
+              }
+              reactionGroups {
+                content
+                reactors(first: 10) {
+                  nodes {
+                    ... on Actor { login }
+                  }
+                }
               }
             }
           }
@@ -73,208 +51,494 @@ query ($nodeId: ID!) {
 }
 `;
 
-// nested replyTo type (recursive up to 5 levels)
-type NestedReplyTo = {
-  databaseId: number;
+export type ReviewThreadComment = {
+  fullDatabaseId: string | null;
   body: string;
+  createdAt: string;
+  diffHunk: string;
+  line: number | null;
+  startLine: number | null;
+  originalLine: number | null;
+  originalStartLine: number | null;
   author: { login: string } | null;
-  replyTo?: NestedReplyTo | null;
-} | null;
+  pullRequestReview: {
+    databaseId: number | null;
+    author: { login: string } | null;
+  } | null;
+  reactionGroups: Array<{
+    content: string;
+    reactors: { nodes: Array<{ login: string } | null> | null } | null;
+  }> | null;
+};
 
-type ReviewComment = {
-  databaseId: number;
-  body: string;
+export type ReviewThread = {
+  id: string;
   path: string;
   line: number | null;
   startLine: number | null;
-  diffHunk: string;
-  url: string;
-  author: { login: string } | null;
-  createdAt: string;
-  replyTo: NestedReplyTo;
-  reactionGroups:
-    | {
-        content: string;
-        reactors: { nodes: ({ login: string } | null)[] | null };
-      }[]
-    | null;
+  diffSide: "LEFT" | "RIGHT";
+  isResolved: boolean;
+  isOutdated: boolean;
+  comments: {
+    nodes: (ReviewThreadComment | null)[] | null;
+  } | null;
 };
 
-type ReviewQueryResponse = {
-  node: {
-    databaseId: number;
-    author: { login: string } | null;
-    comments: {
-      nodes: (ReviewComment | null)[] | null;
+export type ReviewThreadsQueryResponse = {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        nodes: (ReviewThread | null)[] | null;
+      } | null;
     } | null;
   } | null;
 };
 
-const MAX_BODY_PREVIEW = 80;
+// extract exactly the commented line range from diffHunk, plus context
+const CONTEXT_PADDING = 3;
 
-function truncateBody(body: string): string {
-  const oneLine = body.replace(/\n/g, " ").trim();
-  if (oneLine.length <= MAX_BODY_PREVIEW) return oneLine;
-  return oneLine.slice(0, MAX_BODY_PREVIEW - 3) + "...";
+function extractCommentedLines(
+  diffHunk: string,
+  startLine: number | null,
+  endLine: number | null,
+  side: "LEFT" | "RIGHT"
+): string {
+  const lines = diffHunk.split("\n");
+  if (lines.length <= 1) return diffHunk;
+
+  const header = lines[0];
+  const contentLines = lines.slice(1);
+
+  // parse header: @@ -old_start,old_count +new_start,new_count @@
+  const headerMatch = header.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+  if (!headerMatch) return diffHunk;
+
+  const hunkOldStart = parseInt(headerMatch[1], 10);
+  const hunkNewStart = parseInt(headerMatch[2], 10);
+
+  // LEFT = old file (deletions), RIGHT = new file (additions)
+  const hunkStart = side === "LEFT" ? hunkOldStart : hunkNewStart;
+  const commentStart = startLine ?? endLine ?? hunkStart;
+  const commentEnd = endLine ?? commentStart;
+
+  // walk through diff lines, tracking line numbers for both old and new files
+  // - lines: old file only (LEFT)
+  // + lines: new file only (RIGHT)
+  // context lines: both files
+  type DiffLine = { text: string; lineNum: number | null };
+  const diffLines: DiffLine[] = [];
+  let oldLineNum = hunkOldStart;
+  let newLineNum = hunkNewStart;
+
+  for (const line of contentLines) {
+    const prefix = line[0];
+    if (prefix === "-") {
+      // deletion - only has old line number
+      diffLines.push({ text: line, lineNum: side === "LEFT" ? oldLineNum : null });
+      oldLineNum++;
+    } else if (prefix === "+") {
+      // addition - only has new line number
+      diffLines.push({ text: line, lineNum: side === "RIGHT" ? newLineNum : null });
+      newLineNum++;
+    } else {
+      // context - has both line numbers
+      diffLines.push({ text: line, lineNum: side === "LEFT" ? oldLineNum : newLineNum });
+      oldLineNum++;
+      newLineNum++;
+    }
+  }
+
+  // find lines for comment range with context
+  const targetStart = commentStart - CONTEXT_PADDING;
+  const targetEnd = commentEnd;
+
+  const result: string[] = [];
+  let truncatedBefore = 0;
+
+  for (let i = 0; i < diffLines.length; i++) {
+    const dl = diffLines[i];
+    // include if: within target range, OR it's an "other side" line adjacent to included lines
+    const inRange = dl.lineNum !== null && dl.lineNum >= targetStart && dl.lineNum <= targetEnd;
+    // include opposite-side lines if they're between included lines
+    const adjacentOtherSide = dl.lineNum === null && result.length > 0 && i < diffLines.length - 1;
+
+    if (inRange || adjacentOtherSide) {
+      result.push(dl.text);
+    } else if (result.length === 0) {
+      truncatedBefore++;
+    }
+  }
+
+  if (truncatedBefore > 0) {
+    return `${header}\n... (${truncatedBefore} lines above) ...\n${result.join("\n")}`;
+  }
+  return `${header}\n${result.join("\n")}`;
 }
 
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+// parsed hunk from a unified diff
+export type ParsedHunk = {
+  header: string;
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  content: string[];
+};
+
+// parse a full file patch into individual hunks
+export function parseFilePatches(patch: string): ParsedHunk[] {
+  const hunks: ParsedHunk[] = [];
+  const lines = patch.split("\n");
+
+  let currentHunk: ParsedHunk | null = null;
+
+  for (const line of lines) {
+    const hunkMatch = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (hunkMatch) {
+      if (currentHunk) hunks.push(currentHunk);
+      currentHunk = {
+        header: line,
+        oldStart: parseInt(hunkMatch[1], 10),
+        oldCount: parseInt(hunkMatch[2] ?? "1", 10),
+        newStart: parseInt(hunkMatch[3], 10),
+        newCount: parseInt(hunkMatch[4] ?? "1", 10),
+        content: [],
+      };
+    } else if (currentHunk) {
+      currentHunk.content.push(line);
+    }
+  }
+  if (currentHunk) hunks.push(currentHunk);
+
+  return hunks;
 }
 
-function hasThumbsUpFrom(comment: ReviewComment, username: string): boolean {
-  if (!comment.reactionGroups) return false;
-  const thumbsUp = comment.reactionGroups.find((g) => g.content === "THUMBS_UP");
-  if (!thumbsUp?.reactors?.nodes) return false;
-  return thumbsUp.reactors.nodes.some((r) => r?.login === username);
+// find hunks that overlap with a line range (for LEFT or RIGHT side)
+function findOverlappingHunks(
+  hunks: ParsedHunk[],
+  startLine: number,
+  endLine: number,
+  side: "LEFT" | "RIGHT"
+): ParsedHunk[] {
+  return hunks.filter((hunk) => {
+    const hunkStart = side === "LEFT" ? hunk.oldStart : hunk.newStart;
+    const hunkCount = side === "LEFT" ? hunk.oldCount : hunk.newCount;
+    const hunkEnd = hunkStart + hunkCount - 1;
+
+    // check for overlap: ranges overlap if start1 <= end2 && start2 <= end1
+    return startLine <= hunkEnd && hunkStart <= endLine;
+  });
 }
 
-// flatten nested replyTo chain into array (oldest first)
-function flattenReplyToChain(replyTo: NestedReplyTo): Array<{ body: string; author: string }> {
-  if (!replyTo) return [];
-  const parent = flattenReplyToChain(replyTo.replyTo ?? null);
-  return [...parent, { body: replyTo.body, author: replyTo.author?.login ?? "unknown" }];
+// extract diff content from multiple hunks for a comment range
+function extractFromFilePatches(
+  hunks: ParsedHunk[],
+  startLine: number,
+  endLine: number,
+  side: "LEFT" | "RIGHT"
+): string {
+  const overlapping = findOverlappingHunks(hunks, startLine, endLine, side);
+
+  if (overlapping.length === 0) {
+    return `(no diff hunks found for lines ${startLine}-${endLine})`;
+  }
+
+  if (overlapping.length === 1) {
+    // single hunk - use existing extraction logic
+    const hunk = overlapping[0];
+    const fullHunk = hunk.header + "\n" + hunk.content.join("\n");
+    return extractCommentedLines(fullHunk, startLine, endLine, side);
+  }
+
+  // multiple hunks - combine them with gap indicators
+  const result: string[] = [];
+  let prevHunkEnd = 0;
+
+  for (let i = 0; i < overlapping.length; i++) {
+    const hunk = overlapping[i];
+    const hunkStart = side === "LEFT" ? hunk.oldStart : hunk.newStart;
+    const hunkCount = side === "LEFT" ? hunk.oldCount : hunk.newCount;
+    const hunkEnd = hunkStart + hunkCount - 1;
+
+    // add gap indicator if there's a gap between hunks
+    if (i > 0 && hunkStart > prevHunkEnd + 1) {
+      const gapSize = hunkStart - prevHunkEnd - 1;
+      result.push(`\n... (${gapSize} unchanged lines) ...\n`);
+    }
+
+    // add the hunk header and content
+    result.push(hunk.header);
+    result.push(...hunk.content);
+
+    prevHunkEnd = hunkEnd;
+  }
+
+  return result.join("\n");
 }
 
 export const GetReviewComments = type({
   pull_number: type.number.describe("The pull request number"),
   review_id: type.number.describe("The review ID to get comments for"),
   approved_by: type.string
-    .describe("Optional GitHub username - only return comments this user gave a 👍 to")
+    .describe(
+      "Optional GitHub username - only return threads where this user gave a 👍 to at least one comment"
+    )
     .optional(),
 });
+
+function hasThumbsUpFrom(comment: ReviewThreadComment, username: string): boolean {
+  if (!comment.reactionGroups) return false;
+  const thumbsUp = comment.reactionGroups.find((g) => g.content === "THUMBS_UP");
+  if (!thumbsUp?.reactors?.nodes) return false;
+  return thumbsUp.reactors.nodes.some((r) => r?.login === username);
+}
+
+function threadHasThumbsUpFrom(thread: ReviewThread, username: string): boolean {
+  const comments = thread.comments?.nodes ?? [];
+  return comments.some((c) => c && hasThumbsUpFrom(c, username));
+}
+
+/**
+ * formats thread blocks into markdown with TOC and line numbers.
+ * extracted for testability.
+ */
+export function formatReviewThreads(
+  threadBlocks: Array<{ path: string; lineRange: string; content: string[] }>,
+  header: { pullNumber: number; reviewId: number; reviewer: string }
+) {
+  // header section takes: title (1) + blank (1) + "## TOC" (1) + blank (1) + N TOC entries + blank (1) + "---" (1) + blank (1)
+  const tocHeaderLines = 4;
+  const tocFooterLines = 3;
+  let currentLine = tocHeaderLines + threadBlocks.length + tocFooterLines + 1;
+
+  const tocEntries: string[] = [];
+  const threadLines: string[] = [];
+
+  for (const block of threadBlocks) {
+    const startLine = currentLine;
+    const actualLineCount = block.content.reduce((sum, line) => sum + line.split("\n").length, 0);
+    const endLine = currentLine + actualLineCount - 1;
+    tocEntries.push(`- ${block.path}:${block.lineRange} → lines ${startLine}-${endLine}`);
+    threadLines.push(...block.content);
+    currentLine += actualLineCount;
+  }
+
+  const lines: string[] = [];
+  lines.push(
+    `# Review Threads (${threadBlocks.length}) for PR #${header.pullNumber} - Review ${header.reviewId} by ${header.reviewer}`
+  );
+  lines.push("");
+  lines.push("## TOC");
+  lines.push("");
+  lines.push(...tocEntries);
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+  lines.push(...threadLines);
+
+  return {
+    toc: tocEntries.join("\n"),
+    content: lines.join("\n"),
+  };
+}
+
+/**
+ * builds thread blocks from review threads and file patches.
+ * extracted for testability.
+ */
+export function buildThreadBlocks(
+  threads: ReviewThread[],
+  filePatchMap: Map<string, ParsedHunk[]>,
+  reviewId: number
+) {
+  // get reviewer from first matching comment
+  const firstMatchingComment = threads[0]?.comments?.nodes?.find(
+    (c) => c?.pullRequestReview?.databaseId === reviewId
+  );
+  const reviewer = firstMatchingComment?.pullRequestReview?.author?.login ?? "unknown";
+
+  // sort threads by file path, then by line number
+  threads.sort((a, b) => {
+    const pathCmp = a.path.localeCompare(b.path);
+    if (pathCmp !== 0) return pathCmp;
+    const aLine = a.startLine ?? a.line ?? 0;
+    const bLine = b.startLine ?? b.line ?? 0;
+    return aLine - bLine;
+  });
+
+  const threadBlocks: Array<{ path: string; lineRange: string; content: string[] }> = [];
+
+  for (const thread of threads) {
+    const allComments = (thread.comments?.nodes ?? []).filter(
+      (c): c is ReviewThreadComment => c !== null
+    );
+    if (allComments.length === 0) continue;
+
+    // get line info from thread, or fall back to first comment's line info
+    const firstComment = allComments[0];
+    const line =
+      thread.line ?? firstComment?.line ?? firstComment?.originalLine ?? thread.startLine ?? 0;
+    const startLine =
+      thread.startLine ?? firstComment?.startLine ?? firstComment?.originalStartLine ?? line;
+    const lineRange = startLine === line ? `${line}` : `${startLine}-${line}`;
+    const block: string[] = [];
+
+    // header with file:line range and status
+    const status = thread.isResolved ? " [RESOLVED]" : thread.isOutdated ? " [OUTDATED]" : "";
+    block.push(`## ${thread.path}:${lineRange}${status}`);
+    block.push("");
+
+    // show all comments in the thread (full conversation history)
+    for (const comment of allComments) {
+      const author = comment.author?.login ?? "unknown";
+      const isTargetReview = comment.pullRequestReview?.databaseId === reviewId;
+      const marker = isTargetReview ? " *" : "";
+
+      block.push(
+        `\`\`\`\`comment author=${author} id=${comment.fullDatabaseId ?? "unknown"} review=${comment.pullRequestReview?.databaseId ?? "unknown"}${marker}`
+      );
+      block.push(comment.body || "(no comment body)");
+      block.push("````");
+      block.push("");
+    }
+
+    // diff context
+    const fileHunks = filePatchMap.get(thread.path);
+    const firstCommentWithHunk = allComments.find((c) => c.diffHunk);
+    let diffContent: string | null = null;
+
+    if (fileHunks && fileHunks.length > 0) {
+      const overlapping = findOverlappingHunks(fileHunks, startLine, line, thread.diffSide);
+      if (overlapping.length > 0) {
+        diffContent = extractFromFilePatches(fileHunks, startLine, line, thread.diffSide);
+      }
+    }
+
+    if (!diffContent && firstCommentWithHunk) {
+      diffContent = extractCommentedLines(
+        firstCommentWithHunk.diffHunk,
+        startLine,
+        line,
+        thread.diffSide
+      );
+    }
+
+    if (diffContent) {
+      block.push(`\`\`\`diff file=${thread.path} lines=${lineRange} side=${thread.diffSide}`);
+      block.push(diffContent);
+      block.push("```");
+      block.push("");
+    } else {
+      block.push(`\`\`\`diff file=${thread.path} lines=${lineRange} side=${thread.diffSide}`);
+      block.push(`(no diff context available - comment on unchanged lines)`);
+      block.push("```");
+      block.push("");
+    }
+
+    threadBlocks.push({ path: thread.path, lineRange, content: block });
+  }
+
+  return { threadBlocks, reviewer };
+}
 
 export function GetReviewCommentsTool(ctx: ToolContext) {
   return tool({
     name: "get_review_comments",
     description:
-      "Get review comments for a pull request review, including thread context. " +
-      "When approved_by is provided, only returns comments that user approved with 👍. " +
-      "Returns commentsPath pointing to a file with full comment details in XML format.",
+      "Get review comments for a pull request review with full thread context. " +
+      "When approved_by is provided, only returns threads where that user gave a 👍 to at least one comment. " +
+      "Returns a TOC and commentsPath pointing to a markdown file with full comment details.",
     parameters: GetReviewComments,
-    execute: execute(async ({ pull_number, review_id, approved_by }) => {
-      // fetch the review to get node_id and reviewer
-      const { data: review } = await ctx.octokit.rest.pulls.getReview({
+    execute: execute(async (params) => {
+      // fetch all review threads for the PR via GraphQL
+      const response = await ctx.octokit.graphql<ReviewThreadsQueryResponse>(REVIEW_THREADS_QUERY, {
         owner: ctx.repo.owner,
-        repo: ctx.repo.name,
-        pull_number,
-        review_id,
+        name: ctx.repo.name,
+        prNumber: params.pull_number,
       });
 
-      const reviewer = review.user?.login ?? "unknown";
+      const allThreads = response.repository?.pullRequest?.reviewThreads?.nodes ?? [];
 
-      // fetch comments with nested thread context via GraphQL
-      const response = await ctx.octokit.graphql<ReviewQueryResponse>(REVIEW_QUERY, {
-        nodeId: review.node_id,
+      // filter to threads where at least one comment belongs to the target review
+      let threadsForReview = allThreads.filter((thread): thread is ReviewThread => {
+        if (!thread?.comments?.nodes) return false;
+        return thread.comments.nodes.some(
+          (c) => c?.pullRequestReview?.databaseId === params.review_id
+        );
       });
-
-      const reviewComments = response.node?.comments?.nodes;
-      if (!reviewComments) {
-        return {
-          review_id,
-          pull_number,
-          reviewer,
-          count: 0,
-          commentsPath: null,
-          message: "No comments found for this review",
-        };
-      }
-
-      const allComments = reviewComments.filter((c): c is ReviewComment => c !== null);
 
       // filter by approved_by if specified
-      const comments = approved_by
-        ? allComments.filter((c) => hasThumbsUpFrom(c, approved_by))
-        : allComments;
+      if (params.approved_by) {
+        threadsForReview = threadsForReview.filter((thread) =>
+          threadHasThumbsUpFrom(thread, params.approved_by as string)
+        );
+      }
 
-      if (comments.length === 0) {
+      if (threadsForReview.length === 0) {
         return {
-          review_id,
-          pull_number,
-          reviewer,
-          count: 0,
+          review_id: params.review_id,
+          pull_number: params.pull_number,
+          reviewer: "unknown",
+          threadCount: 0,
           commentsPath: null,
-          message: approved_by
-            ? `No comments with 👍 from ${approved_by}`
-            : "No comments found for this review",
+          toc: null,
+          instructions: params.approved_by
+            ? `no threads with 👍 from ${params.approved_by}`
+            : "no threads found for this review",
         };
       }
 
-      // build XML output
-      const lines: string[] = [];
-      lines.push(`<review_comments count="${comments.length}" reviewer="${escapeXml(reviewer)}">`);
-      lines.push("");
-
-      // summary section
-      lines.push("<summary>");
-      for (const comment of comments) {
-        const line = comment.line ?? comment.startLine ?? 0;
-        const preview = escapeXml(truncateBody(comment.body));
-        lines.push(
-          `  <comment id="${comment.databaseId}" file="${escapeXml(comment.path)}" line="${line}">${preview}</comment>`
-        );
-      }
-      lines.push("</summary>");
-      lines.push("");
-
-      // detailed comments with thread context
-      for (const comment of comments) {
-        const line = comment.line ?? comment.startLine ?? 0;
-        const author = comment.author?.login ?? "unknown";
-        lines.push(
-          `<comment id="${comment.databaseId}" file="${escapeXml(comment.path)}" line="${line}" author="${escapeXml(author)}">`
-        );
-
-        // thread history (parent comments from nested replyTo)
-        const thread = flattenReplyToChain(comment.replyTo);
-        if (thread.length > 0) {
-          lines.push("  <thread>");
-          for (const msg of thread) {
-            lines.push(
-              `    <message author="${escapeXml(msg.author)}">${escapeXml(msg.body)}</message>`
-            );
-          }
-          lines.push("  </thread>");
+      // fetch full file patches for better multi-hunk context
+      const prFilesResponse = await ctx.octokit.rest.pulls.listFiles({
+        owner: ctx.repo.owner,
+        repo: ctx.repo.name,
+        pull_number: params.pull_number,
+      });
+      const filePatchMap = new Map<string, ParsedHunk[]>();
+      for (const file of prFilesResponse.data) {
+        if (file.patch) {
+          filePatchMap.set(file.filename, parseFilePatches(file.patch));
         }
-
-        // diff context
-        lines.push("  <diff>");
-        lines.push(escapeXml(comment.diffHunk));
-        lines.push("  </diff>");
-
-        // the actual comment body to address
-        lines.push(`  <body>${escapeXml(comment.body)}</body>`);
-        lines.push("</comment>");
-        lines.push("");
       }
 
-      lines.push("</review_comments>");
+      // build thread blocks
+      const { threadBlocks, reviewer } = buildThreadBlocks(
+        threadsForReview,
+        filePatchMap,
+        params.review_id
+      );
 
-      const content = lines.join("\n");
+      // format thread blocks into markdown with TOC
+      const formatted = formatReviewThreads(threadBlocks, {
+        pullNumber: params.pull_number,
+        reviewId: params.review_id,
+        reviewer,
+      });
 
       // write to temp file
       const tempDir = process.env.PULLFROG_TEMP_DIR;
       if (!tempDir) {
         throw new Error("PULLFROG_TEMP_DIR not set");
       }
-      const filename = approved_by
-        ? `review-${review_id}-approved-by-${approved_by}.xml`
-        : `review-${review_id}-comments.xml`;
+      const filename = `review-${params.review_id}-threads.md`;
       const commentsPath = join(tempDir, filename);
-      writeFileSync(commentsPath, content);
-      log.info(`wrote ${comments.length} comments to ${commentsPath}`);
-      log.box(content);
+      writeFileSync(commentsPath, formatted.content);
+      log.debug(`wrote ${threadBlocks.length} threads to ${commentsPath}`);
 
       return {
-        review_id,
-        pull_number,
+        review_id: params.review_id,
+        pull_number: params.pull_number,
         reviewer,
-        count: comments.length,
+        threadCount: threadBlocks.length,
         commentsPath,
+        toc: formatted.toc,
+        instructions:
+          `the file at commentsPath contains ${threadBlocks.length} review threads with full conversation history. ` +
+          `comments marked with * are from the target review (${params.review_id}). ` +
+          `the TOC shows each thread's file:line and the line number where it appears in the file. ` +
+          `to read a specific thread, use: grep -A 50 "^## <file:line>" ${commentsPath} ` +
+          `(replace <file:line> with the path from the TOC, e.g. "^## action/utils/foo.ts:42"). ` +
+          `address each thread in order, working through one file at a time.`,
       };
     }),
   });
@@ -290,15 +554,15 @@ export function ListPullRequestReviewsTool(ctx: ToolContext) {
     description:
       "List all reviews for a pull request. Returns all reviews including approvals, request changes, and comments.",
     parameters: ListPullRequestReviews,
-    execute: execute(async ({ pull_number }) => {
+    execute: execute(async (params) => {
       const reviews = await ctx.octokit.paginate(ctx.octokit.rest.pulls.listReviews, {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
-        pull_number,
+        pull_number: params.pull_number,
       });
 
       return {
-        pull_number,
+        pull_number: params.pull_number,
         reviews: reviews.map((review) => ({
           id: review.id,
           node_id: review.node_id,
