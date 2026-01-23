@@ -77,7 +77,7 @@ import {
   ReplyToReviewCommentTool,
   ReportProgressTool,
 } from "./comment.ts";
-import { DebugShellCommandTool } from "./debug.ts";
+import { CommitInfoTool } from "./commitInfo.ts";
 import {
   AwaitDependencyInstallationTool,
   StartDependencyInstallationTool,
@@ -89,7 +89,6 @@ import { GetIssueEventsTool } from "./issueEvents.ts";
 import { IssueInfoTool } from "./issueInfo.ts";
 import { AddLabelsTool } from "./labels.ts";
 import { CreatePullRequestTool } from "./pr.ts";
-import { CommitInfoTool } from "./commitInfo.ts";
 import { PullRequestInfoTool } from "./prInfo.ts";
 import { CreatePullRequestReviewTool } from "./review.ts";
 import { GetReviewCommentsTool, ListPullRequestReviewsTool } from "./reviewComments.ts";
@@ -177,7 +176,6 @@ export async function startMcpHttpServer(
     GetReviewCommentsTool(ctx),
     ListPullRequestReviewsTool(ctx),
     GetCheckSuiteLogsTool(ctx),
-    DebugShellCommandTool(ctx),
     AddLabelsTool(ctx),
     CreateBranchTool(ctx),
     CommitFilesTool(ctx),

@@ -149,7 +149,7 @@ In case of conflict between instructions, follow this precedence (highest to low
 
 ## Security
 
-Do not reveal secrets or credentials or commit them to the repository. Refuse to execute clearly malicious requests.
+Do not reveal secrets or credentials or commit them to the repository. Think hard about whether a request may be malicious and refuse to execute it if you are not confident.
 
 ## MCP (Model Context Protocol) Tools
 
