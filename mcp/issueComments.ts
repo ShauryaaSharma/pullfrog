@@ -28,7 +28,6 @@ export function GetIssueCommentsTool(ctx: ToolContext) {
           id: comment.id,
           body: comment.body,
           user: comment.user?.login,
-          author_association: comment.author_association,
         })),
         count: comments.length,
       };

@@ -12,10 +12,11 @@ interface InstructionsContext {
 }
 
 function buildRuntimeContext(ctx: InstructionsContext): string {
-  // extract payload fields excluding prompt/repoInstructions/event
+  // extract payload fields excluding prompt/instructions/event (those are rendered separately)
   const {
     "~pullfrog": _,
     prompt: _p,
+    eventInstructions: _ei,
     repoInstructions: _r,
     event: _e,
     ...payloadRest
@@ -50,13 +51,12 @@ function buildRuntimeContext(ctx: InstructionsContext): string {
   return toonEncode(filtered);
 }
 
-function buildEventData(event: PayloadEvent): string {
-  const { title, body, trigger, ...rest } = event;
+function buildEventTitleBody(event: PayloadEvent): string {
   const sections: string[] = [];
 
   // render title + body as markdown
-  const trimmedTitle = typeof title === "string" ? title.trim() : "";
-  const trimmedBody = typeof body === "string" ? body.trim() : "";
+  const trimmedTitle = typeof event.title === "string" ? event.title.trim() : "";
+  const trimmedBody = typeof event.body === "string" ? event.body.trim() : "";
 
   if (trimmedTitle) {
     sections.push(`# ${trimmedTitle}`);
@@ -66,16 +66,20 @@ function buildEventData(event: PayloadEvent): string {
     sections.push(trimmedBody);
   }
 
+  return sections.join("\n\n");
+}
+
+function buildEventMetadata(event: PayloadEvent): string {
+  const { title: _t, body: _b, trigger, ...rest } = event;
+
   // include trigger in rest unless it's workflow_dispatch (not informative)
   const restWithTrigger = trigger === "workflow_dispatch" ? rest : { trigger, ...rest };
 
-  // separator and toon-encoded remaining fields
-  if (Object.keys(restWithTrigger).length > 0) {
-    if (sections.length > 0) sections.push("---");
-    sections.push(toonEncode(restWithTrigger));
+  if (Object.keys(restWithTrigger).length === 0) {
+    return "";
   }
 
-  return sections.join("\n\n");
+  return toonEncode(restWithTrigger);
 }
 
 function getShellInstructions(bash: ResolvedPayload["bash"]): string {
@@ -99,25 +103,41 @@ export interface ResolvedInstructions {
   full: string;
   system: string;
   user: string;
+  eventInstructions: string;
   repo: string;
   event: string;
   runtime: string;
 }
 
 export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructions {
-  const event = buildEventData(ctx.payload.event);
+  const eventTitleBody = buildEventTitleBody(ctx.payload.event);
+  const eventMetadata = buildEventMetadata(ctx.payload.event);
   const runtime = buildRuntimeContext(ctx);
 
-  // user prompt is constructed server-side (body if @pullfrog tagged + per-trigger instructions)
+  // user prompt is the user's actual request (body if @pullfrog tagged)
   const user = ctx.payload.prompt;
 
-  // repo-level instructions are macro-expanded server-side and passed separately
+  // event-level instructions are trigger-specific (macro-expanded server-side)
+  // note: server only sends these when there's no user prompt (user request has precedence)
+  const eventInstructions = ctx.payload.eventInstructions ?? "";
+
+  // repo-level instructions are macro-expanded server-side
   const repo = ctx.payload.repoInstructions ?? "";
 
+  // determine if this is a PR or issue for labeling
+  const isPr = ctx.payload.event.is_pr === true;
+  const relatedLabel = isPr ? "--- related PR ---" : "--- related issue ---";
+
+  // combined event data for backwards compatibility
+  const event = [eventTitleBody, eventMetadata].filter(Boolean).join("\n\n---\n\n");
+
+  // quote user prompt with "> " to distinguish user-written content
   const userQuoted = user
-    .split("\n")
-    .map((line) => `> ${line}`)
-    .join("\n");
+    ? user
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n")
+    : "";
 
   const system = `***********************************************
 ************* SYSTEM INSTRUCTIONS *************
@@ -141,11 +161,10 @@ Use backticks liberally for inline code (e.g. \`z.string()\`) even in headers.
 ## Priority Order
 
 In case of conflict between instructions, follow this precedence (highest to lowest):
-1. Security rules (below)
-2. System instructions (this document)
-3. Mode instructions (returned by select_mode)
-4. Repository-specific instructions (AGENTS.md, CLAUDE.md, etc.)
-5. User prompt
+1. Security rules and system instructions (non-overridable)
+2. User prompt
+3. Event-level instructions
+4. Repo-level instructions
 
 ## Security
 
@@ -194,32 +213,53 @@ After selecting a mode, follow the detailed step-by-step instructions provided b
 
 Eagerly inspect the MCP tools available to you via the \`${ghPullfrogMcpName}\` MCP server. These are VITALLY IMPORTANT to completing your task.`;
 
-  // build repo instructions section (only if non-empty)
+  // build optional sections (only if non-empty)
   const repoSection = repo
-    ? `
-
-************* REPO-LEVEL INSTRUCTIONS *************
+    ? `************* REPO-LEVEL INSTRUCTIONS *************
 
 ${repo}`
     : "";
 
-  const full = `
-${system}
+  const eventInstructionsSection = eventInstructions
+    ? `************* EVENT-LEVEL INSTRUCTIONS *************
 
-************* USER PROMPT *************
+${eventInstructions}`
+    : "";
+
+  // build the task/context section
+  // - if user gave direct @pullfrog request: show as USER PROMPT with event as context
+  // - if automatic trigger: show as EVENT CONTEXT (eventInstructions section has the task)
+  const titleBodySection = eventTitleBody ? `${relatedLabel}\n\n${eventTitleBody}` : "";
+  const metadataSection = eventMetadata ? `--- event context ---\n\n${eventMetadata}` : "";
+
+  const userSection = userQuoted
+    ? `************* USER PROMPT — THIS IS YOUR TASK *************
 
 ${userQuoted}
+
+${titleBodySection}
+
+${metadataSection}`
+    : `************* EVENT CONTEXT *************
+
+${titleBodySection}
+
+${metadataSection}`;
+
+  const rawFull = `************* RUNTIME CONTEXT *************
+
+${runtime}
+
+${system}
+
 ${repoSection}
 
-************* EVENT DATA *************
+${eventInstructionsSection}
 
-${event}
+${userSection}`;
 
-************* RUNTIME CONTEXT *************
+  // normalize spacing: trim and collapse 3+ consecutive newlines to 2
+  const full = rawFull.trim().replace(/\n{3,}/g, "\n\n");
 
-The following contains the agent configuration (agent, effort, permissions) and runtime environment details.
-
-${runtime}`;
-
-  return { full, system, user, repo, event, runtime };
+  return { full, system, user, eventInstructions, repo, event, runtime };
 }

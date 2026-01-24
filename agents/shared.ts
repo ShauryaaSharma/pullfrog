@@ -33,7 +33,15 @@ export const agent = <const input extends AgentInput>(input: input): defineAgent
       const search = ctx.payload.search;
       const write = ctx.payload.write;
       log.info(`» running ${input.name} with effort=${ctx.payload.effort}...`);
-      log.box(ctx.instructions.user.trim() + "\n\n" + ctx.instructions.event.trim(), {
+      // build log box content: eventInstructions (if any) + user request (if any) + event data
+      const logParts = [
+        ctx.instructions.eventInstructions
+          ? `EVENT-LEVEL INSTRUCTIONS:\n${ctx.instructions.eventInstructions}`
+          : null,
+        ctx.instructions.user ? `USER REQUEST:\n${ctx.instructions.user}` : null,
+        ctx.instructions.event,
+      ].filter(Boolean);
+      log.box(logParts.join("\n\n---\n\n"), {
         title: "Instructions",
       });
       log.info(`» tool permissions: web=${web}, search=${search}, write=${write}, bash=${bash}`);

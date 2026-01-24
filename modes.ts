@@ -24,7 +24,7 @@ export function computeModes(): Mode[] {
       name: "Build",
       description:
         "Implement, build, create, or develop code changes; make specific changes to files or features; execute a plan; or handle tasks with specific implementation details",
-      prompt: `Follow these steps. THINK HARDER.
+      prompt: `Follow these steps exactly.
 1. Determine whether to work on the current branch or create a new one:
    - **PR event, modifying the existing PR**: The PR branch is probably already checked out. Continue on this branch.
    - **PR event, but user wants a NEW branch/PR**: Use \`${ghPullfrogMcpName}/create_branch\` to create a new branch from the current HEAD.
@@ -38,17 +38,19 @@ export function computeModes(): Mode[] {
 
 4. Understand the requirements and any existing plan
 
-5. Make the necessary code changes using file operations. Then use ${ghPullfrogMcpName}/commit_files to commit your changes, and ${ghPullfrogMcpName}/push_branch to push the branch. Do NOT use git commands like \`git commit\` or \`git push\` directly.
+5. Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance. 
 
-6. Test your changes to ensure they work correctly
+6. Then use ${ghPullfrogMcpName}/commit_files to commit your changes, and ${ghPullfrogMcpName}/push_branch to push the branch. Do NOT use git commands like \`git commit\` or \`git push\` directly.
 
-7. ${reportProgressInstruction}
+7. Test your changes to ensure they work correctly
 
-8. Determine whether to create a PR:
+8. ${reportProgressInstruction}
+
+9. Determine whether to create a PR (if not already on a PR branch):
    - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If relevant, indicate which issue the PR addresses (e.g. "Fixes #123").
    - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-9. Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
+10. Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
   - A summary of what was accomplished
   - Links to any artifacts created (PRs, branches, issues)
   - If you created a PR, ALWAYS include the PR link. e.g.: 

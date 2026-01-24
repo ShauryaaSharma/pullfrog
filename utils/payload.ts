@@ -15,9 +15,10 @@ const BashPermissionInput = type.enumerated("disabled", "restricted", "enabled")
 // permissions are derived from event.authorPermission instead
 export const JsonPayload = type({
   "~pullfrog": "true",
-  "version": "string",
+  version: "string",
   "agent?": AgentName.or("undefined"),
   "prompt?": "string",
+  "eventInstructions?": "string",
   "repoInstructions?": "string",
   "event?": "object",
   "effort?": Effort.or("undefined"),
@@ -140,6 +141,7 @@ export function resolvePayload(repoSettings: RepoSettings) {
     // inverted: jsonPayload.prompt extracts the text from the JSON payload,
     // whereas inputs.prompt IS the raw JSON string when internally dispatched
     prompt: jsonPayload?.prompt ?? inputs.prompt,
+    eventInstructions: jsonPayload?.eventInstructions,
     repoInstructions: jsonPayload?.repoInstructions,
     event,
     effort: inputs.effort ?? jsonPayload?.effort ?? "auto",
