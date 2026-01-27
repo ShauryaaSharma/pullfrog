@@ -4,17 +4,14 @@
  * simple check that GITHUB_TOKEN env var exists
  */
 
-import * as core from "@actions/core";
+const token = process.env.GITHUB_TOKEN;
 
-async function run(): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
-
-  if (token) {
-    core.info(`GITHUB_TOKEN exists`);
-    core.info(`token prefix: ${token.substring(0, 10)}...`);
-  } else {
-    core.setFailed("GITHUB_TOKEN does not exist");
-  }
+if (token) {
+  console.log(`GITHUB_TOKEN exists`);
+  console.log(`token prefix: ${token.substring(0, 10)}...`);
+} else {
+  console.error("GITHUB_TOKEN does not exist");
+  // github actions workflow command to fail the step
+  console.log("::error::GITHUB_TOKEN does not exist");
+  process.exit(1);
 }
-
-await run();
