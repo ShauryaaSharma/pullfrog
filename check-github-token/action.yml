@@ -1,0 +1,7 @@
+name: "Check GitHub Token"
+description: "Check if GITHUB_TOKEN environment variable exists"
+author: "Pullfrog"
+
+runs:
+  using: "node24"
+  main: "entry.ts"
