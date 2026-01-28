@@ -1,5 +1,4 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
-import { ensureProgressCommentUpdated } from "./mcp/comment.ts";
 import { initToolState, startMcpHttpServer } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
 import { resolveAgent } from "./utils/agent.ts";
@@ -7,6 +6,7 @@ import { validateApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
 import { log, writeSummary } from "./utils/cli.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
+import { setupExitHandler } from "./utils/exitHandler.ts";
 import { createOctokit } from "./utils/github.ts";
 import { resolveInstructions } from "./utils/instructions.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
@@ -34,12 +34,14 @@ export async function main(): Promise<MainResult> {
   process.env.ORIGINAL_GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
   const timer = new Timer();
-  await using tokenRef = await resolveInstallationToken();
+  const tokenRef = await resolveInstallationToken();
   process.env.GITHUB_TOKEN = tokenRef.token;
 
   const octokit = createOctokit(tokenRef.token);
   const runInfo = await resolveRun({ octokit });
   const toolState = initToolState({ runInfo });
+
+  setupExitHandler(toolState);
 
   try {
     const repo = await resolveRepoData({ octokit, token: tokenRef.token });
@@ -120,8 +122,7 @@ export async function main(): Promise<MainResult> {
       await writeSummary(toolState.lastProgressBody);
     }
 
-    const mainResult = await handleAgentResult(result);
-    return mainResult;
+    return handleAgentResult(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     log.error(errorMessage);
@@ -134,13 +135,5 @@ export async function main(): Promise<MainResult> {
       success: false,
       error: errorMessage,
     };
-  } finally {
-    // ensure progress comment is updated if it was never updated during execution
-    // do this before revoking the token so we can still make API calls
-    try {
-      await ensureProgressCommentUpdated(toolState);
-    } catch {
-      // error updating comment, but don't let it mask the original error
-    }
   }
 }

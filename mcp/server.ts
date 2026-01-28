@@ -30,11 +30,9 @@ export interface ToolState {
     promise: Promise<PrepResult[]> | undefined;
     results: PrepResult[] | undefined;
   };
-  progressComment: {
-    id: number | null;
-    wasUpdated: boolean;
-  };
+  progressCommentId: number | null;
   lastProgressBody?: string;
+  wasUpdated?: boolean;
 }
 
 import type { ResolveRunResult } from "../utils/workflow.ts";
@@ -46,12 +44,10 @@ interface InitToolStateParams {
 export function initToolState(ctx: InitToolStateParams): ToolState {
   const progressCommentIdStr = ctx.runInfo.workflowRunInfo.progressCommentId;
   const progressCommentId = progressCommentIdStr ? parseInt(progressCommentIdStr, 10) : null;
+  const resolvedId = Number.isNaN(progressCommentId) ? null : progressCommentId;
 
   return {
-    progressComment: {
-      id: Number.isNaN(progressCommentId) ? null : progressCommentId,
-      wasUpdated: false,
-    },
+    progressCommentId: resolvedId,
     backgroundProcesses: new Map(),
   };
 }

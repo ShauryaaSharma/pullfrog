@@ -1,9 +1,8 @@
 import { type } from "arktype";
 import type { Agent } from "../agents/index.ts";
 import { buildPullfrogFooter, stripExistingFooter } from "../utils/buildPullfrogFooter.ts";
-import { createOctokit, type OctokitWithPlugins, parseRepoContext } from "../utils/github.ts";
-import { getGitHubInstallationToken } from "../utils/token.ts";
-import type { ToolContext, ToolState } from "./server.ts";
+import { type OctokitWithPlugins, parseRepoContext } from "../utils/github.ts";
+import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 /**
@@ -78,12 +77,12 @@ function buildImplementPlanLink(
   return `[Implement plan ➔](${apiUrl}/trigger/${owner}/${repo}/${issueNumber}?action=implement&comment_id=${commentId})`;
 }
 
-interface AddFooterCtx {
+export interface AddFooterCtx {
   agent?: Agent | undefined;
   octokit?: OctokitWithPlugins | undefined;
 }
 
-async function addFooter(ctx: AddFooterCtx, body: string): Promise<string> {
+export async function addFooter(ctx: AddFooterCtx, body: string): Promise<string> {
   const bodyWithoutFooter = stripExistingFooter(body);
   const footer = await buildCommentFooter({ agent: ctx.agent, octokit: ctx.octokit });
   return `${bodyWithoutFooter}${footer}`;
@@ -173,7 +172,7 @@ export async function reportProgress(
   // always track the body for job summary
   ctx.toolState.lastProgressBody = body;
 
-  const existingCommentId = ctx.toolState.progressComment.id;
+  const existingCommentId = ctx.toolState.progressCommentId;
   const issueNumber =
     ctx.toolState.prNumber ?? ctx.toolState.issueNumber ?? ctx.payload.event.issue_number;
   const isPlanMode = ctx.toolState.selectedMode === "Plan";
@@ -200,7 +199,7 @@ export async function reportProgress(
       body: bodyWithFooter,
     });
 
-    ctx.toolState.progressComment.wasUpdated = true;
+    ctx.toolState.wasUpdated = true;
 
     return {
       commentId: result.data.id,
@@ -229,10 +228,8 @@ export async function reportProgress(
   });
 
   // store the comment ID for future updates
-  ctx.toolState.progressComment = {
-    id: result.data.id,
-    wasUpdated: true,
-  };
+  ctx.toolState.progressCommentId = result.data.id;
+  ctx.toolState.wasUpdated = true;
 
   // if Plan mode, update the comment to add the "Implement plan" link
   if (isPlanMode) {
@@ -301,7 +298,7 @@ export function ReportProgressTool(ctx: ToolContext) {
  * Used after submitting a PR review since the review body contains all necessary info.
  */
 export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> {
-  const existingCommentId = ctx.toolState.progressComment.id;
+  const existingCommentId = ctx.toolState.progressCommentId;
   if (!existingCommentId) {
     return false;
   }
@@ -321,81 +318,11 @@ export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> 
     }
   }
 
-  // reset state but mark as "updated" so ensureProgressCommentUpdated doesn't try to handle it
-  ctx.toolState.progressComment = {
-    id: null,
-    wasUpdated: true,
-  };
+  // reset state and mark as updated so post script doesn't try to handle it
+  ctx.toolState.progressCommentId = null;
+  ctx.toolState.wasUpdated = true;
 
   return true;
-}
-
-/**
- * Ensure the progress comment is updated with a generic error message if it was never updated.
- * This should be called after agent execution completes to handle cases where the agent
- * exited without ever calling reportProgress.
- *
- * Works even if MCP context is not initialized (e.g., if error occurs before MCP server starts).
- * Uses comment ID from toolState (set during initToolState from initial fetch).
- */
-export async function ensureProgressCommentUpdated(toolState: ToolState): Promise<void> {
-  // skip if comment was already updated during execution
-  if (toolState.progressComment.wasUpdated) {
-    return;
-  }
-
-  // skip if there's already a progress body recorded (agent called report_progress)
-  if (toolState.lastProgressBody) {
-    return;
-  }
-
-  // get comment ID from toolState (already fetched during initToolState)
-  const existingCommentId = toolState.progressComment.id;
-
-  // if still no comment ID, nothing to update
-  if (!existingCommentId) {
-    return;
-  }
-
-  // check if comment still says "leaping into action" - if it's been updated with an error, don't overwrite it
-  const repoContext = parseRepoContext();
-  const octokit = createOctokit(getGitHubInstallationToken());
-
-  try {
-    const existingComment = await octokit.rest.issues.getComment({
-      owner: repoContext.owner,
-      repo: repoContext.name,
-      comment_id: existingCommentId,
-    });
-
-    const commentBody = existingComment.data.body || "";
-    // if comment doesn't start with the leaping prefix, it's already been updated with an error or progress
-    if (!commentBody.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
-      return;
-    }
-  } catch {
-    // can't fetch comment, skip update
-    return;
-  }
-
-  const runId = process.env.GITHUB_RUN_ID;
-  const workflowRunLink = runId
-    ? `[workflow run logs](https://github.com/${repoContext.owner}/${repoContext.name}/actions/runs/${runId})`
-    : "workflow run logs";
-
-  const errorMessage = `This run croaked 😵
-
-The workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
-
-  // add footer without agent info (we don't have context here)
-  const body = await addFooter({ octokit }, errorMessage);
-
-  await octokit.rest.issues.updateComment({
-    owner: repoContext.owner,
-    repo: repoContext.name,
-    comment_id: existingCommentId,
-    body,
-  });
 }
 
 export const ReplyToReviewComment = type({
@@ -423,8 +350,8 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
         body: bodyWithFooter,
       });
 
-      // mark progress as updated so ensureProgressCommentUpdated doesn't think the run failed
-      ctx.toolState.progressComment.wasUpdated = true;
+      // mark progress as updated so post script doesn't think the run failed
+      ctx.toolState.wasUpdated = true;
 
       return {
         success: true,

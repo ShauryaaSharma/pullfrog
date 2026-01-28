@@ -12,7 +12,7 @@ interface ReportErrorParams {
 export async function reportErrorToComment(ctx: ReportErrorParams): Promise<void> {
   const formattedError = ctx.title ? `${ctx.title}\n\n${ctx.error}` : ctx.error;
 
-  const commentId = ctx.toolState.progressComment.id;
+  const commentId = ctx.toolState.progressCommentId;
   if (!commentId) {
     return;
   }
@@ -24,9 +24,7 @@ export async function reportErrorToComment(ctx: ReportErrorParams): Promise<void
   // build footer with workflow run link
   const footer = buildPullfrogFooter({
     triggeredBy: true,
-    workflowRun: runId
-      ? { owner: repoContext.owner, repo: repoContext.name, runId }
-      : undefined,
+    workflowRun: runId ? { owner: repoContext.owner, repo: repoContext.name, runId } : undefined,
   });
 
   await octokit.rest.issues.updateComment({
@@ -36,6 +34,6 @@ export async function reportErrorToComment(ctx: ReportErrorParams): Promise<void
     body: `${formattedError}${footer}`,
   });
 
-  // mark as updated so ensureProgressCommentUpdated doesn't try to update again
-  ctx.toolState.progressComment.wasUpdated = true;
+  // mark as updated so exit handler doesn't try to update again
+  ctx.toolState.wasUpdated = true;
 }
