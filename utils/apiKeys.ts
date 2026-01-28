@@ -56,7 +56,7 @@ function collectApiKeys(agent: Agent): Record<string, string> {
   return apiKeys;
 }
 
-export function validateApiKey(params: { agent: Agent; owner: string; name: string }): void {
+export function validateAgentApiKey(params: { agent: Agent; owner: string; name: string }): void {
   const apiKeys = collectApiKeys(params.agent);
 
   if (Object.keys(apiKeys).length === 0) {

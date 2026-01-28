@@ -1,0 +1,46 @@
+import type { Octokit } from "@octokit/rest";
+import packageJson from "../package.json" with { type: "json" };
+import { log } from "./cli.ts";
+import { type OctokitWithPlugins, parseRepoContext } from "./github.ts";
+import { fetchRunContext, type RepoSettings } from "./runContext.ts";
+
+export interface RunContextData {
+  repo: {
+    owner: string;
+    name: string;
+    data: Awaited<ReturnType<Octokit["repos"]["get"]>>["data"];
+  };
+  repoSettings: RepoSettings;
+  apiToken: string;
+}
+
+interface ResolveRunContextDataParams {
+  octokit: OctokitWithPlugins;
+  token: string;
+}
+
+/**
+ * initialize run context data: parse context, fetch repo info and settings
+ */
+export async function resolveRunContextData(
+  params: ResolveRunContextDataParams
+): Promise<RunContextData> {
+  log.info(`» running Pullfrog v${packageJson.version}...`);
+
+  const repoContext = parseRepoContext();
+
+  const [repoResponse, runContext] = await Promise.all([
+    params.octokit.repos.get({ owner: repoContext.owner, repo: repoContext.name }),
+    fetchRunContext({ token: params.token, repoContext }),
+  ]);
+
+  return {
+    repo: {
+      owner: repoContext.owner,
+      name: repoContext.name,
+      data: repoResponse.data,
+    },
+    repoSettings: runContext.settings,
+    apiToken: runContext.apiToken,
+  };
+}

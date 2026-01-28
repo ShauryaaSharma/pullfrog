@@ -3,7 +3,7 @@
  * This exports the main function for programmatic usage
  */
 
-export type { Agent, AgentRunContext, AgentResult } from "./agents/shared.ts";
+export type { Agent, AgentResult, AgentRunContext } from "./agents/shared.ts";
 export {
   type Inputs as ExecutionInputs,
   type MainResult,

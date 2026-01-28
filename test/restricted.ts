@@ -1,5 +1,5 @@
 import type { AgentResult, ValidationCheck } from "./utils.ts";
-import { generateAgentUuids, defineFixture, getAgentOutput, runTests } from "./utils.ts";
+import { defineFixture, generateAgentUuids, getAgentOutput, runTests } from "./utils.ts";
 
 /**
  * restricted test - validates bash=restricted environment filtering.

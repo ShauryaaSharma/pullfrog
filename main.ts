@@ -2,7 +2,7 @@
 import { initToolState, startMcpHttpServer } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
 import { resolveAgent } from "./utils/agent.ts";
-import { validateApiKey } from "./utils/apiKeys.ts";
+import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
 import { log, writeSummary } from "./utils/cli.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
@@ -11,8 +11,8 @@ import { createOctokit } from "./utils/github.ts";
 import { resolveInstructions } from "./utils/instructions.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
 import { resolvePayload } from "./utils/payload.ts";
-import { resolveRepoData } from "./utils/repoData.ts";
 import { handleAgentResult } from "./utils/run.ts";
+import { resolveRunContextData } from "./utils/runContextData.ts";
 import { createTempDirectory, setupGit } from "./utils/setup.ts";
 import { Timer } from "./utils/timer.ts";
 import { resolveInstallationToken } from "./utils/token.ts";
@@ -44,12 +44,12 @@ export async function main(): Promise<MainResult> {
   setupExitHandler(toolState);
 
   try {
-    const repo = await resolveRepoData({ octokit, token: tokenRef.token });
-    timer.checkpoint("repoData");
+    const runContext = await resolveRunContextData({ octokit, token: tokenRef.token });
+    timer.checkpoint("runContextData");
 
-    // resolve payload after repoData so permissions can use DB settings
+    // resolve payload after runContextData so permissions can use DB settings
     // precedence: action inputs > json payload > repoSettings > fallbacks
-    const payload = resolvePayload(repo.repoSettings);
+    const payload = resolvePayload(runContext.repoSettings);
     if (payload.cwd && process.cwd() !== payload.cwd) {
       process.chdir(payload.cwd);
     }
@@ -57,7 +57,11 @@ export async function main(): Promise<MainResult> {
     // resolve body - fetches body_html and converts to markdown if images present
     // this ensures agents receive markdown with working signed image URLs
     const originalBody = payload.event.body;
-    const resolvedBody = await resolveBody({ event: payload.event, octokit, repo });
+    const resolvedBody = await resolveBody({
+      event: payload.event,
+      octokit,
+      repo: runContext.repo,
+    });
     if (resolvedBody !== originalBody) {
       payload.event.body = resolvedBody;
       // also update prompt if original body was included there
@@ -68,33 +72,34 @@ export async function main(): Promise<MainResult> {
 
     const tmpdir = createTempDirectory();
 
-    const agent = resolveAgent({ payload, repoSettings: repo.repoSettings });
+    const agent = resolveAgent({ payload, repoSettings: runContext.repoSettings });
 
-    validateApiKey({
+    validateAgentApiKey({
       agent,
-      owner: repo.owner,
-      name: repo.name,
+      owner: runContext.repo.owner,
+      name: runContext.repo.name,
     });
 
     await setupGit({
       token: tokenRef.token,
       originalToken: process.env.ORIGINAL_GITHUB_TOKEN,
       bashPermission: payload.bash,
-      owner: repo.owner,
-      name: repo.name,
+      owner: runContext.repo.owner,
+      name: runContext.repo.name,
       event: payload.event,
       octokit,
       toolState,
     });
     timer.checkpoint("git");
 
-    const modes = [...computeModes(), ...repo.repoSettings.modes];
+    const modes = [...computeModes(), ...runContext.repoSettings.modes];
 
     await using mcpHttpServer = await startMcpHttpServer({
-      repo,
+      repo: runContext.repo,
       payload,
       octokit,
       githubInstallationToken: tokenRef.token,
+      apiToken: runContext.apiToken,
       agent,
       modes,
       toolState,
@@ -106,7 +111,7 @@ export async function main(): Promise<MainResult> {
 
     const instructions = resolveInstructions({
       payload,
-      repoData: repo,
+      repo: runContext.repo,
       modes,
     });
 

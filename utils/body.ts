@@ -2,7 +2,7 @@ import TurndownService from "turndown";
 import type { PayloadEvent } from "../external.ts";
 import { log } from "./cli.ts";
 import type { OctokitWithPlugins } from "./github.ts";
-import type { RepoData } from "./repoData.ts";
+import type { RunContextData } from "./runContextData.ts";
 
 const turndown = new TurndownService();
 
@@ -14,7 +14,7 @@ function hasImages(body: string | null | undefined): boolean {
 interface ResolveBodyContext {
   event: PayloadEvent;
   octokit: OctokitWithPlugins;
-  repo: RepoData;
+  repo: RunContextData["repo"];
 }
 
 /**

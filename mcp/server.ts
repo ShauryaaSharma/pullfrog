@@ -8,7 +8,6 @@ import type { Mode } from "../modes.ts";
 import type { PrepResult } from "../prep/index.ts";
 import type { OctokitWithPlugins } from "../utils/github.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
-import type { RepoData } from "../utils/repoData.ts";
 
 export type BackgroundProcess = {
   pid: number;
@@ -53,10 +52,11 @@ export function initToolState(ctx: InitToolStateParams): ToolState {
 }
 
 export interface ToolContext {
-  repo: RepoData;
+  repo: RunContextData["repo"];
   payload: ResolvedPayload;
   octokit: OctokitWithPlugins;
   githubInstallationToken: string;
+  apiToken: string;
   agent: Agent;
   modes: Mode[];
   toolState: ToolState;
@@ -64,6 +64,7 @@ export interface ToolContext {
   jobId: string | undefined;
 }
 
+import type { RunContextData } from "../utils/runContextData.ts";
 import { BashTool, KillBackgroundTool } from "./bash.ts";
 import { CheckoutPrTool } from "./checkout.ts";
 import { GetCheckSuiteLogsTool } from "./checkSuite.ts";
@@ -90,6 +91,7 @@ import { CreatePullRequestReviewTool } from "./review.ts";
 import { GetReviewCommentsTool, ListPullRequestReviewsTool } from "./reviewComments.ts";
 import { SelectModeTool } from "./selectMode.ts";
 import { addTools } from "./shared.ts";
+import { UploadFileTool } from "./upload.ts";
 
 /**
  * Find an available port starting from the given port
@@ -176,6 +178,7 @@ export async function startMcpHttpServer(
     CreateBranchTool(ctx),
     CommitFilesTool(ctx),
     PushBranchTool(ctx),
+    UploadFileTool(ctx),
   ];
 
   // only add BashTool when bash is "restricted"

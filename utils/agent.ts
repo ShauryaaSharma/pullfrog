@@ -2,7 +2,7 @@ import { type Agent, agents } from "../agents/index.ts";
 import type { AgentName } from "../external.ts";
 import { log } from "./cli.ts";
 import type { ResolvedPayload } from "./payload.ts";
-import type { RepoSettings } from "./repoSettings.ts";
+import type { RepoSettings } from "./runContext.ts";
 
 /**
  * Check if an agent has API keys available (from process.env)

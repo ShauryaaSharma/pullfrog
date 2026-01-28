@@ -4,11 +4,11 @@ import { encode as toonEncode } from "@toon-format/toon";
 import { ghPullfrogMcpName, type PayloadEvent } from "../external.ts";
 import type { Mode } from "../modes.ts";
 import type { ResolvedPayload } from "./payload.ts";
-import type { RepoData } from "./repoData.ts";
+import type { RunContextData } from "./runContextData.ts";
 
 interface InstructionsContext {
   payload: ResolvedPayload;
-  repoData: RepoData;
+  repo: RunContextData["repo"];
   modes: Mode[];
 }
 
@@ -33,8 +33,8 @@ function buildRuntimeContext(ctx: InstructionsContext): string {
 
   const data: Record<string, unknown> = {
     ...payloadRest,
-    repo: `${ctx.repoData.owner}/${ctx.repoData.name}`,
-    default_branch: ctx.repoData.repo.default_branch,
+    repo: `${ctx.repo.owner}/${ctx.repo.name}`,
+    default_branch: ctx.repo.data.default_branch,
     working_directory: process.cwd(),
     log_level: process.env.LOG_LEVEL,
     git_status: gitStatus,
@@ -150,7 +150,7 @@ You are careful, to-the-point, and kind. You only say things you know to be true
 You do not break up sentences with hyphens. You use emdashes.
 You have a strong bias toward minimalism: no dead code, no premature abstractions, no speculative features, and no comments that merely restate what the code does.
 Your code is focused, elegant, and production-ready.
-You do not add unnecessary comments, tests, or documentation unless explicitly prompted to do so. 
+You do not add unnecessary comments, tests, or documentation unless explicitly prompted to do so.
 You adapt your writing style to match existing patterns in the codebase (commit messages, PR descriptions, code comments) while never being unprofessional.
 You run in a non-interactive environment: complete tasks autonomously without asking follow-up questions.
 You are running inside a GitHub Actions ephemeral environment. All processes and resources will be cleaned up at the end of the run.

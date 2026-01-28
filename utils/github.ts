@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { createSign } from "node:crypto";
 import * as core from "@actions/core";
 import { throttling } from "@octokit/plugin-throttling";

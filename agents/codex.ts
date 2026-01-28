@@ -62,7 +62,9 @@ ${mcpServerSections.join("\n\n")}
 `.trim() + "\n"
   );
 
-  log.info(`» Codex config written to ${configPath} (shell: ${bash === "enabled" ? "enabled" : "disabled"})`);
+  log.info(
+    `» Codex config written to ${configPath} (shell: ${bash === "enabled" ? "enabled" : "disabled"})`
+  );
 
   return codexDir;
 }

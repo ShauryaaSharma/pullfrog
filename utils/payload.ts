@@ -3,7 +3,7 @@ import * as core from "@actions/core";
 import { type } from "arktype";
 import { AgentName, type AuthorPermission, Effort, type PayloadEvent } from "../external.ts";
 import packageJson from "../package.json" with { type: "json" };
-import type { RepoSettings } from "./repoSettings.ts";
+import type { RepoSettings } from "./runContext.ts";
 import { validateCompatibility } from "./versioning.ts";
 
 // tool permission enum types for inputs

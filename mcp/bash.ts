@@ -49,7 +49,7 @@ function spawnBash(params: SpawnParams): ChildProcess {
   // return useNamespaceIsolation
   //   ? spawn("unshare", ["--pid", "--fork", "--mount-proc", "bash", "-c", params.command], spawnOpts)
   //   : spawn("bash", ["-c", params.command], spawnOpts);
-    return spawn("bash", ["-c", params.command], spawnOpts);
+  return spawn("bash", ["-c", params.command], spawnOpts);
 }
 
 /** kill process and its entire process group */

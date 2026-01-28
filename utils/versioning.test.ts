@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { validateCompatibility } from './versioning.ts';
+import { describe, expect, it } from "vitest";
+import { validateCompatibility } from "./versioning.ts";
 
-describe('validateCompatibility', () => {
-  it('should throw if payload version is invalid', () => {
-    expect(() => validateCompatibility('invalid', '1.0.0')).toThrow(/not a valid semantic version/);
+describe("validateCompatibility", () => {
+  it("should throw if payload version is invalid", () => {
+    expect(() => validateCompatibility("invalid", "1.0.0")).toThrow(/not a valid semantic version/);
   });
 
   it.each([
@@ -17,7 +17,7 @@ describe('validateCompatibility', () => {
     ["1.0.0", "1.1.0"], // action has a new feature (backward compatible)
     ["1.0.1", "1.0.0"], // payload is newer (patch)
     ["1.1.0", "1.0.0"], // payload is newer (feature is backward compatible)
-  ])('should accept compatible payload %#', (payloadVersion, actionVersion) => {
+  ])("should accept compatible payload %#", (payloadVersion, actionVersion) => {
     expect(() => validateCompatibility(payloadVersion, actionVersion)).not.toThrow();
   });
 
@@ -26,7 +26,9 @@ describe('validateCompatibility', () => {
     ["0.2.0", "0.1.0"], // payload had breaking changes during active development
     ["2.0.0", "1.0.0"], // payload is majorly newer
     ["1.0.0", "2.0.0"], // action had breaking changes
-  ])('should reject incompatible payload %#', (payloadVersion, actionVersion) => {
-    expect(() => validateCompatibility(payloadVersion, actionVersion)).toThrow(/is incompatible with action version/);
+  ])("should reject incompatible payload %#", (payloadVersion, actionVersion) => {
+    expect(() => validateCompatibility(payloadVersion, actionVersion)).toThrow(
+      /is incompatible with action version/
+    );
   });
 });

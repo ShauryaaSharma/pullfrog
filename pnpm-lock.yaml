@@ -56,6 +56,9 @@ importers:
       fastmcp:
         specifier: ^3.26.8
         version: 3.26.8(arktype@2.1.28)(hono@4.11.3)
+      file-type:
+        specifier: ^21.3.0
+        version: 21.3.0
       package-manager-detector:
         specifier: ^1.6.0
         version: 1.6.0
