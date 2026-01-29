@@ -44,9 +44,10 @@ export function UploadFileTool(ctx: ToolContext) {
         throw new Error(`failed to get upload URL: ${error}`);
       }
 
-      const { uploadUrl, publicUrl } = (await response.json()) as {
+      const { uploadUrl, publicUrl, contentDisposition } = (await response.json()) as {
         uploadUrl: string;
         publicUrl: string;
+        contentDisposition?: string | undefined;
       };
 
       const uploadResponse = await fetch(uploadUrl, {
@@ -55,6 +56,7 @@ export function UploadFileTool(ctx: ToolContext) {
           "Content-Type": contentType,
           // should be set automatically, but given this header is signed it's better to be explicit
           "Content-Length": String(contentLength),
+          ...(contentDisposition && { "Content-Disposition": contentDisposition }),
         },
         body: buffer,
       });
