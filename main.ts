@@ -25,6 +25,7 @@ export interface MainResult {
   success: boolean;
   output?: string | undefined;
   error?: string | undefined;
+  result?: string | undefined;
 }
 
 export async function main(): Promise<MainResult> {
@@ -153,7 +154,10 @@ export async function main(): Promise<MainResult> {
       await writeSummary(toolState.lastProgressBody);
     }
 
-    return handleAgentResult(result);
+    return {
+      ...handleAgentResult(result),
+      result: toolState.output,
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     log.error(errorMessage);

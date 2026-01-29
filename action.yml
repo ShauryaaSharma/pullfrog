@@ -35,6 +35,10 @@ inputs:
     required: false
     default: ${{ github.token }}
 
+outputs:
+  result:
+    description: "It's set when the prompt explicitly requests it. It can be used to capture an actionable output for the next step in the workflow."
+
 runs:
   using: "node24"
   main: "entry"

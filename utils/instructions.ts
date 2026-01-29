@@ -100,6 +100,13 @@ function getShellInstructions(bash: ResolvedPayload["bash"]): string {
   }
 }
 
+function getStandaloneModeInstructions(trigger: string): string {
+  if (trigger !== "unknown") {
+    return "";
+  }
+  return `**Standalone mode**: You are running as a step in a user-defined CI workflow. When you complete your task, call \`${ghPullfrogMcpName}/set_output\` with the main result of your work (generated content, summary of changes, analysis results, etc.). This makes it available as a GitHub Action output named \`result\` for subsequent workflow steps to consume.`;
+}
+
 export interface ResolvedInstructions {
   full: string;
   system: string;
@@ -186,6 +193,8 @@ Tool names may be formatted as \`(server name)/(tool name)\`, for example: \`${g
 **Efficiency**: Trust the tools - do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error.
 
 ${getShellInstructions(ctx.payload.bash)}
+
+${getStandaloneModeInstructions(ctx.payload.event.trigger)}
 
 **Command execution**: Never use \`sleep\` to wait for commands to complete. Commands run synchronously - when the bash tool returns, the command has finished.
 

@@ -154,11 +154,45 @@ await mcp.call("gh_pullfrog/reply_to_review_comment", {
 });
 ```
 
+### output tools
+
+#### `set_output`
+set the action output for consumption by subsequent workflow steps. useful when pullfrog is used as a step in a user-defined CI workflow (e.g., generating release notes).
+
+**parameters:**
+- `value` (string): the output value to expose
+
+**returns:**
+- `success`: true on success
+
+the value will be available as the `result` output of the action, accessible via `${{ steps.<step-id>.outputs.result }}`.
+
+**example:**
+```typescript
+// when generating content for downstream consumption
+await mcp.call("gh_pullfrog/set_output", {
+  value: "## Release Notes\n\n- Added new feature X\n- Fixed bug Y"
+});
+```
+
+**usage in workflow:**
+```yaml
+- uses: pullfrog/pullfrog@v1
+  id: notes
+  with:
+    prompt: "Generate release notes for v2.0.0"
+
+- uses: softprops/action-gh-release@v1
+  with:
+    body: ${{ steps.notes.outputs.result }}
+```
+
 ### other tools
 
 see individual files for documentation on other tools:
 - `comment.ts` - create, edit, and update comments
 - `issue.ts` - create issues
+- `output.ts` - set action output for workflow consumption
 - `pr.ts` - create pull requests
 - `prInfo.ts` - get pull request information
 - `review.ts` - create pull request reviews

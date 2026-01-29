@@ -2,7 +2,7 @@ import type { AgentResult } from "../agents/shared.ts";
 import type { MainResult } from "../main.ts";
 import { log } from "./cli.ts";
 
-export async function handleAgentResult(result: AgentResult): Promise<MainResult> {
+export function handleAgentResult(result: AgentResult): MainResult {
   if (!result.success) {
     return {
       success: false,

@@ -32,6 +32,7 @@ export interface ToolState {
   progressCommentId: number | null;
   lastProgressBody?: string;
   wasUpdated?: boolean;
+  output?: string;
 }
 
 import type { ResolveRunResult } from "../utils/workflow.ts";
@@ -85,6 +86,7 @@ import { GetIssueCommentsTool } from "./issueComments.ts";
 import { GetIssueEventsTool } from "./issueEvents.ts";
 import { IssueInfoTool } from "./issueInfo.ts";
 import { AddLabelsTool } from "./labels.ts";
+import { SetOutputTool } from "./output.ts";
 import { CreatePullRequestTool } from "./pr.ts";
 import { PullRequestInfoTool } from "./prInfo.ts";
 import { CreatePullRequestReviewTool } from "./review.ts";
@@ -179,6 +181,7 @@ export async function startMcpHttpServer(
     CommitFilesTool(ctx),
     PushBranchTool(ctx),
     UploadFileTool(ctx),
+    SetOutputTool(ctx),
   ];
 
   // only add BashTool when bash is "restricted"
