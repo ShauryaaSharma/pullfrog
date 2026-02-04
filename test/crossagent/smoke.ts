@@ -26,7 +26,7 @@ function validator(result: AgentResult): ValidationCheck[] {
 }
 
 export const test: TestRunnerOptions = {
-  name: "smoke tests",
+  name: "smoke",
   fixture,
   validator,
 };

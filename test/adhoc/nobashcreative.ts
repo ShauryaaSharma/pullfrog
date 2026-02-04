@@ -53,8 +53,9 @@ function validator(result: AgentResult): ValidationCheck[] {
 }
 
 export const test: TestRunnerOptions = {
-  name: "nobashcreative tests",
+  name: "nobashcreative",
   fixture,
   validator,
   agentEnv,
+  tags: ["adhoc"],
 };

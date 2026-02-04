@@ -3,34 +3,24 @@
 // changes to web search configuration should be reflected in wiki/websearch.md
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  Codex,
-  type CodexOptions,
-  type ModelReasoningEffort,
-  type ThreadEvent,
-  type ThreadOptions,
-} from "@openai/codex-sdk";
+import type { ThreadEvent } from "@openai/codex-sdk";
 import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
+import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
+import { spawn } from "../utils/subprocess.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
-// model configuration based on effort level
-const codexModel: Record<Effort, string> = {
-  mini: "gpt-5.1-codex-mini",
-  // https://developers.openai.com/codex/models/
-  // gpt-5.2-codex is not yet available via api key (even through codex cli)
-  auto: "gpt-5.1-codex",
-  max: "gpt-5.1-codex-max",
-} as const;
-
-// reasoning effort configuration based on effort level
-// uses modelReasoningEffort parameter from ThreadOptions
-const codexReasoningEffort: Record<Effort, ModelReasoningEffort | undefined> = {
-  mini: "low",
-  auto: undefined, // use default
-  max: "high",
+// configuration based on effort level
+// https://developers.openai.com/codex/models/
+// gpt-5.2-codex is not yet available via api key (even through codex cli)
+type ModelReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+type CodexEffortConfig = { model: string; reasoningEffort?: ModelReasoningEffort };
+const codexEffortConfig: Record<Effort, CodexEffortConfig> = {
+  mini: { model: "gpt-5.1-codex-mini", reasoningEffort: "low" },
+  auto: { model: "gpt-5.1-codex" },
+  max: { model: "gpt-5.1-codex-max", reasoningEffort: "high" },
 };
 
 function writeCodexConfig(ctx: AgentRunContext): string {
@@ -81,96 +71,142 @@ export const codex = agent({
   name: "codex",
   install: installCodex,
   run: async (ctx) => {
-    // install CLI at start of run
-    const cliPath = await installCodex();
-
-    // create config directory for codex before setting HOME
-    const configDir = join(ctx.tmpdir, ".config", "codex");
-    mkdirSync(configDir, { recursive: true });
-
-    const codexDir = writeCodexConfig(ctx);
-
-    process.env.HOME = ctx.tmpdir;
-    process.env.CODEX_HOME = codexDir;
-
-    // get model and reasoning effort based on effort level
-    const model = codexModel[ctx.payload.effort];
-    const modelReasoningEffort = codexReasoningEffort[ctx.payload.effort];
-    log.info(`» using model: ${model}`);
-    if (modelReasoningEffort) {
-      log.info(`» using modelReasoningEffort: ${modelReasoningEffort}`);
-    }
-
-    // Configure Codex
+    // validate API key first
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is required for codex agent");
     }
 
-    const codexOptions: CodexOptions = {
-      apiKey,
-      codexPathOverride: cliPath,
-    };
+    // install CLI at start of run
+    const cliPath = await installCodex();
 
-    const codex = new Codex(codexOptions);
+    // write config file (creates ~/.codex/config.toml)
+    const codexDir = writeCodexConfig(ctx);
 
-    // build thread options based on tool permissions
-    const threadOptions: ThreadOptions = {
-      model,
-      approvalPolicy: "never" as const,
-      // write: "disabled" → read-only sandbox, otherwise full access for git ops
-      sandboxMode: ctx.payload.write === "disabled" ? "read-only" : "danger-full-access",
-      // web: controls network access
-      networkAccessEnabled: ctx.payload.web !== "disabled",
-      // search: controls web search
-      webSearchEnabled: ctx.payload.search !== "disabled",
-      ...(modelReasoningEffort && { modelReasoningEffort }),
-    };
+    // get model and reasoning effort based on effort level
+    const effortConfig = codexEffortConfig[ctx.payload.effort];
+    log.info(`» using model: ${effortConfig.model} (effort: ${ctx.payload.effort})`);
+    if (effortConfig.reasoningEffort) {
+      log.info(`» using modelReasoningEffort: ${effortConfig.reasoningEffort}`);
+    }
+
+    // determine sandbox mode based on write permission
+    // write: "disabled" → read-only sandbox, otherwise full access for git ops
+    const sandboxMode = ctx.payload.write === "disabled" ? "read-only" : "danger-full-access";
+
+    // determine network and search permissions
+    // web: "disabled" → no network access, otherwise enabled
+    const networkAccessEnabled = ctx.payload.web !== "disabled";
+    // search: "disabled" → no web search, otherwise enabled
+    const webSearchEnabled = ctx.payload.search !== "disabled";
+
+    const args: string[] = [
+      cliPath,
+      "exec",
+      ctx.instructions.full,
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--model",
+      effortConfig.model,
+      "--sandbox",
+      sandboxMode,
+      "--json",
+      "--config",
+      `sandbox_workspace_write.network_access=${networkAccessEnabled}`,
+      "--config",
+      `features.web_search_request=${webSearchEnabled}`,
+    ];
+
+    if (effortConfig.reasoningEffort) {
+      args.push("--config", `model_reasoning_effort="${effortConfig.reasoningEffort}"`);
+    }
 
     log.info(
-      `» Codex options: sandboxMode=${threadOptions.sandboxMode}, networkAccessEnabled=${threadOptions.networkAccessEnabled}, webSearchEnabled=${threadOptions.webSearchEnabled}`
+      `» Codex options: sandboxMode=${sandboxMode}, networkAccess=${networkAccessEnabled}, webSearch=${webSearchEnabled}`
     );
+    log.info("» running Codex CLI...");
 
-    const thread = codex.startThread(threadOptions);
+    let stdoutBuffer = "";
+    let finalOutput = "";
 
-    try {
-      const streamedTurn = await thread.runStreamed(ctx.instructions.full);
+    // Track command execution IDs to identify when command results come back
+    const commandExecutionIds = new Set<string>();
 
-      let finalOutput = "";
-      for await (const event of streamedTurn.events) {
-        const handler = messageHandlers[event.type];
-        log.debug(JSON.stringify(event, null, 2));
-        if (handler) {
-          handler(event as never);
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: ctx.tmpdir,
+      CODEX_HOME: codexDir,
+      CODEX_API_KEY: apiKey,
+    };
+
+    const result = await spawn({
+      cmd: "node",
+      args,
+      cwd: process.cwd(),
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      onStdout: async (chunk) => {
+        finalOutput += chunk;
+
+        // buffer incomplete lines across chunks (NDJSON format)
+        stdoutBuffer += chunk;
+        const lines = stdoutBuffer.split("\n");
+
+        // keep the last element (may be incomplete) in the buffer
+        stdoutBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          try {
+            const event = JSON.parse(trimmed) as ThreadEvent;
+            markActivity(); // reset activity timeout on every event
+            log.debug(JSON.stringify(event, null, 2));
+
+            const handler = messageHandlers[event.type as keyof typeof messageHandlers];
+            if (handler) {
+              await handler(event as never, commandExecutionIds);
+            }
+          } catch {
+            // ignore parse errors - might be non-JSON output
+            log.debug(`[codex] non-JSON stdout line: ${trimmed.substring(0, 200)}`);
+          }
         }
-
-        if (event.type === "item.completed" && event.item.type === "agent_message") {
-          finalOutput = event.item.text;
+      },
+      onStderr: (chunk) => {
+        const trimmed = chunk.trim();
+        if (trimmed) {
+          log.debug(`[codex stderr] ${trimmed}`);
+          log.warning(trimmed);
+          finalOutput += trimmed + "\n";
         }
-      }
+      },
+    });
 
-      return {
-        success: true,
-        output: finalOutput,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      log.error(`Codex execution failed: ${errorMessage}`);
+    if (result.exitCode !== 0) {
+      const errorMessage =
+        result.stderr || finalOutput || result.stdout || "Unknown error - no output from Codex CLI";
+      log.error(`Codex CLI exited with code ${result.exitCode}: ${errorMessage}`);
       return {
         success: false,
         error: errorMessage,
-        output: "",
+        output: finalOutput || result.stdout || "",
       };
     }
+
+    log.info("» Codex CLI completed successfully");
+
+    return {
+      success: true,
+      output: finalOutput || result.stdout || "",
+    };
   },
 });
 
-// Track command execution IDs to identify when command results come back
-const commandExecutionIds = new Set<string>();
-
 type ThreadEventHandler<type extends ThreadEvent["type"]> = (
-  event: Extract<ThreadEvent, { type: type }>
-) => void;
+  event: Extract<ThreadEvent, { type: type }>,
+  commandExecutionIds: Set<string>
+) => void | Promise<void>;
 
 const messageHandlers: {
   [type in ThreadEvent["type"]]: ThreadEventHandler<type>;
@@ -198,7 +234,7 @@ const messageHandlers: {
   "turn.failed": (event) => {
     log.error(`Turn failed: ${event.error.message}`);
   },
-  "item.started": (event) => {
+  "item.started": (event, commandExecutionIds) => {
     const item = event.item;
     if (item.type === "command_execution") {
       commandExecutionIds.add(item.id);
@@ -227,7 +263,7 @@ const messageHandlers: {
       }
     }
   },
-  "item.completed": (event) => {
+  "item.completed": (event, commandExecutionIds) => {
     const item = event.item;
     if (item.type === "agent_message") {
       log.box(item.text.trim(), { title: "Codex" });

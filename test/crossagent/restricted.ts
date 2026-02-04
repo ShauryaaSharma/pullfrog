@@ -49,7 +49,7 @@ function validator(result: AgentResult): ValidationCheck[] {
 }
 
 export const test: TestRunnerOptions = {
-  name: "restricted tests",
+  name: "restricted",
   fixture,
   validator,
   agentEnv,

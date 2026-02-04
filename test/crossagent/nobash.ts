@@ -39,7 +39,7 @@ function validator(result: AgentResult): ValidationCheck[] {
 }
 
 export const test: TestRunnerOptions = {
-  name: "nobash tests",
+  name: "nobash",
   fixture,
   validator,
   agentEnv,

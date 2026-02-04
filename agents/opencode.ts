@@ -4,6 +4,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ghPullfrogMcpName } from "../external.ts";
+import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
@@ -59,7 +60,6 @@ export const opencode = agent({
     log.debug(`» XDG_CONFIG_HOME: ${env.XDG_CONFIG_HOME}`);
 
     const startTime = Date.now();
-    let lastActivityTime = startTime;
     let eventCount = 0;
 
     let output = "";
@@ -95,7 +95,7 @@ export const opencode = agent({
             // debug log all events to diagnose ordering and missing MCP/bash tool calls
             log.debug(JSON.stringify(event, null, 2));
 
-            const timeSinceLastActivity = Date.now() - lastActivityTime;
+            const timeSinceLastActivity = getIdleMs();
             if (timeSinceLastActivity > 10000) {
               const activeToolCalls = toolCallTimings.size;
               const toolCallInfo =
@@ -106,7 +106,7 @@ export const opencode = agent({
                 `» no activity for ${(timeSinceLastActivity / 1000).toFixed(1)}s${toolCallInfo} (${eventCount} events processed so far)`
               );
             }
-            lastActivityTime = Date.now();
+            markActivity(); // reset activity timeout on every event
             const handler = messageHandlers[event.type as keyof typeof messageHandlers];
             if (handler) {
               await handler(event as never);

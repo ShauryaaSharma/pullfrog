@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
+import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromGithub } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
@@ -226,6 +227,7 @@ export const gemini = agent({
 
             try {
               const event = JSON.parse(trimmed) as GeminiEvent;
+              markActivity(); // reset activity timeout on every event
               const handler = messageHandlers[event.type as keyof typeof messageHandlers];
               if (handler) {
                 await handler(event as never);

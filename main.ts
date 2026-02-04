@@ -64,6 +64,13 @@ export async function main(): Promise<MainResult> {
     // resolve payload after runContextData so permissions can use DB settings
     // precedence: action inputs > json payload > repoSettings > fallbacks
     const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
+
+    // enable debug logging if #debug macro was used
+    if (payload.debug) {
+      process.env.LOG_LEVEL = "debug";
+      log.info("» debug mode enabled via #debug macro");
+    }
+
     if (payload.cwd && process.cwd() !== payload.cwd) {
       process.chdir(payload.cwd);
     }

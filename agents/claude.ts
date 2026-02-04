@@ -1,12 +1,16 @@
 // changes to effort level configuration should be reflected in wiki/effort.md and docs/effort.mdx
 // changes to tool permissions should be reflected in wiki/granular-tools.md
 // changes to web search configuration should be reflected in wiki/websearch.md
-import { type Options, query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
 import packageJson from "../package.json" with { type: "json" };
+import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
+import { spawn } from "../utils/subprocess.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
 // Model selection based on effort level
@@ -38,6 +42,26 @@ function buildDisallowedTools(ctx: AgentRunContext): string[] {
   return disallowed;
 }
 
+/**
+ * Write MCP config file for Claude CLI.
+ * Returns the path to the config file.
+ */
+function writeMcpConfig(ctx: AgentRunContext): string {
+  const configDir = join(ctx.tmpdir, ".claude");
+  mkdirSync(configDir, { recursive: true });
+  const configPath = join(configDir, "mcp.json");
+
+  const mcpConfig = {
+    mcpServers: {
+      [ghPullfrogMcpName]: { type: "http", url: ctx.mcpServerUrl },
+    },
+  };
+
+  writeFileSync(configPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
+  log.info(`» MCP config written to ${configPath}`);
+  return configPath;
+}
+
 async function installClaude(): Promise<string> {
   const versionRange = packageJson.dependencies["@anthropic-ai/claude-agent-sdk"] || "latest";
   return await installFromNpmTarball({
@@ -64,32 +88,100 @@ export const claude = agent({
       log.info(`» disallowed tools: ${disallowedTools.join(", ")}`);
     }
 
-    const queryOptions: Options = {
-      permissionMode: "bypassPermissions" as const,
-      disallowedTools,
-      mcpServers: {
-        [ghPullfrogMcpName]: { type: "http", url: ctx.mcpServerUrl },
-      },
-      model,
-      pathToClaudeCodeExecutable: cliPath,
-      env: process.env,
-    };
+    // write MCP config file
+    const mcpConfigPath = writeMcpConfig(ctx);
 
-    const queryInstance = query({
-      prompt: ctx.instructions.full,
-      options: queryOptions,
+    // build CLI args
+    // claude -p "prompt" --dangerously-skip-permissions --mcp-config ./mcp.json --model opus --output-format stream-json --verbose
+    const args: string[] = [
+      cliPath,
+      "-p",
+      ctx.instructions.full,
+      "--dangerously-skip-permissions",
+      "--mcp-config",
+      mcpConfigPath,
+      "--model",
+      model,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ];
+
+    // add disallowed tools if any
+    if (disallowedTools.length > 0) {
+      args.push("--disallowedTools");
+      args.push(...disallowedTools);
+    }
+
+    log.info("» running Claude CLI...");
+
+    let stdoutBuffer = "";
+    let finalOutput = "";
+
+    // Track bash tool IDs to identify when bash tool results come back
+    const bashToolIds = new Set<string>();
+
+    const result = await spawn({
+      cmd: "node",
+      args,
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      onStdout: async (chunk) => {
+        finalOutput += chunk;
+
+        // buffer incomplete lines across chunks (NDJSON format)
+        stdoutBuffer += chunk;
+        const lines = stdoutBuffer.split("\n");
+
+        // keep the last element (may be incomplete) in the buffer
+        stdoutBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          try {
+            const message = JSON.parse(trimmed) as SDKMessage;
+            markActivity(); // reset activity timeout on every event
+            log.debug(JSON.stringify(message, null, 2));
+
+            const handler = messageHandlers[message.type];
+            if (handler) {
+              await handler(message as never, bashToolIds);
+            }
+          } catch {
+            // ignore parse errors - might be non-JSON output
+            log.debug(`[claude] non-JSON stdout line: ${trimmed.substring(0, 200)}`);
+          }
+        }
+      },
+      onStderr: (chunk) => {
+        const trimmed = chunk.trim();
+        if (trimmed) {
+          log.debug(`[claude stderr] ${trimmed}`);
+          log.warning(trimmed);
+          finalOutput += trimmed + "\n";
+        }
+      },
     });
 
-    // Stream the results
-    for await (const message of queryInstance) {
-      log.debug(JSON.stringify(message, null, 2));
-      const handler = messageHandlers[message.type];
-      await handler(message as never);
+    if (result.exitCode !== 0) {
+      const errorMessage =
+        result.stderr || finalOutput || result.stdout || "Unknown error - no output from Claude CLI";
+      log.error(`Claude CLI exited with code ${result.exitCode}: ${errorMessage}`);
+      return {
+        success: false,
+        error: errorMessage,
+        output: finalOutput || result.stdout || "",
+      };
     }
+
+    log.info("» Claude CLI completed successfully");
 
     return {
       success: true,
-      output: "",
+      output: finalOutput || result.stdout || "",
     };
   },
 });
@@ -97,18 +189,16 @@ export const claude = agent({
 type SDKMessageType = SDKMessage["type"];
 
 type SDKMessageHandler<type extends SDKMessageType = SDKMessageType> = (
-  data: Extract<SDKMessage, { type: type }>
+  data: Extract<SDKMessage, { type: type }>,
+  bashToolIds: Set<string>
 ) => void | Promise<void>;
 
 type SDKMessageHandlers = {
   [type in SDKMessageType]: SDKMessageHandler<type>;
 };
 
-// Track bash tool IDs to identify when bash tool results come back
-const bashToolIds = new Set<string>();
-
 const messageHandlers: SDKMessageHandlers = {
-  assistant: (data) => {
+  assistant: (data, bashToolIds) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (content.type === "text" && content.text?.trim()) {
@@ -127,24 +217,24 @@ const messageHandlers: SDKMessageHandlers = {
       }
     }
   },
-  user: (data) => {
+  user: (data, bashToolIds) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (content.type === "tool_result") {
           const toolUseId = (content as any).tool_use_id;
           const isBashTool = toolUseId && bashToolIds.has(toolUseId);
 
+          const outputContent =
+            typeof content.content === "string"
+              ? content.content
+              : Array.isArray(content.content)
+                ? content.content
+                    .map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c)))
+                    .join("\n")
+                : String(content.content);
+
           if (isBashTool) {
             // Log bash output in a collapsed group
-            const outputContent =
-              typeof content.content === "string"
-                ? content.content
-                : Array.isArray(content.content)
-                  ? content.content
-                      .map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c)))
-                      .join("\n")
-                  : String(content.content);
-
             log.startGroup(`bash output`);
             if (content.is_error) {
               log.warning(outputContent);
@@ -155,9 +245,10 @@ const messageHandlers: SDKMessageHandlers = {
             // Clean up the tracked ID
             bashToolIds.delete(toolUseId);
           } else if (content.is_error) {
-            const errorContent =
-              typeof content.content === "string" ? content.content : String(content.content);
-            log.warning(`Tool error: ${errorContent}`);
+            log.warning(`Tool error: ${outputContent}`);
+          } else {
+            // log successful non-bash tool result at debug level
+            log.debug(`tool output: ${outputContent}`);
           }
         }
       }

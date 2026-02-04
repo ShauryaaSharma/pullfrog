@@ -25,9 +25,9 @@ function validator(result: AgentResult): ValidationCheck[] {
 }
 
 export const test: TestRunnerOptions = {
-  name: "timeout tests",
+  name: "timeout",
   fixture,
   validator,
   expectFailure: true,
-  agnostic: true,
+  tags: ["agnostic"],
 };

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentsManifest } from "../external.ts";
@@ -169,6 +169,18 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
     const testHome = `/tmp/home-${mcpPort}-${Date.now()}`;
     mkdirSync(testHome, { recursive: true });
 
+    // write env vars to files for MCP servers that don't inherit parent env vars
+    // (e.g., Cursor CLI doesn't pass env vars to repo-level MCP servers)
+    // uses testHome path which is unique per test and set as HOME
+    if (options.env) {
+      const envDir = join(testHome, ".pullfrog-env");
+      mkdirSync(envDir, { recursive: true });
+      const entries = Object.entries(options.env);
+      for (const entry of entries) {
+        writeFileSync(join(envDir, entry[0]), entry[1]);
+      }
+    }
+
     const child = spawn("node", ["play.ts", "--raw", JSON.stringify(fixture)], {
       cwd: actionDir,
       env: {
@@ -267,12 +279,16 @@ export interface TestRunnerOptions {
   env?: Record<string, string>;
   // per-agent env vars (for unique markers)
   agentEnv?: Map<string, Record<string, string>>;
+  // specific agents to run this test on (defaults to all agents)
+  agents?: string[];
   // if true, test passes when agent fails AND validation checks pass
   // (used for tests like timeout that expect the agent run to fail)
   expectFailure?: boolean;
-  // if true, test is agent-agnostic and only needs to run once with any agent
-  // agnostic tests run with claude by default, but can be run with specific agent via CLI
-  agnostic?: boolean;
+  // tags for grouping tests (e.g., ["mcpmerge"], ["agnostic"])
+  // special tags:
+  //   - "agnostic": runs with claude only, excluded when filtering by agent
+  //   - "adhoc": excluded from default runs, must be explicitly requested
+  tags?: string[];
 }
 
 export function printSingleValidation(validation: ValidationResult): void {

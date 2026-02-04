@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
+import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromCurl } from "../utils/install.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
@@ -271,6 +272,7 @@ export const cursor = agent({
 
           try {
             const event = JSON.parse(text) as CursorEvent;
+            markActivity(); // reset activity timeout on every event
             log.debug(JSON.stringify(event, null, 2));
 
             // skip empty thinking deltas

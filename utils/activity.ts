@@ -27,6 +27,24 @@ type WriteFunction = {
   (chunk: string | Uint8Array, encoding?: BufferEncoding, cb?: WriteCallback): boolean;
 };
 
+// module-level activity tracking - allows agents to mark activity on any event
+let _lastActivity = Date.now();
+
+/**
+ * mark activity to reset the no-output timeout.
+ * call this whenever the agent emits any event, even if it isn't logged to stdout.
+ */
+export function markActivity(): void {
+  _lastActivity = Date.now();
+}
+
+/**
+ * get the time since last activity in milliseconds
+ */
+export function getIdleMs(): number {
+  return Date.now() - _lastActivity;
+}
+
 function wrapWrite(original: WriteFunction, onActivity: () => void): WriteFunction {
   const wrapped: WriteFunction = (
     chunk: string | Uint8Array,
@@ -43,21 +61,17 @@ function wrapWrite(original: WriteFunction, onActivity: () => void): WriteFuncti
 }
 
 function startProcessOutputMonitor(ctx: OutputMonitorContext): OutputMonitor {
-  let lastActivity = Date.now();
   let timedOut = false;
 
   const originalStdoutWrite: WriteFunction = process.stdout.write.bind(process.stdout);
   const originalStderrWrite: WriteFunction = process.stderr.write.bind(process.stderr);
 
-  function markActivity(): void {
-    lastActivity = Date.now();
-  }
-
+  // stdout/stderr writes also mark activity
   process.stdout.write = wrapWrite(originalStdoutWrite, markActivity);
   process.stderr.write = wrapWrite(originalStderrWrite, markActivity);
 
   const intervalId = setInterval(() => {
-    const idleMs = Date.now() - lastActivity;
+    const idleMs = getIdleMs();
     if (timedOut || idleMs <= ctx.timeoutMs) return;
     timedOut = true;
     ctx.onTimeout(idleMs);
@@ -73,6 +87,8 @@ function startProcessOutputMonitor(ctx: OutputMonitorContext): OutputMonitor {
 }
 
 export function createProcessOutputActivityTimeout(ctx: ActivityTimeoutContext): ActivityTimeout {
+  markActivity(); // reset baseline
+
   let rejectFn: ((error: Error) => void) | null = null;
   const promise = new Promise<never>((_, reject) => {
     rejectFn = reject;

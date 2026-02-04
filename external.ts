@@ -261,6 +261,8 @@ export interface WriteablePayload {
   cwd?: string | undefined;
   /** pre-created progress comment ID for updating status */
   progressCommentId?: string | undefined;
+  /** whether debug mode is enabled (LOG_LEVEL=debug) */
+  debug?: boolean | undefined;
 }
 
 // immutable payload type for agent execution

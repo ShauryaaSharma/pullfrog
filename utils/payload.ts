@@ -22,8 +22,9 @@ export const JsonPayload = type({
   "repoInstructions?": "string",
   "event?": "object",
   "effort?": Effort.or("undefined"),
-  "timeout?": type.string.or("undefined"),
-  "progressCommentId?": type.string.or("undefined"),
+  "timeout?": "string | undefined",
+  "progressCommentId?": "string | undefined",
+  "debug?": "boolean | undefined",
 });
 
 // permission levels that indicate collaborator status (have push access)
@@ -165,6 +166,7 @@ export function resolvePayload(
     effort: inputs.effort ?? jsonPayload?.effort ?? "auto",
     timeout: inputs.timeout ?? jsonPayload?.timeout,
     cwd: resolveCwd(inputs.cwd),
+    debug: jsonPayload?.debug,
 
     // permissions: inputs > repoSettings > fallbacks
     web: inputs.web ?? repoSettings.web ?? "enabled",

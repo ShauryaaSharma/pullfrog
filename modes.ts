@@ -116,17 +116,19 @@ export function computeModes(): Mode[] {
    - **Consider lifecycle**: Initialization, cleanup, error recovery. Are resources acquired before use? Released after? What happens on cancellation?
    - Do NOT stop at "this looks reasonable." Dig until you either find a problem or have concrete evidence there isn't one.
 
-4. **DRAFT** - For each issue found, create an inline comment. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`).
+4. **DRAFT LINE-BY-LINE COMMENTS** - For each issue found, draft an inline comment on the specific line. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`). If no issues found, skip to step 6.
 
-5. **FILTER** - Remove noise, keep substance:
-   - Remove style-only comments (formatting, naming conventions) unless they cause real confusion
-   - Remove compliments that aren't actionable
-   - Keep: bugs, logic errors, missing error handling, security issues, race conditions, resource leaks, incorrect assumptions
+5. **FILTER LINE-BY-LINE COMMENTS** - Each inline comment must be actionable. Remove anything that doesn't require action:
+   - **Not actionable → no comment**: Do NOT create inline comments for compliments (e.g., "this looks clean", "nice refactor") or general observations. These waste reviewer attention.
+   - **Actionable by agent → keep**: Bugs, logic errors, missing error handling, security issues, race conditions, resource leaks, incorrect assumptions.
+   - **Requires human decision → keep**: If something needs human judgment (architectural choice, product decision, tradeoff evaluation), create a comment clearly stating what decision is needed and why.
+   - Remove style-only comments (formatting, naming conventions) unless they cause real confusion.
 
-6. **SUBMIT** — Use ${ghPullfrogMcpName}/create_pull_request_review:
-   - \`comments\`: Inline feedback on specific diff lines
-   - \`body\`: 1-3 sentence summary with urgency level and any concerns about code outside the diff
-   - If no issues found, submit with empty comments and a brief approving body
+6. **WRITE SUMMARY** - Draft a 1-3 sentence summary for the review body. Include urgency level and any concerns about code outside the diff.
+
+7. **SUBMIT** — Use ${ghPullfrogMcpName}/create_pull_request_review:
+   - \`body\`: The summary from step 6
+   - \`comments\`: The filtered inline comments from step 5
 
 ${permalinkTip}
 `,

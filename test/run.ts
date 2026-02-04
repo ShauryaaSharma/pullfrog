@@ -25,24 +25,20 @@ import {
  *
  * usage: node test/run.ts [filters...]
  *
- * filters can be test names, agent names, or special keywords:
- *   node test/run.ts               # run all tests (excludes adhoc tests)
- *   node test/run.ts smoke         # run smoke test for all agents
- *   node test/run.ts claude        # run all tests for claude (excludes adhoc)
- *   node test/run.ts smoke claude  # run smoke test for claude only
- *   node test/run.ts agnostic      # run all agnostic tests (with claude)
- *   node test/run.ts timeout codex # run timeout test with codex
- *   node test/run.ts adhoc         # run all adhoc tests (exploratory, not CI)
- *   node test/run.ts nobashcreative # run specific adhoc test by name
+ * filters can be test names, tags, or agent names:
+ *   node test/run.ts               # run all tests (excludes adhoc-tagged tests)
+ *   node test/run.ts smoke         # run tests named "smoke" or tagged "smoke"
+ *   node test/run.ts claude        # run all tests for claude only
+ *   node test/run.ts mcpmerge      # run all tests tagged "mcpmerge"
+ *   node test/run.ts agnostic      # run all agnostic-tagged tests (with claude)
+ *   node test/run.ts adhoc         # run all adhoc-tagged tests
+ *   node test/run.ts smoke claude  # run smoke tests for claude only
+ *
+ * special tags:
+ *   - "agnostic": runs with claude only, excluded when filtering by agent
+ *   - "adhoc": excluded from default runs, must be explicitly requested
  *
  * by default, runs in a Docker container for isolation.
- * automatically detects if already inside Docker and skips spawning another container.
- *
- * tests mark themselves as agnostic via the `agnostic: true` option.
- * agnostic tests only need to run once with any agent (default: claude).
- *
- * adhoc tests are in the `adhoc/` directory and are excluded from default runs.
- * they are for exploration and manual testing, not CI.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -91,86 +87,89 @@ type CancelState = {
   signal: NodeJS.Signals | null;
 };
 
-async function loadTest(testName: string): Promise<TestInfo | null> {
-  // check crossagent directory first
-  const crossagentPath = join(__dirname, "crossagent", `${testName}.ts`);
-  if (existsSync(crossagentPath)) {
-    const module = await import(crossagentPath);
-    return { name: testName, config: module.test };
+type TestModule = {
+  test?: TestRunnerOptions;
+  tests?: Record<string, TestRunnerOptions>;
+};
+
+// load all tests from all directories
+async function loadAllTests(): Promise<TestInfo[]> {
+  const testInfos: TestInfo[] = [];
+  const dirs = ["crossagent", "agnostic", "adhoc"];
+
+  for (const dir of dirs) {
+    const dirPath = join(__dirname, dir);
+    if (!existsSync(dirPath)) continue;
+
+    const files = readdirSync(dirPath).filter((f) => f.endsWith(".ts"));
+    for (const file of files) {
+      const filePath = join(dirPath, file);
+      const module = (await import(filePath)) as TestModule;
+
+      if (module.test) {
+        testInfos.push({ name: module.test.name, config: module.test });
+      } else if (module.tests) {
+        const entries = Object.entries(module.tests);
+        for (const entry of entries) {
+          testInfos.push({ name: entry[0], config: entry[1] });
+        }
+      }
+    }
   }
 
-  // check agnostic directory
-  const agnosticPath = join(__dirname, "agnostic", `${testName}.ts`);
-  if (existsSync(agnosticPath)) {
-    const module = await import(agnosticPath);
-    return { name: testName, config: module.test };
-  }
-
-  // check adhoc directory
-  const adhocPath = join(__dirname, "adhoc", `${testName}.ts`);
-  if (existsSync(adhocPath)) {
-    const module = await import(adhocPath);
-    return { name: testName, config: module.test };
-  }
-
-  return null;
+  return testInfos;
 }
 
-function listTestsFromDir(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".ts"))
-    .map((f) => f.replace(".ts", ""));
-}
-
-function listAdhocTests(): string[] {
-  const adhocDir = join(__dirname, "adhoc");
-  return listTestsFromDir(adhocDir);
-}
-
-function listCoreTests(): string[] {
-  const crossagentDir = join(__dirname, "crossagent");
-  const agnosticDir = join(__dirname, "agnostic");
-  return [...listTestsFromDir(crossagentDir), ...listTestsFromDir(agnosticDir)];
-}
-
-function listAvailableTests(): string[] {
-  return [...listCoreTests(), ...listAdhocTests()];
+// check if test has a specific tag
+function hasTag(test: TestInfo, tag: string): boolean {
+  return test.config.tags?.includes(tag) ?? false;
 }
 
 type ParsedArgs = {
-  tests: string[];
-  agents: string[];
-  agnosticOnly: boolean;
-  adhocOnly: boolean;
+  filters: string[]; // test names or tags
+  agentFilters: string[];
 };
 
-function parseArgs(args: string[]): ParsedArgs {
-  const availableTests = listAvailableTests();
-  const tests: string[] = [];
-  const agentsFound: string[] = [];
-  let agnosticOnly = false;
-  let adhocOnly = false;
+function parseArgs(args: string[], allTests: TestInfo[]): ParsedArgs {
+  const testNames = new Set(allTests.map((t) => t.name));
+  const allTags = new Set(allTests.flatMap((t) => t.config.tags ?? []));
+
+  const filters: string[] = [];
+  const agentFilters: string[] = [];
 
   for (const arg of args) {
-    if (arg === "agnostic") {
-      agnosticOnly = true;
-    } else if (arg === "adhoc") {
-      adhocOnly = true;
-    } else if (availableTests.includes(arg)) {
-      tests.push(arg);
-    } else if (agents.includes(arg as (typeof agents)[number])) {
-      agentsFound.push(arg);
+    if (agents.includes(arg as (typeof agents)[number])) {
+      agentFilters.push(arg);
+    } else if (testNames.has(arg) || allTags.has(arg)) {
+      filters.push(arg);
     } else {
       console.error(`unknown argument: ${arg}`);
-      console.error(`available tests: ${availableTests.join(", ")}`);
+      console.error(`available tests: ${[...testNames].join(", ")}`);
+      console.error(`available tags: ${[...allTags].join(", ")}`);
       console.error(`available agents: ${agents.join(", ")}`);
-      console.error(`special keywords: agnostic, adhoc`);
       process.exit(1);
     }
   }
 
-  return { tests, agents: agentsFound, agnosticOnly, adhocOnly };
+  return { filters, agentFilters };
+}
+
+// filter tests based on filters (names or tags)
+function filterTests(allTests: TestInfo[], filters: string[]): TestInfo[] {
+  if (filters.length === 0) {
+    // default: exclude adhoc tests
+    return allTests.filter((t) => !hasTag(t, "adhoc"));
+  }
+
+  // match tests by name or tag
+  return allTests.filter((t) => {
+    for (const filter of filters) {
+      if (t.name === filter || hasTag(t, filter)) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 type RunContext = {
@@ -202,16 +201,16 @@ function buildCanceledValidation(ctx: CanceledValidationContext): ValidationResu
 }
 
 async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
-  const config = ctx.testInfo.config;
+  const testConfig = ctx.testInfo.config;
   const env: Record<string, string> = {};
-  if (config.env) {
-    const entries = Object.entries(config.env);
+  if (testConfig.env) {
+    const entries = Object.entries(testConfig.env);
     for (const entry of entries) {
       env[entry[0]] = entry[1];
     }
   }
-  if (config.agentEnv) {
-    const agentEnv = config.agentEnv.get(ctx.agent);
+  if (testConfig.agentEnv) {
+    const agentEnv = testConfig.agentEnv.get(ctx.agent);
     if (agentEnv) {
       const entries = Object.entries(agentEnv);
       for (const entry of entries) {
@@ -227,14 +226,14 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
   const result = await runAgentStreaming({
     test: ctx.testInfo.name,
     agent: ctx.agent,
-    fixture: config.fixture,
+    fixture: testConfig.fixture,
     env,
     isCanceled: () => ctx.cancelState.canceled,
   });
 
-  const validation = validateResult(result, config.validator, {
+  const validation = validateResult(result, testConfig.validator, {
     test: ctx.testInfo.name,
-    expectFailure: config.expectFailure,
+    expectFailure: testConfig.expectFailure,
   });
   ctx.results.set(getRunKey(ctx.testInfo.name, ctx.agent), validation);
   return validation;
@@ -245,8 +244,7 @@ async function main(): Promise<void> {
 
   // run in Docker unless already inside
   if (!isInsideDocker) {
-    // acquire token for docker if needed (before spawning containers)
-    // this ensures GITHUB_TOKEN is available when setupTestRepo() runs inside docker
+    // acquire token for docker if needed
     if (!process.env.GITHUB_TOKEN && !process.env.GH_TOKEN) {
       if (process.env.GITHUB_APP_ID && process.env.GITHUB_PRIVATE_KEY) {
         console.log("» acquiring github installation token...");
@@ -257,35 +255,12 @@ async function main(): Promise<void> {
     runTestsInDocker(args);
   }
 
-  const parsed = parseArgs(args);
-  const adhocTests = listAdhocTests();
+  // load all tests
+  const allTests = await loadAllTests();
+  const parsed = parseArgs(args, allTests);
 
-  // determine which tests to load
-  let testsToLoad: string[];
-  if (parsed.tests.length > 0) {
-    testsToLoad = parsed.tests;
-  } else if (parsed.adhocOnly) {
-    testsToLoad = adhocTests;
-  } else {
-    // by default, exclude adhoc tests
-    testsToLoad = listCoreTests();
-  }
-
-  // load all test configs
-  const testInfos: TestInfo[] = [];
-  for (const testName of testsToLoad) {
-    const info = await loadTest(testName);
-    if (!info) {
-      console.error(`failed to load test: ${testName}`);
-      process.exit(1);
-    }
-    testInfos.push(info);
-  }
-
-  // filter to agnostic-only if requested
-  const filteredTests = parsed.agnosticOnly
-    ? testInfos.filter((t) => t.config.agnostic)
-    : testInfos;
+  // filter tests
+  const filteredTests = filterTests(allTests, parsed.filters);
 
   if (filteredTests.length === 0) {
     console.error("no tests to run");
@@ -293,39 +268,34 @@ async function main(): Promise<void> {
   }
 
   // determine which agents to run
-  const agentsToRun = parsed.agents.length > 0 ? parsed.agents : [...agents];
+  const agentsToRun = parsed.agentFilters.length > 0 ? parsed.agentFilters : [...agents];
 
   // build list of test runs
   type TestRun = { testInfo: TestInfo; agent: string };
   const runs: TestRun[] = [];
 
-  // determine behavior for agnostic tests:
-  // - if specific tests were requested (e.g., `timeout codex`), run with specified agent
-  // - if agnosticOnly flag is set, run with specified agent (or claude)
-  // - if only agents specified (e.g., `codex`), skip agnostic tests (they run separately)
-  // - if no filters at all, include agnostic tests with claude
-  const specificTestsRequested = parsed.tests.length > 0;
-  const onlyAgentsSpecified =
-    parsed.agents.length > 0 && !specificTestsRequested && !parsed.agnosticOnly;
-  const noFiltersAtAll =
-    parsed.tests.length === 0 && parsed.agents.length === 0 && !parsed.agnosticOnly;
-
   for (const testInfo of filteredTests) {
-    if (testInfo.config.agnostic) {
-      // skip agnostic tests when only agents are specified (e.g., `pnpm runtest codex`)
-      if (onlyAgentsSpecified) continue;
+    const isAgnostic = hasTag(testInfo, "agnostic");
 
-      // agnostic: run once with appropriate agent
-      // - if specific tests requested or agnosticOnly: use specified agent or first in list
-      // - otherwise (no filters): use default agent (claude)
-      const agent = noFiltersAtAll ? agents[0] : agentsToRun[0];
-      runs.push({ testInfo, agent });
+    if (isAgnostic) {
+      // agnostic tests: skip if only filtering by agent, otherwise run with claude
+      if (parsed.filters.length === 0 && parsed.agentFilters.length > 0) {
+        continue;
+      }
+      runs.push({ testInfo, agent: "claude" });
     } else {
-      // non-agnostic: run for all specified agents
-      for (const agent of agentsToRun) {
+      // determine which agents to run for this test
+      const testAgents = testInfo.config.agents ?? agents;
+      const effectiveAgents = agentsToRun.filter((a) => testAgents.includes(a));
+      for (const agent of effectiveAgents) {
         runs.push({ testInfo, agent });
       }
     }
+  }
+
+  if (runs.length === 0) {
+    console.error("no test runs after filtering");
+    process.exit(1);
   }
 
   // describe what we're running
@@ -377,9 +347,8 @@ async function main(): Promise<void> {
   setSignalHandler(handleCancel);
   installSignalHandlers();
 
-  // run tests with limited concurrency to avoid overwhelming agent APIs
-  // group by agent to ensure each agent only runs one test at a time
-  const maxConcurrency = 5; // one per agent
+  // run tests with limited concurrency
+  const maxConcurrency = 5;
   const validations = await runWithConcurrencyLimit(
     runs,
     maxConcurrency,
@@ -412,7 +381,6 @@ async function runWithConcurrencyLimit<T, R>(
         results.push(result);
       },
       (err: unknown) => {
-        // fn must never reject; log and rethrow to surface bugs
         console.error("runWithConcurrencyLimit: fn rejected unexpectedly", err);
         throw err;
       }
