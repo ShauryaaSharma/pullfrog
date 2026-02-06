@@ -4,8 +4,9 @@ import type { Octokit, RestEndpointMethodTypes } from "@octokit/rest";
 import { type } from "arktype";
 import { log } from "../utils/cli.ts";
 import { $git } from "../utils/gitAuth.ts";
+import { executeLifecycleHook } from "../utils/lifecycle.ts";
 import { $ } from "../utils/shell.ts";
-import type { ToolContext, ToolState } from "./server.ts";
+import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 type PullFile = RestEndpointMethodTypes["pulls"]["listFiles"]["response"]["data"][number];
@@ -162,16 +163,9 @@ export async function fetchAndFormatPrDiff(params: FetchPrDiffParams): Promise<F
   return formatFilesWithLineNumbers(filesResponse.data);
 }
 
-interface CheckoutPrBranchParams {
-  octokit: Octokit;
-  owner: string;
-  name: string;
-  gitToken: string;
-  pullNumber: number;
-  toolState: ToolState;
-  // restricted bash mode: disables git hooks to prevent token exfiltration
-  restricted: boolean;
-}
+import type { GitContext } from "../utils/setup.ts";
+
+type CheckoutPrBranchParams = GitContext;
 
 interface CheckoutPrBranchResult {
   prNumber: number;
@@ -185,9 +179,10 @@ interface CheckoutPrBranchResult {
  * Updates toolState.issueNumber and toolState.pushUrl (for fork PRs).
  */
 export async function checkoutPrBranch(
+  pullNumber: number,
   params: CheckoutPrBranchParams
 ): Promise<CheckoutPrBranchResult> {
-  const { octokit, owner, name, gitToken, pullNumber, toolState, restricted } = params;
+  const { octokit, owner, name, gitToken, toolState, restricted } = params;
   log.info(`» checking out PR #${pullNumber}...`);
 
   // fetch PR metadata
@@ -288,6 +283,12 @@ export async function checkoutPrBranch(
     toolState.pushUrl = `https://github.com/${headRepo.full_name}.git`;
   }
 
+  // execute post-checkout lifecycle hook
+  await executeLifecycleHook({
+    event: "post-checkout",
+    script: params.postCheckoutScript,
+  });
+
   return {
     prNumber: pullNumber,
     isFork,
@@ -303,14 +304,14 @@ export function CheckoutPrTool(ctx: ToolContext) {
       "Returns diffPath pointing to the formatted diff file.",
     parameters: CheckoutPr,
     execute: execute(async ({ pull_number }) => {
-      const result = await checkoutPrBranch({
+      await checkoutPrBranch(pull_number, {
         octokit: ctx.octokit,
         owner: ctx.repo.owner,
         name: ctx.repo.name,
         gitToken: ctx.gitToken,
-        pullNumber: pull_number,
         toolState: ctx.toolState,
         restricted: ctx.payload.bash === "restricted",
+        postCheckoutScript: ctx.postCheckoutScript,
       });
 
       // fetch PR metadata to return result

@@ -45,15 +45,19 @@ export function setupTestRepo(options: SetupOptions): void {
   }
 }
 
-interface SetupGitParams {
+export interface GitContext {
   gitToken: string;
   owner: string;
   name: string;
-  event: PayloadEvent;
   octokit: OctokitWithPlugins;
   toolState: ToolState;
   // restricted bash mode: disables git hooks to prevent token exfiltration
   restricted: boolean;
+  postCheckoutScript: string | null;
+}
+
+export interface SetupGitParams extends GitContext {
+  event: PayloadEvent;
 }
 
 /**
@@ -149,15 +153,7 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
   // PR event: checkout PR branch using shared helper
   const prNumber = params.event.issue_number;
 
-  // use shared checkout helper (handles fork remotes, push config, etc.)
+  // use shared checkout helper (handles fork remotes, push config, post-checkout hook)
   // this updates toolState.pushUrl for fork PRs and sets toolState.issueNumber
-  await checkoutPrBranch({
-    octokit: params.octokit,
-    owner: params.owner,
-    name: params.name,
-    gitToken: params.gitToken,
-    pullNumber: prNumber,
-    toolState: params.toolState,
-    restricted: params.restricted,
-  });
+  await checkoutPrBranch(prNumber, params);
 }

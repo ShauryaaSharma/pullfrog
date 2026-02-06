@@ -16,6 +16,7 @@ import { setupExitHandler } from "./utils/exitHandler.ts";
 import { resolveGit } from "./utils/gitAuth.ts";
 import { createOctokit } from "./utils/github.ts";
 import { resolveInstructions } from "./utils/instructions.ts";
+import { executeLifecycleHook } from "./utils/lifecycle.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
 import { resolvePayload, resolvePromptInput } from "./utils/payload.ts";
 import { handleAgentResult } from "./utils/run.ts";
@@ -126,8 +127,16 @@ export async function main(): Promise<MainResult> {
       octokit,
       toolState,
       restricted: payload.bash === "restricted",
+      postCheckoutScript: runContext.repoSettings.postCheckoutScript,
     });
     timer.checkpoint("git");
+
+    // execute setup lifecycle hook (runs once at initialization)
+    await executeLifecycleHook({
+      event: "setup",
+      script: runContext.repoSettings.setupScript,
+    });
+    timer.checkpoint("lifecycleHooks::setup");
 
     const modes = [...computeModes(), ...runContext.repoSettings.modes];
 
@@ -140,6 +149,7 @@ export async function main(): Promise<MainResult> {
       apiToken: runContext.apiToken,
       agent,
       modes,
+      postCheckoutScript: runContext.repoSettings.postCheckoutScript,
       toolState,
       runId: runInfo.runId,
       jobId: runInfo.jobId,

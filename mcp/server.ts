@@ -67,6 +67,7 @@ export interface ToolContext {
   apiToken: string;
   agent: Agent;
   modes: Mode[];
+  postCheckoutScript: string | null;
   toolState: ToolState;
   runId: string;
   jobId: string | undefined;

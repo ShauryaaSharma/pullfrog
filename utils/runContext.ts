@@ -11,6 +11,8 @@ export interface Mode {
 export interface RepoSettings {
   defaultAgent: AgentName | null;
   modes: Mode[];
+  setupScript: string | null;
+  postCheckoutScript: string | null;
   repoInstructions: string;
   web: ToolPermission;
   search: ToolPermission;
@@ -26,6 +28,8 @@ export interface RunContext {
 const defaultSettings: RepoSettings = {
   defaultAgent: null,
   modes: [],
+  setupScript: null,
+  postCheckoutScript: null,
   repoInstructions: "",
   web: "enabled",
   search: "enabled",
@@ -81,7 +85,14 @@ export async function fetchRunContext(params: {
     }
 
     return {
-      settings: data.settings ?? defaultSettings,
+      settings: {
+        ...defaultSettings,
+        ...data.settings,
+        // ensure arrays are never undefined (API may omit new fields for existing repos)
+        modes: data.settings?.modes ?? [],
+        setupScript: data.settings?.setupScript ?? null,
+        postCheckoutScript: data.settings?.postCheckoutScript ?? null,
+      },
       apiToken: data.apiToken,
     };
   } catch {
