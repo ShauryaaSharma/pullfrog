@@ -167,7 +167,10 @@ export const claude = agent({
 
     if (result.exitCode !== 0) {
       const errorMessage =
-        result.stderr || finalOutput || result.stdout || "Unknown error - no output from Claude CLI";
+        result.stderr ||
+        finalOutput ||
+        result.stdout ||
+        "Unknown error - no output from Claude CLI";
       log.error(`Claude CLI exited with code ${result.exitCode}: ${errorMessage}`);
       return {
         success: false,

@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getStructuredOutput } from "../utils.ts";
 
 /**
  * push disabled test - validates that all push operations are blocked.

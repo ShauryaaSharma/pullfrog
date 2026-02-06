@@ -2,7 +2,6 @@ import { createSign } from "node:crypto";
 import * as core from "@actions/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { Octokit } from "@octokit/rest";
-import { log } from "./cli.ts";
 import { retry } from "./retry.ts";
 
 export interface InstallationToken {
