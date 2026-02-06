@@ -1,137 +1,83 @@
 import { type } from "arktype";
 import { log } from "../utils/cli.ts";
-import { containsSecrets } from "../utils/secrets.ts";
+import { $git } from "../utils/gitAuth.ts";
 import { $ } from "../utils/shell.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
-export function CreateBranchTool(ctx: ToolContext) {
-  const defaultBranch = ctx.repo.data.default_branch || "main";
+type PushDestination = {
+  remoteName: string;
+  remoteBranch: string;
+  url: string;
+};
 
-  const CreateBranch = type({
-    branchName: type.string.describe(
-      "The name of the branch to create (e.g., 'pullfrog/123-fix-bug')"
-    ),
-    baseBranch: type.string
-      .describe(`The base branch to create from (defaults to '${defaultBranch}')`)
-      .default(defaultBranch),
-  });
+/**
+ * get where git would actually push this branch.
+ * uses git's native @{push} resolution, falls back to origin if unset.
+ *
+ * for branches created via checkout_pr: uses configured pushRemote/merge
+ * for new branches (git checkout -b): falls back to origin/<branch>
+ */
+function getPushDestination(branch: string): PushDestination {
+  // try git's @{push} resolution first (works for checkout_pr branches)
+  try {
+    const pushRef = $(
+      "git",
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", `${branch}@{push}`],
+      { log: false }
+    ).trim();
 
-  return tool({
-    name: "create_branch",
-    description:
-      "Create a new git branch from the specified base branch. The branch will be created locally and pushed to the remote repository.",
-    parameters: CreateBranch,
-    execute: execute(async ({ branchName, baseBranch }) => {
-      // baseBranch should always be defined due to default, but TypeScript needs help
-      const resolvedBaseBranch = baseBranch || ctx.repo.data.default_branch || "main";
+    // pushRef is like "origin/main" or "pr-123/feature/foo"
+    // parse carefully to handle branch names with slashes
+    const slashIndex = pushRef.indexOf("/");
+    if (slashIndex === -1) {
+      throw new Error(`unexpected push ref format: ${pushRef}`);
+    }
+    const remoteName = pushRef.slice(0, slashIndex);
+    const remoteBranch = pushRef.slice(slashIndex + 1);
 
-      // validate branch name for secrets
-      if (containsSecrets(branchName)) {
-        throw new Error(
-          "Branch creation blocked: secrets detected in branch name. " +
-            "Please remove any sensitive information (API keys, tokens, passwords) before creating a branch."
-        );
-      }
+    // get the actual URL git would push to (handles remote.X.pushurl)
+    const url = $("git", ["remote", "get-url", "--push", remoteName], { log: false }).trim();
 
-      log.debug(`Creating branch ${branchName} from ${resolvedBaseBranch}`);
-
-      // fetch base branch to ensure we're up to date
-      $("git", ["fetch", "origin", resolvedBaseBranch, "--depth=1"]);
-
-      // checkout base branch, ensuring it matches the remote version
-      // -B creates or resets the branch to match origin/baseBranch
-      $("git", ["checkout", "-B", resolvedBaseBranch, `origin/${resolvedBaseBranch}`]);
-
-      // create and checkout new branch
-      $("git", ["checkout", "-b", branchName]);
-
-      // push branch to remote (set upstream)
-      $("git", ["push", "-u", "origin", branchName]);
-
-      log.debug(`Successfully created and pushed branch ${branchName}`);
-
-      return {
-        success: true,
-        branchName,
-        baseBranch: resolvedBaseBranch,
-        message: `Branch ${branchName} created from ${resolvedBaseBranch} and pushed to remote`,
-      };
-    }),
-  });
+    return { remoteName, remoteBranch, url };
+  } catch {
+    // @{push} not configured - branch was created locally without checkout_pr
+    // fall back to origin with the same branch name
+    log.debug(`no push tracking for ${branch}, falling back to origin/${branch}`);
+    const url = $("git", ["remote", "get-url", "--push", "origin"], { log: false }).trim();
+    return { remoteName: "origin", remoteBranch: branch, url };
+  }
 }
 
-export const CommitFiles = type({
-  message: type.string.describe("The commit message"),
-  files: type.string
-    .array()
-    .describe(
-      "Array of file paths to commit (relative to repo root). If empty, commits all staged changes."
-    ),
-});
+/**
+ * normalize URL for comparison (handle .git suffix, case)
+ */
+function normalizeUrl(url: string): string {
+  return url.replace(/\.git$/, "").toLowerCase();
+}
 
-export function CommitFilesTool(_ctx: ToolContext) {
-  return tool({
-    name: "commit_files",
-    description:
-      "Stage and commit files with a commit message. If files array is empty, commits all staged changes. The commit will be attributed to the correct bot account.",
-    parameters: CommitFiles,
-    execute: execute(async ({ message, files }) => {
-      // validate commit message for secrets
-      if (containsSecrets(message)) {
-        throw new Error(
-          "Commit blocked: secrets detected in commit message. " +
-            "Please remove any sensitive information (API keys, tokens, passwords) before committing."
-        );
-      }
+type ValidatePushParams = {
+  branch: string;
+  pushUrl: string;
+};
 
-      // validate files for secrets if provided
-      if (files.length > 0) {
-        for (const file of files) {
-          try {
-            // try to read file content - if it exists, check for secrets
-            const content = $("cat", [file], { log: false });
-            if (containsSecrets(content)) {
-              throw new Error(
-                `Commit blocked: secrets detected in file ${file}. ` +
-                  "Please remove any sensitive information (API keys, tokens, passwords) before committing."
-              );
-            }
-          } catch (error) {
-            // if error is about secrets, re-throw it
-            if (error instanceof Error && error.message.includes("Commit blocked")) {
-              throw error;
-            }
-            // if file doesn't exist (cat fails), that's ok - it will be created by git add
-            // other errors are also ok - git add will handle them
-          }
-        }
-      }
+/**
+ * validate that the push destination matches expected URL.
+ * pushUrl is set by setupGit (base repo) and updated by checkout_pr (fork repo).
+ */
+function validatePushDestination(params: ValidatePushParams): PushDestination {
+  const dest = getPushDestination(params.branch);
 
-      const currentBranch = $("git", ["rev-parse", "--abbrev-ref", "HEAD"], { log: false });
-      log.debug(`Committing files on branch ${currentBranch}`);
+  if (normalizeUrl(dest.url) !== normalizeUrl(params.pushUrl)) {
+    throw new Error(
+      `Push blocked: destination does not match expected repository.\n` +
+        `Expected: ${params.pushUrl}\n` +
+        `Actual: ${dest.url}\n` +
+        `Git configuration may have been tampered with.`
+    );
+  }
 
-      // stage files if provided, otherwise stage all changes
-      if (files.length > 0) {
-        $("git", ["add", ...files]);
-      } else {
-        $("git", ["add", "."]);
-      }
-
-      // commit with message
-      $("git", ["commit", "-m", message]);
-
-      const commitSha = $("git", ["rev-parse", "HEAD"], { log: false });
-      log.debug(`Successfully committed: ${commitSha.substring(0, 7)}`);
-
-      return {
-        success: true,
-        commitSha,
-        branch: currentBranch,
-        message: `Committed ${files.length > 0 ? files.length + " file(s)" : "all changes"} with message: ${message}`,
-      };
-    }),
-  });
+  return dest;
 }
 
 export const PushBranch = type({
@@ -143,61 +89,176 @@ export const PushBranch = type({
 
 export function PushBranchTool(ctx: ToolContext) {
   const defaultBranch = ctx.repo.data.default_branch || "main";
+  const pushPermission = ctx.payload.push;
 
   return tool({
     name: "push_branch",
     description:
-      "Push the current branch (or specified branch) to the remote repository. Git automatically determines the correct remote based on branch config (set by checkout_pr for fork PRs). Never force push unless explicitly requested. Pushes to the default branch are blocked.",
+      "Push the current branch (or specified branch) to the remote repository. Git automatically determines the correct remote based on branch config (set by checkout_pr for fork PRs). Never force push unless explicitly requested. Pushes to the default branch are blocked in restricted mode.",
     parameters: PushBranch,
     execute: execute(async ({ branchName, force }) => {
+      // permission check
+      if (pushPermission === "disabled") {
+        throw new Error("Push is disabled. This repository is configured for read-only access.");
+      }
+
       const branch = branchName || $("git", ["rev-parse", "--abbrev-ref", "HEAD"], { log: false });
 
-      // check if branch has a configured pushRemote
-      let remote = "origin";
-      try {
-        remote = $("git", ["config", `branch.${branch}.pushRemote`], { log: false }).trim();
-      } catch {
-        // no configured pushRemote, default to origin
+      // validate push destination matches expected URL
+      const pushUrl = ctx.toolState.pushUrl;
+      if (!pushUrl) {
+        throw new Error("pushUrl not set - setupGit must run before push_branch");
       }
+      const pushDest = validatePushDestination({ branch, pushUrl });
 
-      // check if branch has a configured merge ref (remote branch name may differ from local)
-      let remoteBranch = branch;
-      try {
-        const mergeRef = $("git", ["config", `branch.${branch}.merge`], { log: false }).trim();
-        // merge ref is like "refs/heads/main", extract the branch name
-        remoteBranch = mergeRef.replace("refs/heads/", "");
-      } catch {
-        // no configured merge ref, use local branch name
-      }
-
-      // block pushes to default branch
-      if (remoteBranch === defaultBranch) {
+      // block pushes to default branch in restricted mode
+      if (pushPermission === "restricted" && pushDest.remoteBranch === defaultBranch) {
         throw new Error(
-          `Push blocked: cannot push directly to default branch '${remoteBranch}'. ` +
+          `Push blocked: cannot push directly to default branch '${pushDest.remoteBranch}'. ` +
             `Create a feature branch and open a PR instead.`
         );
       }
 
       // use refspec when local and remote branch names differ
-      const refspec = branch === remoteBranch ? branch : `${branch}:${remoteBranch}`;
-      const args = force
-        ? ["push", "--force", "-u", remote, refspec]
-        : ["push", "-u", remote, refspec];
+      const refspec =
+        branch === pushDest.remoteBranch ? branch : `${branch}:${pushDest.remoteBranch}`;
+      const pushArgs = force
+        ? ["--force", "-u", pushDest.remoteName, refspec]
+        : ["-u", pushDest.remoteName, refspec];
 
-      log.debug(`pushing ${branch} to ${remote}/${remoteBranch}`);
+      log.debug(`pushing ${branch} to ${pushDest.remoteName}/${pushDest.remoteBranch}`);
       if (force) {
         log.warning(`force pushing - this will overwrite remote history`);
       }
-      $("git", args);
+      $git("push", pushArgs, {
+        token: ctx.gitToken,
+        restricted: ctx.payload.bash === "restricted",
+      });
 
       return {
         success: true,
         branch,
-        remoteBranch,
-        remote,
+        remoteBranch: pushDest.remoteBranch,
+        remote: pushDest.remoteName,
         force,
-        message: `successfully pushed ${branch} to ${remote}/${remoteBranch}`,
+        message: `successfully pushed ${branch} to ${pushDest.remoteName}/${pushDest.remoteBranch}`,
       };
+    }),
+  });
+}
+
+// commands that require authentication - redirect to dedicated tools
+const AUTH_REQUIRED_REDIRECT: Record<string, string> = {
+  push: "Use push_branch tool instead.",
+  fetch: "Use git_fetch tool instead.",
+  pull: "Use git_fetch + git merge instead.",
+  clone: "Repository already cloned. Use checkout_pr for PR branches.",
+};
+
+const Git = type({
+  subcommand: type.string.describe("Git subcommand (e.g., 'status', 'log', 'diff')"),
+  args: type.string.array().describe("Additional arguments for the git command").optional(),
+});
+
+export function GitTool(_ctx: ToolContext) {
+  return tool({
+    name: "git",
+    description:
+      "Run git commands. For push/fetch/pull, use the dedicated MCP tools instead (push_branch, git_fetch).",
+    parameters: Git,
+    execute: execute(async (params) => {
+      const subcommand = params.subcommand;
+      const args = params.args ?? [];
+
+      const redirect = AUTH_REQUIRED_REDIRECT[subcommand];
+      if (redirect) {
+        throw new Error(`git ${subcommand} requires authentication. ${redirect}`);
+      }
+
+      const output = $("git", [subcommand, ...args]);
+      return { success: true, output };
+    }),
+  });
+}
+
+const GitFetch = type({
+  ref: type.string.describe("Ref to fetch: branch name, tag, or 'pull/N/head' for PRs"),
+  depth: type.number.describe("Fetch depth (for shallow clones)").optional(),
+});
+
+export function GitFetchTool(ctx: ToolContext) {
+  return tool({
+    name: "git_fetch",
+    description: "Fetch refs from remote repository. Use this instead of git fetch directly.",
+    parameters: GitFetch,
+    execute: execute(async (params) => {
+      const fetchArgs = ["--no-tags", "origin", params.ref];
+      if (params.depth !== undefined) {
+        fetchArgs.push(`--depth=${params.depth}`);
+      }
+      $git("fetch", fetchArgs, {
+        token: ctx.gitToken,
+        restricted: ctx.payload.bash === "restricted",
+      });
+      return { success: true, ref: params.ref };
+    }),
+  });
+}
+
+const DeleteBranch = type({
+  branchName: type.string.describe("Remote branch to delete"),
+});
+
+export function DeleteBranchTool(ctx: ToolContext) {
+  const pushPermission = ctx.payload.push;
+
+  return tool({
+    name: "delete_branch",
+    description: "Delete a remote branch. Requires push: enabled permission.",
+    parameters: DeleteBranch,
+    execute: execute(async (params) => {
+      if (pushPermission !== "enabled") {
+        throw new Error(
+          "Branch deletion requires push: enabled permission. " +
+            "Current mode only allows pushing to non-protected branches."
+        );
+      }
+
+      $git("push", ["origin", "--delete", params.branchName], {
+        token: ctx.gitToken,
+        restricted: ctx.payload.bash === "restricted",
+      });
+      return { success: true, deleted: params.branchName };
+    }),
+  });
+}
+
+const PushTags = type({
+  tag: type.string.describe("Tag name to push"),
+  force: type.boolean.describe("Force push the tag").default(false),
+});
+
+export function PushTagsTool(ctx: ToolContext) {
+  const pushPermission = ctx.payload.push;
+
+  return tool({
+    name: "push_tags",
+    description: "Push a tag to remote. Requires push: enabled permission.",
+    parameters: PushTags,
+    execute: execute(async (params) => {
+      if (pushPermission !== "enabled") {
+        throw new Error(
+          "Tag pushing requires push: enabled permission. " +
+            "Current mode only allows pushing branches."
+        );
+      }
+
+      const pushArgs = [...(params.force ? ["-f"] : []), "origin", `refs/tags/${params.tag}`];
+      $git("push", pushArgs, {
+        token: ctx.gitToken,
+        restricted: ctx.payload.bash === "restricted",
+      });
+      return { success: true, tag: params.tag };
     }),
   });
 }

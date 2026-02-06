@@ -1,4 +1,4 @@
-export const DEFAULT_ACTIVITY_TIMEOUT_MS = 30_000;
+export const DEFAULT_ACTIVITY_TIMEOUT_MS = 60_000;
 export const DEFAULT_ACTIVITY_CHECK_INTERVAL_MS = 5_000;
 
 type ActivityTimeoutContext = {

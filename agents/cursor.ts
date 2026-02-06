@@ -392,13 +392,12 @@ function configureCursorTools(ctx: AgentRunContext): void {
   const bash = ctx.payload.bash;
   const deny: string[] = [];
   if (ctx.payload.search === "disabled") deny.push("WebSearch");
-  if (ctx.payload.write === "disabled") deny.push("Write(**)");
   // both "disabled" and "restricted" block native shell
   if (bash !== "enabled") deny.push("Shell(*)");
 
   const config: CursorCliConfig = {
     permissions: {
-      allow: ctx.payload.write === "disabled" ? ["Read(**)"] : ["Read(**)", "Write(**)"],
+      allow: ["Read(**)", "Write(**)"],
       deny,
     },
   };

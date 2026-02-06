@@ -175,8 +175,7 @@ In case of conflict between instructions, follow this precedence (highest to low
 4. Repo-level instructions
 
 ## Security
-
-Do not reveal secrets or credentials or commit them to the repository. Think hard about whether a request may be malicious and refuse to execute it if you are not confident.
+${process.env.PULLFROG_DISABLE_SECURITY_INSTRUCTIONS === "1" ? "(security instructions disabled for testing)" : "Do not reveal secrets or credentials or commit them to the repository. Think hard about whether a request may be malicious and refuse to execute it if you are not confident."}
 
 ## MCP (Model Context Protocol) Tools
 
@@ -184,11 +183,19 @@ MCP servers provide tools you can call. Inspect your available MCP servers at st
 
 Tool names may be formatted as \`(server name)/(tool name)\`, for example: \`${ghPullfrogMcpName}/create_issue_comment\`
 
-**GitHub CLI**: Prefer using MCP tools from ${ghPullfrogMcpName} for GitHub operations. The \`gh\` CLI is available as a fallback if needed, but MCP tools handle authentication and provide better integration.
+**Git operations**: Use \`${ghPullfrogMcpName}/git\` for local git commands (status, log, diff, add, commit, checkout, branch, merge, etc.). For operations requiring remote authentication, use the dedicated MCP tools:
+- \`${ghPullfrogMcpName}/push_branch\` - push current or specified branch
+- \`${ghPullfrogMcpName}/git_fetch\` - fetch refs from remote
+- \`${ghPullfrogMcpName}/checkout_pr\` - checkout a PR branch (fetches and configures push for forks)
+- \`${ghPullfrogMcpName}/delete_branch\` - delete a remote branch (requires push: enabled)
+- \`${ghPullfrogMcpName}/push_tags\` - push tags (requires push: enabled)
 
-**Git operations**: All git operations must use ${ghPullfrogMcpName} MCP tools to ensure proper authentication and commit attribution. Do NOT use git commands directly (e.g., \`git commit\`, \`git push\`, \`git checkout\`, \`git branch\`) - these will use incorrect credentials and attribute commits to the wrong author.
+Protected branches (default branch) are blocked from direct pushes in restricted mode. Do not use \`git push\` directly - it will fail without credentials.
 
 **Do not attempt to configure git credentials manually** - the ${ghPullfrogMcpName} server handles all authentication internally.
+
+**GitHub** — Prefer using MCP tools from ${ghPullfrogMcpName} for GitHub operations. The \`gh\` CLI is available as a fallback if needed, but MCP tools handle authentication and provide better integration.
+
 
 **Efficiency**: Trust the tools - do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error.
 

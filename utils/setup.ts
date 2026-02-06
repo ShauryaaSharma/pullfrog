@@ -2,12 +2,12 @@ import { execSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BashPermission, PayloadEvent } from "../external.ts";
+import type { PayloadEvent } from "../external.ts";
 import { checkoutPrBranch } from "../mcp/checkout.ts";
 import type { ToolState } from "../mcp/server.ts";
 import { log } from "./cli.ts";
-import { isInsideDocker } from "./globals.ts";
 import type { OctokitWithPlugins } from "./github.ts";
+import { isInsideDocker } from "./globals.ts";
 import { $ } from "./shell.ts";
 
 export interface SetupOptions {
@@ -46,26 +46,24 @@ export function setupTestRepo(options: SetupOptions): void {
 }
 
 interface SetupGitParams {
-  token: string;
-  githubJobToken: string | undefined;
-  bashPermission: BashPermission;
+  gitToken: string;
   owner: string;
   name: string;
   event: PayloadEvent;
   octokit: OctokitWithPlugins;
   toolState: ToolState;
+  // restricted bash mode: disables git hooks to prevent token exfiltration
+  restricted: boolean;
 }
 
 /**
- * Setup git configuration and authentication for the repository.
- * - Configures git identity (user.email, user.name)
- * - Sets up authentication via token
- * - For PR events, checks out the PR branch using shared helper
+ * setup git configuration and authentication for the repository.
+ * - configures git identity (user.email, user.name)
+ * - sets up authentication via gitToken (minimal contents:write)
+ * - for PR events, checks out the PR branch using shared helper
  *
- * FORK PR ARCHITECTURE:
- * - origin: always points to BASE REPO (where PR targets)
- * - checkoutPrBranch sets per-branch pushRemote config for fork PRs
- * - checkout_pr returns the PR diff via GitHub API (authoritative source)
+ * gitToken is a minimal-permission token (contents:write only) used for git operations.
+ * it is assumed to be potentially exfiltratable, so it has limited scope.
  */
 export async function setupGit(params: SetupGitParams): Promise<void> {
   const repoDir = process.cwd();
@@ -102,14 +100,13 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
       log.debug(`» git user already configured (${currentEmail}), skipping`);
     }
 
-    // disable credential helper to prevent macOS keychain prompts when using x-access-token
-    // only needed locally - GitHub Actions doesn't have this issue
-    if (!process.env.GITHUB_ACTIONS) {
-      execSync('git config --local credential.helper ""', {
-        cwd: repoDir,
-        stdio: "pipe",
-      });
-    }
+    // disable git hooks for predictability - prevents pre-commit hooks
+    // from blocking commits or causing unexpected side effects
+    execSync("git config --local core.hooksPath /dev/null", {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    log.debug("» git hooks disabled");
   } catch (error) {
     // If git config fails, log warning but don't fail the action
     // This can happen if we're not in a git repo or git isn't available
@@ -132,41 +129,35 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
     log.debug("» no existing authentication headers to remove");
   }
 
-  // choose token for origin based on bash permission:
-  // - enabled: installation token (full access)
-  // - restricted/disabled: workflow token (limited by permissions block)
-  // this protects the base repo while allowing fork PR edits via fork remote
-  const originToken =
-    params.bashPermission === "enabled"
-      ? params.token
-      : // in GitHub Actions environment this less-capable job token should always be available in the action's input
-        // but in other environments there is no secondary token like this so we just use the installation token itself
-        params.githubJobToken || params.token;
+  // SECURITY: set origin URL without token - auth is injected via GIT_CONFIG_PARAMETERS
+  // in $git() calls. this prevents token leakage to git hooks and subprocesses.
+  const originUrl = `https://github.com/${params.owner}/${params.name}.git`;
+  $("git", ["remote", "set-url", "origin", originUrl], { cwd: repoDir });
 
-  // non-PR events: set up origin with token, stay on default branch
+  // initialize pushUrl to base repo - may be updated by checkout_pr for fork PRs
+  params.toolState.pushUrl = originUrl;
+
+  // disable credential helpers to prevent prompts and ensure clean auth state
+  $("git", ["config", "--local", "credential.helper", ""], { cwd: repoDir });
+
+  // non-PR events: stay on default branch
   if (params.event.is_pr !== true || !params.event.issue_number) {
-    const originUrl = `https://x-access-token:${originToken}@github.com/${params.owner}/${params.name}.git`;
-    $("git", ["remote", "set-url", "origin", originUrl], { cwd: repoDir });
-    log.info("» updated origin URL with authentication token");
+    log.info("» git authentication configured");
     return;
   }
 
   // PR event: checkout PR branch using shared helper
   const prNumber = params.event.issue_number;
 
-  // ensure origin is configured with auth token before checkout
-  const originUrl = `https://x-access-token:${originToken}@github.com/${params.owner}/${params.name}.git`;
-  $("git", ["remote", "set-url", "origin", originUrl], { cwd: repoDir });
-
   // use shared checkout helper (handles fork remotes, push config, etc.)
-  const prContext = await checkoutPrBranch({
+  // this updates toolState.pushUrl for fork PRs and sets toolState.issueNumber
+  await checkoutPrBranch({
     octokit: params.octokit,
     owner: params.owner,
     name: params.name,
-    token: params.token,
+    gitToken: params.gitToken,
     pullNumber: prNumber,
+    toolState: params.toolState,
+    restricted: params.restricted,
   });
-
-  // set prNumber on toolState (the only mutation)
-  params.toolState.prNumber = prContext.prNumber;
 }

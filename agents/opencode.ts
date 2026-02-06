@@ -191,7 +191,7 @@ function configureOpenCode(ctx: AgentRunContext): void {
   // note: OpenCode has no built-in web search tool
   const bash = ctx.payload.bash;
   const permission = {
-    edit: ctx.payload.write === "disabled" ? "deny" : "allow",
+    edit: "allow",
     bash: bash !== "enabled" ? "deny" : "allow",
     webfetch: ctx.payload.web === "disabled" ? "deny" : "allow",
     doom_loop: "allow",

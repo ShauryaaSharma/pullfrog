@@ -47,7 +47,20 @@ export type AgentUuids<T extends string> = {
   agentEnv: Map<string, Record<string, string>>;
 };
 
-// create unique per-agent markers for env vars (useful for detecting if agent executed something)
+// simple marker for single-agent or agnostic tests (same value for all agents)
+export function generateTestMarker(envVarName: string): {
+  value: string;
+  agentEnv: Map<string, Record<string, string>>;
+} {
+  const value = randomUUID();
+  const agentEnv = new Map<string, Record<string, string>>();
+  for (const agent of agents) {
+    agentEnv.set(agent, { [envVarName]: value });
+  }
+  return { value, agentEnv };
+}
+
+// create unique per-agent markers for env vars (useful for cross-agent tests)
 export function generateAgentUuids<T extends string>(envVarNames: T[]): AgentUuids<T> {
   // generate unique markers: envVar -> agent -> marker
   const markers = new Map<T, Map<string, string>>();
@@ -139,6 +152,10 @@ export type RunStreamingOptions = {
   agent: string;
   fixture: Inputs;
   env?: Record<string, string> | undefined;
+  // env vars to write to $HOME/.pullfrog-env/ files (for MCP servers that
+  // don't inherit parent env vars, e.g. Cursor repo-level MCP servers).
+  // only these get written to disk -- never write secrets here.
+  fileEnv?: Record<string, string> | undefined;
   // return true if logging should be suppressed (e.g. Ctrl+C)
   isCanceled?: () => boolean;
 };
@@ -169,13 +186,13 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
     const testHome = `/tmp/home-${mcpPort}-${Date.now()}`;
     mkdirSync(testHome, { recursive: true });
 
-    // write env vars to files for MCP servers that don't inherit parent env vars
-    // (e.g., Cursor CLI doesn't pass env vars to repo-level MCP servers)
-    // uses testHome path which is unique per test and set as HOME
-    if (options.env) {
+    // write file-based env vars for MCP servers that don't inherit parent env vars
+    // (e.g., Cursor CLI doesn't pass env vars to repo-level MCP servers).
+    // only explicitly opted-in vars go here -- never secrets.
+    if (options.fileEnv) {
       const envDir = join(testHome, ".pullfrog-env");
       mkdirSync(envDir, { recursive: true });
-      const entries = Object.entries(options.env);
+      const entries = Object.entries(options.fileEnv);
       for (const entry of entries) {
         writeFileSync(join(envDir, entry[0]), entry[1]);
       }
@@ -279,6 +296,9 @@ export interface TestRunnerOptions {
   env?: Record<string, string>;
   // per-agent env vars (for unique markers)
   agentEnv?: Map<string, Record<string, string>>;
+  // per-agent env vars to write to $HOME/.pullfrog-env/ files (for MCP servers
+  // that don't inherit parent env vars). only non-sensitive values.
+  fileAgentEnv?: Map<string, Record<string, string>>;
   // specific agents to run this test on (defaults to all agents)
   agents?: string[];
   // if true, test passes when agent fails AND validation checks pass

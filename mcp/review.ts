@@ -59,8 +59,8 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       `{ path: 'src/api.ts', start_line: 42, line: 44, suggestion: '    const result = await fetch(url);\\n    if (!result.ok) {\\n      log.error(result.status);\\n      throw new Error("request failed");\\n    }' }`,
     parameters: CreatePullRequestReview,
     execute: execute(async ({ pull_number, body, commit_id, comments = [] }) => {
-      // set PR context
-      ctx.toolState.prNumber = pull_number;
+      // set issue context (PRs are issues)
+      ctx.toolState.issueNumber = pull_number;
 
       // compose the request
       const params: RestEndpointMethodTypes["pulls"]["createReview"]["parameters"] = {
@@ -281,8 +281,8 @@ export function StartReviewTool(ctx: ToolContext) {
         }
       }
 
-      // set PR context and review state
-      ctx.toolState.prNumber = pull_number;
+      // set issue context (PRs are issues) and review state
+      ctx.toolState.issueNumber = pull_number;
       ctx.toolState.review = {
         nodeId: reviewNodeId,
         id: reviewId,
@@ -400,19 +400,19 @@ export function SubmitReviewTool(ctx: ToolContext) {
       if (!ctx.toolState.review) {
         throw new Error("No review session started. Call start_review first.");
       }
-      if (ctx.toolState.prNumber === undefined) {
+      if (ctx.toolState.issueNumber === undefined) {
         throw new Error("No PR context. Call checkout_pr or start_review first.");
       }
 
       const reviewId = ctx.toolState.review.id;
       log.debug(
-        `submitting review: id=${reviewId}, nodeId=${ctx.toolState.review.nodeId}, prNumber=${ctx.toolState.prNumber}`
+        `submitting review: id=${reviewId}, nodeId=${ctx.toolState.review.nodeId}, issueNumber=${ctx.toolState.issueNumber}`
       );
 
       // build quick links footer
       const apiUrl = process.env.API_URL || "https://pullfrog.com";
-      const fixAllUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${ctx.toolState.prNumber}?action=fix&review_id=${reviewId}`;
-      const fixApprovedUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${ctx.toolState.prNumber}?action=fix-approved&review_id=${reviewId}`;
+      const fixAllUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${ctx.toolState.issueNumber}?action=fix&review_id=${reviewId}`;
+      const fixApprovedUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${ctx.toolState.issueNumber}?action=fix-approved&review_id=${reviewId}`;
 
       const footer = buildPullfrogFooter({
         workflowRun: { owner: ctx.repo.owner, repo: ctx.repo.name, runId: ctx.runId, jobId: ctx.jobId },
@@ -425,7 +425,7 @@ export function SubmitReviewTool(ctx: ToolContext) {
       const result = await ctx.octokit.rest.pulls.submitReview({
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
-        pull_number: ctx.toolState.prNumber,
+        pull_number: ctx.toolState.issueNumber,
         review_id: reviewId,
         event: "COMMENT",
         body: bodyWithFooter,

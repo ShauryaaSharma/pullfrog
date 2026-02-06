@@ -74,6 +74,7 @@ export const tests: Record<string, TestRunnerOptions> = {
     agents: ["claude", "cursor", "gemini", "opencode"],
     env: sharedEnv,
     agentEnv: fullTestUuids.agentEnv,
+    fileAgentEnv: fullTestUuids.agentEnv,
   },
   "mcpmerge-pullfrog-only": {
     name: "mcpmerge-pullfrog-only",

@@ -90,9 +90,9 @@ export const codex = agent({
       log.info(`» using modelReasoningEffort: ${effortConfig.reasoningEffort}`);
     }
 
-    // determine sandbox mode based on write permission
-    // write: "disabled" → read-only sandbox, otherwise full access for git ops
-    const sandboxMode = ctx.payload.write === "disabled" ? "read-only" : "danger-full-access";
+    // determine sandbox mode based on push permission
+    // push: "disabled" → read-only sandbox, otherwise full access for git ops
+    const sandboxMode = ctx.payload.push === "disabled" ? "read-only" : "danger-full-access";
 
     // determine network and search permissions
     // web: "disabled" → no network access, otherwise enabled

@@ -1,10 +1,11 @@
-// changes to bash security (filterEnv, spawnBash) should be reflected in wiki/bash-sandbox.md, wiki/security.md, wiki/landlock.md, and docs/security.mdx
-import { type ChildProcess, type StdioOptions, spawn } from "node:child_process";
+// changes to bash security (filterEnv, spawnBash) should be reflected in wiki/security.md and docs/security.mdx
+import { type ChildProcess, type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type } from "arktype";
 import { log } from "../utils/log.ts";
+import { resolveEnv } from "../utils/secrets.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -16,39 +17,115 @@ export const BashParams = type({
   "background?": "boolean",
 });
 
-// patterns for sensitive env vars
-const SENSITIVE_PATTERNS = [/_KEY$/i, /_SECRET$/i, /_TOKEN$/i, /_PASSWORD$/i, /_CREDENTIAL$/i];
-
-function isSensitive(key: string): boolean {
-  return SENSITIVE_PATTERNS.some((p) => p.test(key));
-}
-
-/** filter env vars, removing sensitive values */
-function filterEnv(): Record<string, string> {
-  const filtered: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined) continue;
-    if (isSensitive(key)) continue;
-    filtered[key] = value;
-  }
-  return filtered;
-}
-
 type SpawnParams = {
   command: string;
-  env: Record<string, string>;
+  env: Record<string, string | undefined>;
   cwd: string;
   stdio: StdioOptions;
 };
 
+export type SandboxMethod = "unshare" | "sudo-unshare" | "none";
+
+/** cached result of sandbox capability check */
+let detectedSandboxMethod: SandboxMethod | undefined;
+
+/** get the current sandbox method (for testing/diagnostics) */
+export function getSandboxMethod(): SandboxMethod {
+  return detectSandboxMethod();
+}
+
+/** detect which sandbox method is available on this system */
+function detectSandboxMethod(): SandboxMethod {
+  if (detectedSandboxMethod !== undefined) {
+    return detectedSandboxMethod;
+  }
+
+  // only attempt in CI environments - sandbox has overhead and is primarily for untrusted code
+  if (process.env.CI !== "true") {
+    detectedSandboxMethod = "none";
+    log.debug("sandbox disabled (CI !== true)");
+    return "none";
+  }
+
+  // try unprivileged unshare first (works on some systems)
+  try {
+    const result = spawnSync("unshare", ["--pid", "--fork", "--mount-proc", "true"], {
+      timeout: 5000,
+      stdio: "ignore",
+    });
+    if (result.status === 0) {
+      detectedSandboxMethod = "unshare";
+      log.info("PID namespace isolation enabled (unprivileged unshare)");
+      return "unshare";
+    }
+  } catch {
+    // continue to try sudo
+  }
+
+  // try sudo unshare (works on GHA runners)
+  try {
+    const result = spawnSync("sudo", ["unshare", "--pid", "--fork", "--mount-proc", "true"], {
+      timeout: 5000,
+      stdio: "ignore",
+    });
+    if (result.status === 0) {
+      detectedSandboxMethod = "sudo-unshare";
+      log.info("PID namespace isolation enabled (sudo unshare)");
+      return "sudo-unshare";
+    }
+  } catch {
+    // no sandbox available
+  }
+
+  detectedSandboxMethod = "none";
+  log.warning("PID namespace isolation not available - falling back to env filtering only");
+  return "none";
+}
+
 function spawnBash(params: SpawnParams): ChildProcess {
   const spawnOpts = { env: params.env, cwd: params.cwd, stdio: params.stdio, detached: true };
-  // ---- temporarily disable namespace isolation to fix CI ----
-  // use PID namespace isolation in CI to prevent reading /proc/$PPID/environ
-  // const useNamespaceIsolation = process.env.CI === "true";
-  // return useNamespaceIsolation
-  //   ? spawn("unshare", ["--pid", "--fork", "--mount-proc", "bash", "-c", params.command], spawnOpts)
-  //   : spawn("bash", ["-c", params.command], spawnOpts);
+  const sandboxMethod = detectSandboxMethod();
+
+  if (sandboxMethod === "unshare") {
+    // use PID namespace isolation to prevent reading /proc/$PPID/environ
+    // this creates a new PID namespace where:
+    // 1. the subprocess becomes PID 1 in its namespace
+    // 2. parent PIDs are not visible (PPID = 0)
+    // 3. fresh /proc is mounted showing only sandbox PIDs
+    // combined with resolveEnv("restricted"), this prevents all /proc-based secret theft
+    return spawn(
+      "unshare",
+      ["--pid", "--fork", "--mount-proc", "bash", "-c", params.command],
+      spawnOpts
+    );
+  }
+
+  if (sandboxMethod === "sudo-unshare") {
+    // on GHA runners, unprivileged namespaces are blocked but sudo works
+    // pass filtered env via sudo env command since sudo clears environment
+    const envArgs: string[] = [];
+    for (const [k, v] of Object.entries(params.env)) {
+      if (v !== undefined) {
+        envArgs.push(`${k}=${v}`);
+      }
+    }
+    return spawn(
+      "sudo",
+      [
+        "env",
+        ...envArgs,
+        "unshare",
+        "--pid",
+        "--fork",
+        "--mount-proc",
+        "bash",
+        "-c",
+        params.command,
+      ],
+      { ...spawnOpts, env: {} } // empty env since we pass via sudo env
+    );
+  }
+
   return spawn("bash", ["-c", params.command], spawnOpts);
 }
 
@@ -88,9 +165,9 @@ Use this tool to:
 - Perform git operations`,
     parameters: BashParams,
     execute: execute(async (params) => {
-      const timeout = Math.min(params.timeout ?? 120000, 600000);
+      const timeout = Math.min(params.timeout ?? 30000, 120000);
       const cwd = params.working_directory ?? process.cwd();
-      const env = filterEnv();
+      const env = resolveEnv(ctx.payload.bash === "enabled" ? "inherit" : "restricted");
 
       if (params.background) {
         const tempDir = getTempDir();

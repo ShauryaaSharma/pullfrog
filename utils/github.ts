@@ -53,33 +53,72 @@ function isOIDCAvailable(): boolean {
   );
 }
 
-async function acquireTokenViaOIDC(opts?: { repos?: string[] }): Promise<string> {
-  log.info("» generating OIDC token...");
+// github installation token permission levels
+type ReadWrite = "read" | "write";
+type WriteOnly = "write";
+type ReadOnly = "read";
 
+// permission names use underscores (API format)
+type InstallationTokenPermissions = {
+  actions?: ReadWrite;
+  artifact_metadata?: ReadWrite;
+  attestations?: ReadWrite;
+  checks?: ReadWrite;
+  contents?: ReadWrite;
+  deployments?: ReadWrite;
+  id_token?: WriteOnly;
+  issues?: ReadWrite;
+  models?: ReadOnly;
+  discussions?: ReadWrite;
+  packages?: ReadWrite;
+  pages?: ReadWrite;
+  pull_requests?: ReadWrite;
+  security_events?: ReadWrite;
+  statuses?: ReadWrite;
+};
+
+type AcquireTokenOptions = {
+  repos?: string[];
+  permissions?: InstallationTokenPermissions;
+};
+
+async function acquireTokenViaOIDC(opts?: AcquireTokenOptions): Promise<string> {
   const oidcToken = await core.getIDToken("pullfrog-api");
 
   const apiUrl = process.env.API_URL || "https://pullfrog.com";
   const params = new URLSearchParams();
-  if (opts?.repos?.length) {
-    params.set("repos", opts.repos.join(","));
+
+  // ensure the token covers GITHUB_REPOSITORY (may differ from OIDC claims repo)
+  const repos = [...(opts?.repos ?? [])];
+  const targetRepo = process.env.GITHUB_REPOSITORY?.split("/")[1];
+  if (targetRepo) {
+    repos.push(targetRepo);
+  }
+  if (repos.length) {
+    params.set("repos", repos.join(","));
   }
   const queryString = params.toString() ? `?${params.toString()}` : "";
-
-  log.info("» exchanging OIDC token for installation token...");
 
   const timeoutMs = 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const tokenResponse = await fetch(`${apiUrl}/api/github/installation-token${queryString}`, {
+    const fetchOptions: RequestInit = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
         "Content-Type": "application/json",
       },
       signal: controller.signal,
-    });
+    };
+    if (opts?.permissions) {
+      fetchOptions.body = JSON.stringify({ permissions: opts.permissions });
+    }
+    const tokenResponse = await fetch(
+      `${apiUrl}/api/github/installation-token${queryString}`,
+      fetchOptions
+    );
 
     clearTimeout(timeoutId);
 
@@ -88,12 +127,6 @@ async function acquireTokenViaOIDC(opts?: { repos?: string[] }): Promise<string>
     }
 
     const tokenData = (await tokenResponse.json()) as InstallationToken;
-    const owner = tokenData.repository?.split("/")[0];
-    const repoList = opts?.repos?.length
-      ? [tokenData.repository, ...opts.repos.map((r) => `${owner}/${r}`)].join(", ")
-      : tokenData.repository;
-    log.info(`» installation token obtained for ${repoList}`);
-
     return tokenData.token;
   } catch (error) {
     clearTimeout(timeoutId);
@@ -191,13 +224,21 @@ const checkRepositoryAccess = async (
   }
 };
 
-const createInstallationToken = async (jwt: string, installationId: number): Promise<string> => {
+const createInstallationToken = async (
+  jwt: string,
+  installationId: number,
+  permissions?: InstallationTokenPermissions
+): Promise<string> => {
+  const requestOpts: { method: string; headers: Record<string, string>; body?: string } = {
+    method: "POST",
+    headers: { Authorization: `Bearer ${jwt}` },
+  };
+  if (permissions) {
+    requestOpts.body = JSON.stringify({ permissions });
+  }
   const response = await githubRequest<InstallationTokenResponse>(
     `/app/installations/${installationId}/access_tokens`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jwt}` },
-    }
+    requestOpts
   );
 
   return response.token;
@@ -230,7 +271,7 @@ const findInstallationId = async (
 };
 
 // for local development only
-async function acquireTokenViaGitHubApp(): Promise<string> {
+async function acquireTokenViaGitHubApp(opts?: AcquireTokenOptions): Promise<string> {
   const repoContext = parseRepoContext();
 
   const config: GitHubAppConfig = {
@@ -242,16 +283,15 @@ async function acquireTokenViaGitHubApp(): Promise<string> {
 
   const jwt = generateJWT(config.appId, config.privateKey);
   const installationId = await findInstallationId(jwt, config.repoOwner, config.repoName);
-  const token = await createInstallationToken(jwt, installationId);
-
-  return token;
+  return await createInstallationToken(jwt, installationId, opts?.permissions);
 }
 
-export async function acquireNewToken(opts?: { repos?: string[] }): Promise<string> {
+export async function acquireNewToken(opts?: AcquireTokenOptions): Promise<string> {
   if (isOIDCAvailable()) {
     return await retry(() => acquireTokenViaOIDC(opts), { label: "token exchange" });
   } else {
-    return await acquireTokenViaGitHubApp();
+    // local development via GitHub App
+    return await acquireTokenViaGitHubApp(opts);
   }
 }
 

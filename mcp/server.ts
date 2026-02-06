@@ -1,7 +1,7 @@
 import "./arkConfig.ts";
+import { createServer } from "node:net";
 // this must be imported first
 import { FastMCP, type Tool } from "fastmcp";
-import { createServer } from "node:net";
 import type { Agent } from "../agents/index.ts";
 import { ghPullfrogMcpName } from "../external.ts";
 import type { Mode } from "../modes.ts";
@@ -16,7 +16,10 @@ export type BackgroundProcess = {
 };
 
 export interface ToolState {
-  prNumber?: number;
+  // where we're allowed to push - base repo initially, fork URL for fork PRs
+  // set by setupGit, updated by checkout_pr. always set before push validation.
+  pushUrl?: string;
+  // issue or PR number (same number space in GitHub)
   issueNumber?: number;
   selectedMode?: string;
   backgroundProcesses: Map<string, BackgroundProcess>;
@@ -60,6 +63,7 @@ export interface ToolContext {
   payload: ResolvedPayload;
   octokit: OctokitWithPlugins;
   githubInstallationToken: string;
+  gitToken: string;
   apiToken: string;
   agent: Agent;
   modes: Mode[];
@@ -84,7 +88,7 @@ import {
   AwaitDependencyInstallationTool,
   StartDependencyInstallationTool,
 } from "./dependencies.ts";
-import { CommitFilesTool, CreateBranchTool, PushBranchTool } from "./git.ts";
+import { DeleteBranchTool, GitFetchTool, GitTool, PushBranchTool, PushTagsTool } from "./git.ts";
 import { IssueTool } from "./issue.ts";
 import { GetIssueCommentsTool } from "./issueComments.ts";
 import { GetIssueEventsTool } from "./issueEvents.ts";
@@ -156,9 +160,11 @@ function buildTools(ctx: ToolContext): Tool<any, any>[] {
     ListPullRequestReviewsTool(ctx),
     GetCheckSuiteLogsTool(ctx),
     AddLabelsTool(ctx),
-    CreateBranchTool(ctx),
-    CommitFilesTool(ctx),
     PushBranchTool(ctx),
+    GitTool(ctx),
+    GitFetchTool(ctx),
+    DeleteBranchTool(ctx),
+    PushTagsTool(ctx),
     UploadFileTool(ctx),
     SetOutputTool(ctx),
   ];

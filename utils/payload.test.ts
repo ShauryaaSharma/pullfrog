@@ -14,9 +14,9 @@ describe("Inputs schema", () => {
     ["search", "enabled"],
     ["search", "disabled"],
     ["search", undefined],
-    ["write", "enabled"],
-    ["write", "disabled"],
-    ["write", undefined],
+    ["push", "enabled"],
+    ["push", "disabled"],
+    ["push", undefined],
     ["bash", "enabled"],
     ["bash", "restricted"],
     ["bash", "disabled"],
@@ -39,7 +39,7 @@ describe("Inputs schema", () => {
     expect(() => Inputs.assert(input)).not.toThrow();
   });
 
-  it.each([["web"], ["search"], ["write"], ["bash"], ["effort"], ["agent"]] as const)(
+  it.each([["web"], ["search"], ["push"], ["bash"], ["effort"], ["agent"]] as const)(
     "should reject invalid %s values",
     (prop) => {
       const input = { prompt: "test", [prop]: "invalid" as any };

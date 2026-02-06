@@ -100,8 +100,15 @@ export function buildSshSetup(ctx: DockerRunContext): SshSetup {
   return buildLinuxSshSetup(ctx);
 }
 
-// allowlist of env vars to pass through to the container for test isolation
+// allowlist of env vars to pass through to the container for `pnpm runtest`.
+// NOTE: `pnpm play` uses "passthrough" mode and passes ALL env vars.
+// if your env var isn't working with `pnpm runtest`, add it here!
+// see wiki/adversarial.md for documentation.
 const testEnvAllowList = new Set([
+  "CI",
+  "GITHUB_ACTIONS",
+  "PULLFROG_DISABLE_SECURITY_INSTRUCTIONS", // disables security messaging for pentest
+  "AGENT_OVERRIDE", // override agent selection for testing
   "GITHUB_TOKEN",
   "GH_TOKEN",
   "GITHUB_REPOSITORY",
@@ -163,13 +170,20 @@ export function initializeNodeModulesVolume(ctx: VolumeInitContext): void {
   );
 }
 
+/**
+ * escape a string for embedding in a double-quoted shell context.
+ * handles: backslash, double quote, dollar sign, backtick.
+ */
+function escapeForDoubleQuotes(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`");
+}
+
 export function buildDockerRunArgs(config: DockerRunArgsContext): string[] {
   const args: string[] = [
     "run",
     "--rm",
     "-t",
-    "--user",
-    `${config.ctx.uid}:${config.ctx.gid}`,
+    "--privileged", // needed for PID namespace isolation (unshare --pid)
     "-v",
     `${config.ctx.actionDir}:/app/action:cached`,
     "-v",
@@ -179,6 +193,27 @@ export function buildDockerRunArgs(config: DockerRunArgsContext): string[] {
   ];
   args.push(...config.envFlags);
   args.push(...config.sshSetup.sshFlags);
+
+  // escape nodeCmd for embedding in su -c "..." context
+  const escapedNodeCmd = escapeForDoubleQuotes(config.nodeCmd);
+
+  // run as root initially, setup sudo for a test user, then run tests as that user
+  // this simulates GHA environment where sudo is available
+  const setupCmd = [
+    // install sudo (node:24 is Debian-based) - check if already installed first
+    `which sudo > /dev/null 2>&1 || (apt-get update -qq && apt-get install -qq -y sudo > /dev/null 2>&1)`,
+    // create user matching host uid/gid for file permissions
+    `id testuser > /dev/null 2>&1 || (groupadd -g ${config.ctx.gid} testuser 2>/dev/null || true; useradd -u ${config.ctx.uid} -g ${config.ctx.gid} -m -s /bin/bash testuser 2>/dev/null || true)`,
+    // configure passwordless sudo (like GHA runners) - check if already configured
+    `grep -q "testuser ALL" /etc/sudoers 2>/dev/null || echo "testuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers`,
+    // setup directories
+    `mkdir -p /tmp/home/.config /tmp/home/.cache`,
+    `chown -R ${config.ctx.uid}:${config.ctx.gid} /tmp/home /app/action/node_modules`,
+    // install deps as user
+    `su testuser -c "corepack pnpm install --frozen-lockfile --ignore-scripts"`,
+    // run test as user - nodeCmd is escaped for double-quote context
+    `su testuser -c "${escapedNodeCmd}"`,
+  ].join(" && ");
   args.push(
     "-e",
     "COREPACK_ENABLE_DOWNLOAD_PROMPT=0",
@@ -186,10 +221,14 @@ export function buildDockerRunArgs(config: DockerRunArgsContext): string[] {
     "HOME=/tmp/home",
     "-e",
     "TMPDIR=/tmp",
+    // always set CI=true in docker to enable sandbox - this is critical for security tests
+    // without this, PID namespace isolation is skipped and tests may pass vacuously
+    "-e",
+    "CI=true",
     "node:24",
     "bash",
     "-c",
-    `${config.sshSetup.sshSetupCmd}mkdir -p /tmp/home/.config /tmp/home/.cache && corepack pnpm install --frozen-lockfile --ignore-scripts && ${config.nodeCmd}`
+    `${config.sshSetup.sshSetupCmd}${setupCmd}`
   );
   return args;
 }

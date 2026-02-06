@@ -1,145 +1,108 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`fetchAndFormatPrDiff > fetches PR files and generates TOC with formatted diff > content 1`] = `
-"## Files (3)
-- .github/workflows/test.yml → lines 7-47
-- index.test.ts → lines 48-110
-- index.ts → lines 111-132
+exports[`fetchAndFormatPrDiff > generates accurate TOC line numbers for pullfrog/test-repo#1 > content 1`] = `
+"## Files (5)
+- src/format.ts → lines 9-32
+- src/math.ts → lines 33-55
+- src/old-module.ts → lines 56-64
+- src/validate.ts → lines 65-80
+- test/math.test.ts → lines 81-93
 
 ---
-diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
---- a/.github/workflows/test.yml
-+++ b/.github/workflows/test.yml
-@@ -0,0 +1,36 @@
-|      |    1 | + | name: Test
-|      |    2 | + | 
-|      |    3 | + | on:
-|      |    4 | + |   push:
-|      |    5 | + |     branches: [main]
-|      |    6 | + |   pull_request:
-|      |    7 | + |     branches: [main]
-|      |    8 | + | 
-|      |    9 | + | jobs:
-|      |   10 | + |   test:
-|      |   11 | + |     runs-on: ubuntu-latest
-|      |   12 | + | 
-|      |   13 | + |     strategy:
-|      |   14 | + |       matrix:
-|      |   15 | + |         node-version: [22.x]
-|      |   16 | + | 
-|      |   17 | + |     steps:
-|      |   18 | + |       - name: Checkout code
-|      |   19 | + |         uses: actions/checkout@v4
-|      |   20 | + | 
-|      |   21 | + |       - name: Setup pnpm
-|      |   22 | + |         uses: pnpm/action-setup@v2
-|      |   23 | + |         with:
-|      |   24 | + |           version: 8
-|      |   25 | + | 
-|      |   26 | + |       - name: Setup Node.js \${{ matrix.node-version }}
-|      |   27 | + |         uses: actions/setup-node@v4
-|      |   28 | + |         with:
-|      |   29 | + |           node-version: \${{ matrix.node-version }}
-|      |   30 | + |           cache: 'pnpm'
-|      |   31 | + | 
-|      |   32 | + |       - name: Install dependencies
-|      |   33 | + |         run: pnpm install
-|      |   34 | + | 
-|      |   35 | + |       - name: Run tests
-|      |   36 | + |         run: pnpm test
+diff --git a/src/format.ts b/src/format.ts
+--- a/src/format.ts
++++ b/src/format.ts
+@@ -1,7 +1,17 @@
+|    1 |      | - | export function formatCurrency(amount: number) {
+|    2 |      | - |   return \`$\${amount.toFixed(2)}\`;
+|      |    1 | + | export function formatCurrency(amount: number, currency = "USD") {
+|      |    2 | + |   return new Intl.NumberFormat("en-US", {
+|      |    3 | + |     style: "currency",
+|      |    4 | + |     currency,
+|      |    5 | + |   }).format(amount);
+|    3 |    6 |   | }
+|    4 |    7 |   | 
+|    5 |    8 |   | export function formatPercent(value: number) {
+|    6 |    9 |   |   return \`\${(value * 100).toFixed(1)}%\`;
+|    7 |   10 |   | }
+|      |   11 | + | 
+|      |   12 | + | export function formatNumber(value: number, decimals = 2) {
+|      |   13 | + |   return new Intl.NumberFormat("en-US", {
+|      |   14 | + |     minimumFractionDigits: decimals,
+|      |   15 | + |     maximumFractionDigits: decimals,
+|      |   16 | + |   }).format(value);
+|      |   17 | + | }
 
-diff --git a/index.test.ts b/index.test.ts
---- a/index.test.ts
-+++ b/index.test.ts
-@@ -1,5 +1,5 @@
-|    1 |    1 |   | import { describe, it, expect } from 'vitest'
-|    2 |      | - | import { add } from './index.js'
-|      |    2 | + | import { add, multiply, subtract, divide } from './index.js'
-|    3 |    3 |   | 
-|    4 |    4 |   | describe('add function', () => {
-|    5 |    5 |   |   it('should add two positive numbers correctly', () => {
-@@ -25,3 +25,51 @@ describe('add function', () => {
-|   25 |   25 |   |     expect(add(0.1, 0.2)).toBeCloseTo(0.3)
-|   26 |   26 |   |   })
-|   27 |   27 |   | })
-|      |   28 | + | 
-|      |   29 | + | describe('multiply function', () => {
-|      |   30 | + |   it('should multiply two positive numbers correctly', () => {
-|      |   31 | + |     expect(multiply(3, 4)).toBe(12)
-|      |   32 | + |   })
-|      |   33 | + | 
-|      |   34 | + |   it('should multiply negative numbers correctly', () => {
-|      |   35 | + |     expect(multiply(-2, 3)).toBe(-6)
-|      |   36 | + |     expect(multiply(-2, -3)).toBe(6)
-|      |   37 | + |   })
-|      |   38 | + | 
-|      |   39 | + |   it('should handle zero correctly', () => {
-|      |   40 | + |     expect(multiply(5, 0)).toBe(0)
-|      |   41 | + |     expect(multiply(0, 5)).toBe(0)
-|      |   42 | + |   })
-|      |   43 | + | })
-|      |   44 | + | 
-|      |   45 | + | describe('subtract function', () => {
-|      |   46 | + |   it('should subtract two positive numbers correctly', () => {
-|      |   47 | + |     expect(subtract(10, 3)).toBe(7)
-|      |   48 | + |   })
-|      |   49 | + | 
-|      |   50 | + |   it('should handle negative numbers correctly', () => {
-|      |   51 | + |     expect(subtract(5, -3)).toBe(8)
-|      |   52 | + |     expect(subtract(-5, 3)).toBe(-8)
-|      |   53 | + |   })
-|      |   54 | + | 
-|      |   55 | + |   it('should handle zero correctly', () => {
-|      |   56 | + |     expect(subtract(5, 0)).toBe(5)
-|      |   57 | + |     expect(subtract(0, 5)).toBe(-5)
-|      |   58 | + |   })
-|      |   59 | + | })
-|      |   60 | + | 
-|      |   61 | + | describe('divide function', () => {
-|      |   62 | + |   it('should divide two positive numbers correctly', () => {
-|      |   63 | + |     expect(divide(10, 2)).toBe(5)
-|      |   64 | + |   })
-|      |   65 | + | 
-|      |   66 | + |   it('should handle negative numbers correctly', () => {
-|      |   67 | + |     expect(divide(-10, 2)).toBe(-5)
-|      |   68 | + |     expect(divide(10, -2)).toBe(-5)
-|      |   69 | + |   })
-|      |   70 | + | 
-|      |   71 | + |   it('should handle decimal results correctly', () => {
-|      |   72 | + |     expect(divide(10, 3)).toBeCloseTo(3.333, 2)
-|      |   73 | + |     expect(divide(7, 2)).toBe(3.5)
-|      |   74 | + |   })
-|      |   75 | + | })
-
-diff --git a/index.ts b/index.ts
---- a/index.ts
-+++ b/index.ts
-@@ -3,11 +3,13 @@ export function add(a: number, b: number) {
+diff --git a/src/math.ts b/src/math.ts
+--- a/src/math.ts
++++ b/src/math.ts
+@@ -3,13 +3,16 @@ export function add(a: number, b: number) {
 |    3 |    3 |   | }
 |    4 |    4 |   | 
-|    5 |    5 |   | export function multiply(a: number, b: number) {
-|    6 |      | - |   // Bug: accidentally adding 1 to the result
-|    7 |      | - |   return a * b + 1;
-|      |    6 | + |   return a * b;
-|    8 |    7 |   | }
-|    9 |    8 |   | 
-|   10 |    9 |   | export function subtract(a: number, b: number) {
-|   11 |      | - |   // Bug: accidentally adding instead of subtracting
-|   12 |      | - |   return a + b;
-|      |   10 | + |   return a - b;
+|    5 |    5 |   | export function subtract(a: number, b: number) {
+|    6 |      | - |   return a + b; // bug: should be a - b
+|      |    6 | + |   return a - b;
+|    7 |    7 |   | }
+|    8 |    8 |   | 
+|    9 |    9 |   | export function multiply(a: number, b: number) {
+|   10 |      | - |   return a * b + 1; // bug: off by one
+|      |   10 | + |   return a * b;
+|   11 |   11 |   | }
+|   12 |   12 |   | 
+|   13 |   13 |   | export function divide(a: number, b: number) {
+|      |   14 | + |   if (b === 0) {
+|      |   15 | + |     throw new Error("division by zero");
+|      |   16 | + |   }
+|   14 |   17 |   |   return a / b;
+|   15 |   18 |   | }
+
+diff --git a/src/old-module.ts b/src/old-module.ts
+--- a/src/old-module.ts
++++ b/src/old-module.ts
+@@ -1,4 +0,0 @@
+|    1 |      | - | // this module is deprecated and will be removed
+|    2 |      | - | export function legacyHelper() {
+|    3 |      | - |   return "old";
+|    4 |      | - | }
+
+diff --git a/src/validate.ts b/src/validate.ts
+--- a/src/validate.ts
++++ b/src/validate.ts
+@@ -0,0 +1,11 @@
+|      |    1 | + | export function isPositive(n: number) {
+|      |    2 | + |   return n > 0;
+|      |    3 | + | }
+|      |    4 | + | 
+|      |    5 | + | export function isInRange(value: number, min: number, max: number) {
+|      |    6 | + |   return value >= min && value <= max;
+|      |    7 | + | }
+|      |    8 | + | 
+|      |    9 | + | export function isInteger(n: number) {
+|      |   10 | + |   return Number.isInteger(n);
 |      |   11 | + | }
-|      |   12 | + | 
-|      |   13 | + | export function divide(a: number, b: number) {
-|      |   14 | + |   return a / b;
-|   13 |   15 |   | }
+
+diff --git a/test/math.test.ts b/test/math.test.ts
+--- a/test/math.test.ts
++++ b/test/math.test.ts
+@@ -17,4 +17,8 @@ describe("math", () => {
+|   17 |   17 |   |   it("divides", () => {
+|   18 |   18 |   |     expect(divide(10, 2)).toBe(5);
+|   19 |   19 |   |   });
+|      |   20 | + | 
+|      |   21 | + |   it("throws on division by zero", () => {
+|      |   22 | + |     expect(() => divide(1, 0)).toThrow("division by zero");
+|      |   23 | + |   });
+|   20 |   24 |   | });
 "
 `;
 
-exports[`fetchAndFormatPrDiff > fetches PR files and generates TOC with formatted diff > toc 1`] = `
-"## Files (3)
-- .github/workflows/test.yml → lines 7-47
-- index.test.ts → lines 48-110
-- index.ts → lines 111-132
+exports[`fetchAndFormatPrDiff > generates accurate TOC line numbers for pullfrog/test-repo#1 > toc 1`] = `
+"## Files (5)
+- src/format.ts → lines 9-32
+- src/math.ts → lines 33-55
+- src/old-module.ts → lines 56-64
+- src/validate.ts → lines 65-80
+- test/math.test.ts → lines 81-93
 
 ---
 "

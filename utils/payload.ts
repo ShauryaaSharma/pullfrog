@@ -9,6 +9,7 @@ import { validateCompatibility } from "./versioning.ts";
 // tool permission enum types for inputs
 const ToolPermissionInput = type.enumerated("disabled", "enabled");
 const BashPermissionInput = type.enumerated("disabled", "restricted", "enabled");
+const PushPermissionInput = type.enumerated("disabled", "restricted", "enabled");
 
 // schema for JSON payload passed via prompt (internal dispatch invocation)
 // note: permissions are intentionally NOT included here to prevent injection attacks
@@ -48,7 +49,7 @@ export const Inputs = type({
   "agent?": AgentName.or("undefined"),
   "web?": ToolPermissionInput.or("undefined"),
   "search?": ToolPermissionInput.or("undefined"),
-  "write?": ToolPermissionInput.or("undefined"),
+  "push?": PushPermissionInput.or("undefined"),
   "bash?": BashPermissionInput.or("undefined"),
   "cwd?": type.string.or("undefined"),
 });
@@ -102,7 +103,7 @@ function resolveNonPromptInputs() {
     cwd: core.getInput("cwd") || undefined,
     web: core.getInput("web") || undefined,
     search: core.getInput("search") || undefined,
-    write: core.getInput("write") || undefined,
+    push: core.getInput("push") || undefined,
     bash: core.getInput("bash") || undefined,
   });
 }
@@ -171,7 +172,7 @@ export function resolvePayload(
     // permissions: inputs > repoSettings > fallbacks
     web: inputs.web ?? repoSettings.web ?? "enabled",
     search: inputs.search ?? repoSettings.search ?? "enabled",
-    write: inputs.write ?? repoSettings.write ?? "enabled",
+    push: inputs.push ?? repoSettings.push ?? "restricted",
     bash: resolvedBash,
   };
 }

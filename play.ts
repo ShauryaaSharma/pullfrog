@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -73,9 +73,14 @@ export async function run(inputsOrPrompt: Inputs | string): Promise<AgentResult>
     log.error(`Error: ${errorMessage}`);
     return { success: false, error: errorMessage, output: undefined };
   } finally {
-    // cleanup temp directory
+    // cleanup temp directory - use sudo rm because sandbox isolation may create
+    // files with different ownership that rmSync can't delete
     process.chdir(originalCwd);
-    rmSync(tempParent, { recursive: true, force: true });
+    try {
+      execSync(`sudo rm -rf "${tempParent}"`, { stdio: "ignore" });
+    } catch {
+      // ignore - cleanup failure is not critical
+    }
   }
 }
 

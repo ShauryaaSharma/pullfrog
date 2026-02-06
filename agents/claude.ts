@@ -34,7 +34,6 @@ function buildDisallowedTools(ctx: AgentRunContext): string[] {
   const disallowed: string[] = [];
   if (ctx.payload.web === "disabled") disallowed.push("WebFetch");
   if (ctx.payload.search === "disabled") disallowed.push("WebSearch");
-  if (ctx.payload.write === "disabled") disallowed.push("Write");
   // both "disabled" and "restricted" block native bash
   // "restricted" means use MCP bash tool instead
   const bash = ctx.payload.bash;

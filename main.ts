@@ -13,6 +13,7 @@ import { resolveBody } from "./utils/body.ts";
 import { log, writeSummary } from "./utils/cli.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
 import { setupExitHandler } from "./utils/exitHandler.ts";
+import { resolveGit } from "./utils/gitAuth.ts";
 import { createOctokit } from "./utils/github.ts";
 import { resolveInstructions } from "./utils/instructions.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
@@ -23,7 +24,7 @@ import { createTempDirectory, setupGit } from "./utils/setup.ts";
 import { killTrackedChildren } from "./utils/subprocess.ts";
 import { parseTimeString, TIMEOUT_DISABLED } from "./utils/time.ts";
 import { Timer } from "./utils/timer.ts";
-import { resolveInstallationToken } from "./utils/token.ts";
+import { getJobToken, resolveTokens } from "./utils/token.ts";
 import { resolveRun } from "./utils/workflow.ts";
 
 export { Inputs } from "./utils/payload.ts";
@@ -52,19 +53,35 @@ export async function main(): Promise<MainResult> {
 
   setupExitHandler(toolState);
 
-  await using tokenRef = await resolveInstallationToken();
+  // resolve and fingerprint git binary before any agent code runs
+  resolveGit();
 
-  const octokit = createOctokit(tokenRef.token);
-  const runContext = await resolveRunContextData({ octokit, token: tokenRef.token });
+  // get job token for initial API calls
+  const jobToken = getJobToken();
+  const initialOctokit = createOctokit(jobToken);
+  const runContext = await resolveRunContextData({ octokit: initialOctokit, token: jobToken });
   timer.checkpoint("runContextData");
+
+  // resolve payload to determine bash permission
+  const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
+
+  // resolve tokens:
+  // - gitToken: contents permission based on push setting (assumed exfiltratable)
+  // - mcpToken: full installation token (not exfiltratable via MCP tools)
+  await using tokenRef = await resolveTokens({ push: payload.push });
+
+  // clear OIDC env vars in restricted mode to prevent agent from minting tokens
+  if (payload.bash !== "enabled") {
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  }
+
+  // create octokit with MCP token for GitHub API calls
+  const octokit = createOctokit(tokenRef.mcpToken);
 
   const runInfo = await resolveRun({ octokit });
 
   try {
-    // resolve payload after runContextData so permissions can use DB settings
-    // precedence: action inputs > json payload > repoSettings > fallbacks
-    const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
-
     // enable debug logging if #debug macro was used
     if (payload.debug) {
       process.env.LOG_LEVEL = "debug";
@@ -102,14 +119,13 @@ export async function main(): Promise<MainResult> {
     });
 
     await setupGit({
-      token: tokenRef.token,
-      githubJobToken: tokenRef.githubJobToken,
-      bashPermission: payload.bash,
+      gitToken: tokenRef.gitToken,
       owner: runContext.repo.owner,
       name: runContext.repo.name,
       event: payload.event,
       octokit,
       toolState,
+      restricted: payload.bash === "restricted",
     });
     timer.checkpoint("git");
 
@@ -119,7 +135,8 @@ export async function main(): Promise<MainResult> {
       repo: runContext.repo,
       payload,
       octokit,
-      githubInstallationToken: tokenRef.token,
+      githubInstallationToken: tokenRef.mcpToken,
+      gitToken: tokenRef.gitToken,
       apiToken: runContext.apiToken,
       agent,
       modes,

@@ -332,7 +332,6 @@ function configureGeminiSettings(ctx: AgentRunContext): string {
   const bash = ctx.payload.bash;
   const exclude: string[] = [];
   if (bash !== "enabled") exclude.push("run_shell_command");
-  if (ctx.payload.write === "disabled") exclude.push("write_file");
   if (ctx.payload.web === "disabled") exclude.push("web_fetch");
   if (ctx.payload.search === "disabled") exclude.push("google_web_search");
 

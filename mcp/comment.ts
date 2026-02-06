@@ -165,8 +165,7 @@ export async function reportProgress(
   ctx.toolState.lastProgressBody = body;
 
   const existingCommentId = ctx.toolState.progressCommentId;
-  const issueNumber =
-    ctx.toolState.prNumber ?? ctx.toolState.issueNumber ?? ctx.payload.event.issue_number;
+  const issueNumber = ctx.toolState.issueNumber ?? ctx.payload.event.issue_number;
   const isPlanMode = ctx.toolState.selectedMode === "Plan";
 
   // if we already have a progress comment, update it

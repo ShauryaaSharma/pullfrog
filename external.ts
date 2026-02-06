@@ -59,6 +59,7 @@ export type Effort = typeof Effort.infer;
 // tool permission types shared with server dispatch
 export type ToolPermission = "disabled" | "enabled";
 export type BashPermission = "disabled" | "restricted" | "enabled";
+export type PushPermission = "disabled" | "restricted" | "enabled";
 
 // permission level for the author who triggered the event
 // matches GitHub's permission levels: admin > write > maintain > triage > read > none

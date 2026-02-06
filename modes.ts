@@ -30,10 +30,9 @@ export function computeModes(): Mode[] {
       prompt: `Follow these steps exactly.
 1. Determine whether to work on the current branch or create a new one:
    - **PR event, modifying the existing PR**: The PR branch is probably already checked out. Continue on this branch.
-   - **PR event, but user wants a NEW branch/PR**: Use \`${ghPullfrogMcpName}/create_branch\` to create a new branch from the current HEAD.
-   - As needed use \`${ghPullfrogMcpName}/create_branch\` to create new branches. Always check your current branch status first.
+   - **PR event, but user wants a NEW branch/PR**: Create a new branch with \`git checkout -b pullfrog/branch-name\` via the \`${ghPullfrogMcpName}/git\` tool.
    
-   Branch names must be prefixed with "pullfrog/" and be specific enough to avoid collisions. Never commit directly to main/master/production. Do NOT use git commands directly (\`git branch\`, \`git status\`, \`git log\`, etc.) - always use ${ghPullfrogMcpName} MCP tools.
+   Branch names must be prefixed with "pullfrog/" and be specific enough to avoid collisions. Never commit directly to main/master/production.
 
 2. ${dependencyInstallationStep}
 
@@ -43,7 +42,7 @@ export function computeModes(): Mode[] {
 
 5. Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance. 
 
-6. Then use ${ghPullfrogMcpName}/commit_files to commit your changes, and ${ghPullfrogMcpName}/push_branch to push the branch. Do NOT use git commands like \`git commit\` or \`git push\` directly.
+6. Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
 
 7. Test your changes to ensure they work correctly
 
@@ -90,7 +89,7 @@ export function computeModes(): Mode[] {
 
 8. Test your changes to ensure they work correctly.
 
-9. When done, commit your changes with ${ghPullfrogMcpName}/commit_files, then push with ${ghPullfrogMcpName}/push_branch. The push will automatically go to the correct remote (including fork repos). Do not create a new branch or PR - you are updating an existing one.
+9. When done, commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. The push will automatically go to the correct remote (including fork repos). Do not create a new branch or PR - you are updating an existing one.
 
 10. ${reportProgressInstruction}
 
@@ -210,7 +209,7 @@ ${permalinkTip}`,
 
 8. **VERIFY THE FIX** - Run the EXACT same CI command again to confirm the fix works
 
-9. **COMMIT AND PUSH** - Use ${ghPullfrogMcpName}/commit_files and ${ghPullfrogMcpName}/push_branch
+9. **COMMIT AND PUSH** - Use \`${ghPullfrogMcpName}/git\` for add/commit, then \`${ghPullfrogMcpName}/push_branch\` to push
 
 10. ${reportProgressInstruction}
 
@@ -224,10 +223,10 @@ ${permalinkTip}`,
 1. Perform the requested task. Only take action if you have high confidence that you understand what is being asked. If you are not sure, ask for clarification. Take stock of the tools at your disposal. When creating comments, always use report_progress. Do not use create_issue_comment.
 
 2. If the task involves making code changes:
-   - Create a branch using ${ghPullfrogMcpName}/create_branch. Branch names should be prefixed with "pullfrog/" and reflect the exact changes you are making. Never commit directly to main, master, or production.
+   - Create a branch using \`${ghPullfrogMcpName}/git\` (\`git checkout -b pullfrog/branch-name\`). Branch names should be prefixed with "pullfrog/" and reflect the exact changes you are making. Never commit directly to main, master, or production.
    - ${dependencyInstallationStep}
    - Use file operations to create/modify files with your changes.
-   - Use ${ghPullfrogMcpName}/commit_files to commit your changes, then ${ghPullfrogMcpName}/push_branch to push the branch. Do NOT use git commands directly (\`git commit\`, \`git push\`, \`git checkout\`, \`git branch\`) as these will use incorrect credentials.
+   - Commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
    - Test your changes to ensure they work correctly.
    - Determine whether to create a PR:
      - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.

@@ -25714,35 +25714,42 @@ function isOIDCAvailable() {
   );
 }
 async function acquireTokenViaOIDC(opts) {
-  log.info("\xBB generating OIDC token...");
   const oidcToken = await core2.getIDToken("pullfrog-api");
   const apiUrl = process.env.API_URL || "https://pullfrog.com";
   const params = new URLSearchParams();
-  if (opts?.repos?.length) {
-    params.set("repos", opts.repos.join(","));
+  const repos = [...opts?.repos ?? []];
+  const targetRepo = process.env.GITHUB_REPOSITORY?.split("/")[1];
+  if (targetRepo) {
+    repos.push(targetRepo);
+  }
+  if (repos.length) {
+    params.set("repos", repos.join(","));
   }
   const queryString = params.toString() ? `?${params.toString()}` : "";
-  log.info("\xBB exchanging OIDC token for installation token...");
   const timeoutMs = 3e4;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const tokenResponse = await fetch(`${apiUrl}/api/github/installation-token${queryString}`, {
+    const fetchOptions = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
         "Content-Type": "application/json"
       },
       signal: controller.signal
-    });
+    };
+    if (opts?.permissions) {
+      fetchOptions.body = JSON.stringify({ permissions: opts.permissions });
+    }
+    const tokenResponse = await fetch(
+      `${apiUrl}/api/github/installation-token${queryString}`,
+      fetchOptions
+    );
     clearTimeout(timeoutId);
     if (!tokenResponse.ok) {
       throw new Error(`Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
     }
     const tokenData = await tokenResponse.json();
-    const owner = tokenData.repository?.split("/")[0];
-    const repoList = opts?.repos?.length ? [tokenData.repository, ...opts.repos.map((r) => `${owner}/${r}`)].join(", ") : tokenData.repository;
-    log.info(`\xBB installation token obtained for ${repoList}`);
     return tokenData.token;
   } catch (error2) {
     clearTimeout(timeoutId);
@@ -25806,13 +25813,17 @@ var checkRepositoryAccess = async (token, repoOwner, repoName) => {
     return false;
   }
 };
-var createInstallationToken = async (jwt, installationId) => {
+var createInstallationToken = async (jwt, installationId, permissions) => {
+  const requestOpts = {
+    method: "POST",
+    headers: { Authorization: `Bearer ${jwt}` }
+  };
+  if (permissions) {
+    requestOpts.body = JSON.stringify({ permissions });
+  }
   const response = await githubRequest(
     `/app/installations/${installationId}/access_tokens`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jwt}` }
-    }
+    requestOpts
   );
   return response.token;
 };
@@ -25834,7 +25845,7 @@ var findInstallationId = async (jwt, repoOwner, repoName) => {
     `No installation found with access to ${repoOwner}/${repoName}. Ensure the GitHub App is installed on the target repository.`
   );
 };
-async function acquireTokenViaGitHubApp() {
+async function acquireTokenViaGitHubApp(opts) {
   const repoContext = parseRepoContext();
   const config = {
     appId: process.env.GITHUB_APP_ID,
@@ -25844,14 +25855,13 @@ async function acquireTokenViaGitHubApp() {
   };
   const jwt = generateJWT(config.appId, config.privateKey);
   const installationId = await findInstallationId(jwt, config.repoOwner, config.repoName);
-  const token = await createInstallationToken(jwt, installationId);
-  return token;
+  return await createInstallationToken(jwt, installationId, opts?.permissions);
 }
 async function acquireNewToken(opts) {
   if (isOIDCAvailable()) {
     return await retry(() => acquireTokenViaOIDC(opts), { label: "token exchange" });
   } else {
-    return await acquireTokenViaGitHubApp();
+    return await acquireTokenViaGitHubApp(opts);
   }
 }
 function parseRepoContext() {

@@ -1,5 +1,10 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { buildBashToolPrompt, defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
+import {
+  buildBashToolPrompt,
+  defineFixture,
+  generateAgentUuids,
+  getStructuredOutput,
+} from "../utils.ts";
 
 /**
  * nobash test - validates agents respect bash=disabled setting.
@@ -43,4 +48,5 @@ export const test: TestRunnerOptions = {
   fixture,
   validator,
   agentEnv,
+  env: { GITHUB_REPOSITORY: "pullfrog/test-repo" },
 };

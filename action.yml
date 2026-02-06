@@ -24,8 +24,8 @@ inputs:
   search:
     description: "Web search permission: disabled or enabled (default: enabled)"
     required: false
-  write:
-    description: "File write permission: disabled or enabled (default: enabled)"
+  push:
+    description: "Git push permission: disabled (read-only, can't push) or enabled (can push). Default: enabled"
     required: false
   bash:
     description: "Bash permission: disabled, restricted (filters secrets from env vars), or enabled. Public repos default to restricted for security; private repos default to enabled."

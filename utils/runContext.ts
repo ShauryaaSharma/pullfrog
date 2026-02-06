@@ -1,4 +1,4 @@
-import type { AgentName, BashPermission, ToolPermission } from "../external.ts";
+import type { AgentName, BashPermission, PushPermission, ToolPermission } from "../external.ts";
 import type { RepoContext } from "./github.ts";
 
 export interface Mode {
@@ -14,7 +14,7 @@ export interface RepoSettings {
   repoInstructions: string;
   web: ToolPermission;
   search: ToolPermission;
-  write: ToolPermission;
+  push: PushPermission;
   bash: BashPermission;
 }
 
@@ -29,7 +29,7 @@ const defaultSettings: RepoSettings = {
   repoInstructions: "",
   web: "enabled",
   search: "enabled",
-  write: "enabled",
+  push: "restricted",
   bash: "restricted",
 };
 

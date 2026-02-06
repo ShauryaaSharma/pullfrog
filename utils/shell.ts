@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { type EnvMode, resolveEnv } from "./secrets.ts";
 
 interface ShellOptions {
   cwd?: string;
@@ -14,13 +15,21 @@ interface ShellOptions {
     | "ucs2"
     | "utf16le";
   log?: boolean;
-  env?: Record<string, string>;
+  /**
+   * env mode: "restricted" (default) filters secrets, "inherit" passes full env,
+   * or provide a custom env object (merged with restricted base)
+   */
+  env?: EnvMode;
   onError?: (result: { status: number; stdout: string; stderr: string }) => void;
 }
 
 /**
  * Execute a shell command safely using spawnSync with argument arrays.
  * Prevents shell injection by avoiding string interpolation in shell commands.
+ *
+ * SECURITY: by default, env vars are filtered to remove secrets (tokens, keys, passwords).
+ * this prevents malicious code (git hooks, npm scripts, etc.) from exfiltrating credentials.
+ * use env: "inherit" only when absolutely necessary.
  *
  * @param cmd - The command to execute
  * @param args - Array of arguments to pass to the command
@@ -30,6 +39,7 @@ interface ShellOptions {
  */
 export function $(cmd: string, args: string[], options?: ShellOptions): string {
   const encoding = options?.encoding ?? "utf-8";
+  const env = resolveEnv(options?.env);
 
   // CRITICAL: use "ignore" for stdin instead of "inherit" to avoid breaking MCP transport
   // when running inside an MCP server, stdin is used for JSON-RPC protocol
@@ -37,7 +47,7 @@ export function $(cmd: string, args: string[], options?: ShellOptions): string {
     stdio: ["ignore", "pipe", "pipe"],
     encoding,
     cwd: options?.cwd,
-    env: options?.env ? { ...process.env, ...options.env } : undefined,
+    env,
   });
 
   const stdout = result.stdout ?? "";

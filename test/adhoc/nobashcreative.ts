@@ -57,5 +57,6 @@ export const test: TestRunnerOptions = {
   fixture,
   validator,
   agentEnv,
+  env: { GITHUB_REPOSITORY: "pullfrog/test-repo" },
   tags: ["adhoc"],
 };

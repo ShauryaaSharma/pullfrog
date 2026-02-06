@@ -1,5 +1,10 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { buildBashToolPrompt, defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
+import {
+  buildBashToolPrompt,
+  defineFixture,
+  generateAgentUuids,
+  getStructuredOutput,
+} from "../utils.ts";
 
 /**
  * restricted test - validates bash=restricted environment filtering.
@@ -53,4 +58,5 @@ export const test: TestRunnerOptions = {
   fixture,
   validator,
   agentEnv,
+  env: { GITHUB_REPOSITORY: "pullfrog/test-repo" },
 };

@@ -29,4 +29,5 @@ export const test: TestRunnerOptions = {
   name: "smoke",
   fixture,
   validator,
+  env: { GITHUB_REPOSITORY: "pullfrog/test-repo" },
 };

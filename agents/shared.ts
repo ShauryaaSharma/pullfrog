@@ -31,7 +31,7 @@ export const agent = <const input extends AgentInput>(input: input): defineAgent
       const bash = ctx.payload.bash;
       const web = ctx.payload.web;
       const search = ctx.payload.search;
-      const write = ctx.payload.write;
+      const push = ctx.payload.push;
       log.info(
         `» running ${input.name} with effort=${ctx.payload.effort}, timeout=${ctx.payload.timeout}...`
       );
@@ -46,7 +46,7 @@ export const agent = <const input extends AgentInput>(input: input): defineAgent
       log.box(logParts.join("\n\n---\n\n"), {
         title: "Instructions",
       });
-      log.info(`» tool permissions: web=${web}, search=${search}, write=${write}, bash=${bash}`);
+      log.info(`» tool permissions: web=${web}, search=${search}, push=${push}, bash=${bash}`);
       return input.run(ctx);
     },
     ...agentsManifest[input.name],

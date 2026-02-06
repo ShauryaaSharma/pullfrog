@@ -223,11 +223,25 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
     env.PULLFROG_MCP_PORT = String(allocateMcpPort());
   }
 
+  // build file-based env vars for MCP servers that don't inherit parent env
+  let fileEnv: Record<string, string> | undefined;
+  if (testConfig.fileAgentEnv) {
+    const agentFileEnv = testConfig.fileAgentEnv.get(ctx.agent);
+    if (agentFileEnv) {
+      fileEnv = {};
+      const entries = Object.entries(agentFileEnv);
+      for (const entry of entries) {
+        fileEnv[entry[0]] = entry[1];
+      }
+    }
+  }
+
   const result = await runAgentStreaming({
     test: ctx.testInfo.name,
     agent: ctx.agent,
     fixture: testConfig.fixture,
     env,
+    fileEnv,
     isCanceled: () => ctx.cancelState.canceled,
   });
 
@@ -347,18 +361,15 @@ async function main(): Promise<void> {
   setSignalHandler(handleCancel);
   installSignalHandlers();
 
-  // run tests with limited concurrency
+  // run tests with limited concurrency to avoid overwhelming agent APIs
   const maxConcurrency = 5;
-  const validations = await runWithConcurrencyLimit(
-    runs,
-    maxConcurrency,
-    (run) =>
-      runTestForAgent({
-        testInfo: run.testInfo,
-        agent: run.agent,
-        cancelState,
-        results,
-      })
+  const validations = await runWithConcurrencyLimit(runs, maxConcurrency, (run) =>
+    runTestForAgent({
+      testInfo: run.testInfo,
+      agent: run.agent,
+      cancelState,
+      results,
+    })
   );
 
   if (!cancelState.canceled) {

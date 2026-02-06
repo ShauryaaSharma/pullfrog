@@ -1,11 +1,5 @@
 import { log } from "./cli.ts";
-
-// patterns for sensitive env vars: suffixes (_KEY, _SECRET, _TOKEN) plus AI provider prefixes
-const SENSITIVE_PATTERNS = [/_KEY$/i, /_SECRET$/i, /_TOKEN$/i, /_PASSWORD$/i, /_CREDENTIAL$/i];
-
-function isSensitive(key: string): boolean {
-  return SENSITIVE_PATTERNS.some((p) => p.test(key));
-}
+import { isSensitiveEnvName } from "./secrets.ts";
 
 function maskValue(value: string | undefined) {
   if (value && typeof value === "string" && value.trim().length > 0) {
@@ -37,7 +31,7 @@ export function normalizeEnv(): void {
   // process each group
   for (const [upperKey, keys] of upperKeys) {
     // if sensitive, ensure we mask the value (regardless of whether we rename it or not)
-    if (isSensitive(upperKey)) {
+    if (isSensitiveEnvName(upperKey)) {
       // mask all values associated with this key group
       for (const key of keys) {
         maskValue(process.env[key]);

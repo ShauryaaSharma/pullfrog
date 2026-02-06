@@ -3,8 +3,9 @@ import { join } from "node:path";
 import type { Octokit, RestEndpointMethodTypes } from "@octokit/rest";
 import { type } from "arktype";
 import { log } from "../utils/cli.ts";
+import { $git } from "../utils/gitAuth.ts";
 import { $ } from "../utils/shell.ts";
-import type { ToolContext } from "./server.ts";
+import type { ToolContext, ToolState } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 type PullFile = RestEndpointMethodTypes["pulls"]["listFiles"]["response"]["data"][number];
@@ -136,6 +137,8 @@ export type CheckoutPrResult = {
   url: string;
   headRepo: string;
   diffPath: string;
+  toc: string;
+  instructions: string;
 };
 
 type FetchPrDiffParams = {
@@ -163,23 +166,28 @@ interface CheckoutPrBranchParams {
   octokit: Octokit;
   owner: string;
   name: string;
-  token: string;
+  gitToken: string;
   pullNumber: number;
+  toolState: ToolState;
+  // restricted bash mode: disables git hooks to prevent token exfiltration
+  restricted: boolean;
 }
 
 interface CheckoutPrBranchResult {
   prNumber: number;
+  isFork: boolean;
+  forkUrl?: string | undefined; // only set when isFork is true
 }
 
 /**
  * Shared helper to checkout a PR branch and configure fork remotes.
  * Assumes origin remote is already configured with authentication.
- * Returns the PR number for caller to set on toolState.
+ * Updates toolState.issueNumber and toolState.pushUrl (for fork PRs).
  */
 export async function checkoutPrBranch(
   params: CheckoutPrBranchParams
 ): Promise<CheckoutPrBranchResult> {
-  const { octokit, owner, name, token, pullNumber } = params;
+  const { octokit, owner, name, gitToken, pullNumber, toolState, restricted } = params;
   log.info(`» checking out PR #${pullNumber}...`);
 
   // fetch PR metadata
@@ -212,7 +220,7 @@ export async function checkoutPrBranch(
   } else {
     // fetch base branch so origin/<base> exists for diff operations
     log.debug(`» fetching base branch (${baseBranch})...`);
-    $("git", ["fetch", "--no-tags", "origin", baseBranch]);
+    $git("fetch", ["--no-tags", "origin", baseBranch], { token: gitToken, restricted });
 
     // checkout base branch first to avoid "refusing to fetch into current branch" error
     // -B creates or resets the branch to match origin/baseBranch
@@ -220,7 +228,10 @@ export async function checkoutPrBranch(
 
     // fetch PR branch using pull/{n}/head refspec (works for both fork and same-repo PRs)
     log.debug(`» fetching PR #${pullNumber} (${localBranch})...`);
-    $("git", ["fetch", "--no-tags", "origin", `pull/${pullNumber}/head:${localBranch}`]);
+    $git("fetch", ["--no-tags", "origin", `pull/${pullNumber}/head:${localBranch}`], {
+      token: gitToken,
+      restricted,
+    });
 
     // checkout the branch
     $("git", ["checkout", localBranch]);
@@ -231,7 +242,7 @@ export async function checkoutPrBranch(
   // fetch if we skipped checkout (already on branch) - otherwise already fetched above
   if (alreadyOnBranch) {
     log.debug(`» fetching base branch (${baseBranch})...`);
-    $("git", ["fetch", "--no-tags", "origin", baseBranch]);
+    $git("fetch", ["--no-tags", "origin", baseBranch], { token: gitToken, restricted });
   }
 
   // configure push remote for this branch
@@ -239,7 +250,8 @@ export async function checkoutPrBranch(
   // fork remotes. This ensures fork PRs can push even when checkout_pr is called after setupGit.
   if (isFork) {
     const remoteName = `pr-${pullNumber}`;
-    const forkUrl = `https://x-access-token:${token}@github.com/${headRepo.full_name}.git`;
+    // SECURITY: fork URL without token - auth is injected via GIT_CONFIG_PARAMETERS in $git()
+    const forkUrl = `https://github.com/${headRepo.full_name}.git`;
 
     // add fork as a named remote (suppress logging to avoid "error: remote already exists" spam)
     try {
@@ -270,7 +282,17 @@ export async function checkoutPrBranch(
     $("git", ["config", `branch.${localBranch}.merge`, `refs/heads/${headBranch}`]);
   }
 
-  return { prNumber: pullNumber };
+  // update toolState
+  toolState.issueNumber = pullNumber;
+  if (isFork) {
+    toolState.pushUrl = `https://github.com/${headRepo.full_name}.git`;
+  }
+
+  return {
+    prNumber: pullNumber,
+    isFork,
+    forkUrl: isFork ? `https://github.com/${headRepo.full_name}.git` : undefined,
+  };
 }
 
 export function CheckoutPrTool(ctx: ToolContext) {
@@ -285,12 +307,11 @@ export function CheckoutPrTool(ctx: ToolContext) {
         octokit: ctx.octokit,
         owner: ctx.repo.owner,
         name: ctx.repo.name,
-        token: ctx.githubInstallationToken,
+        gitToken: ctx.gitToken,
         pullNumber: pull_number,
+        toolState: ctx.toolState,
+        restricted: ctx.payload.bash === "restricted",
       });
-
-      // set prNumber on toolState
-      ctx.toolState.prNumber = result.prNumber;
 
       // fetch PR metadata to return result
       const pr = await ctx.octokit.rest.pulls.get({
@@ -334,6 +355,12 @@ export function CheckoutPrTool(ctx: ToolContext) {
         url: pr.data.html_url,
         headRepo: headRepo.full_name,
         diffPath,
+        toc: formatResult.toc,
+        instructions:
+          `the diff file at diffPath contains a table of contents (TOC) at the top listing every changed file with its line range. ` +
+          `use the line ranges to read specific files from the diff instead of reading the entire file. ` +
+          `for example, if the TOC says "src/foo.ts → lines 5-42", read lines 5-42 from diffPath to see that file's changes. ` +
+          `review files selectively based on relevance rather than reading everything sequentially.`,
       } satisfies CheckoutPrResult;
     }),
   });

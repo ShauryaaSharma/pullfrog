@@ -1,7 +1,6 @@
 import { type } from "arktype";
 import { buildPullfrogFooter, stripExistingFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/cli.ts";
-import { containsSecrets } from "../utils/secrets.ts";
 import { $ } from "../utils/shell.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
@@ -33,25 +32,6 @@ export function CreatePullRequestTool(ctx: ToolContext) {
     execute: execute(async ({ title, body, base }) => {
       const currentBranch = $("git", ["rev-parse", "--abbrev-ref", "HEAD"], { log: false });
       log.debug(`Current branch: ${currentBranch}`);
-
-      // validate PR title and body for secrets
-      if (containsSecrets(title) || containsSecrets(body)) {
-        throw new Error(
-          "PR creation blocked: secrets detected in PR title or body. " +
-            "Please remove any sensitive information (API keys, tokens, passwords) before creating a PR."
-        );
-      }
-
-      // validate all changes that would be in the PR (from base to HEAD)
-      // FORK PR NOTE: origin/<base> is fetched by setupGit, so this works for both fork and same-repo PRs
-      // use two-dot (..) not three-dot (...) for reliable diffs with shallow clones
-      const diff = $("git", ["diff", `origin/${base}..HEAD`], { log: false });
-      if (containsSecrets(diff)) {
-        throw new Error(
-          "PR creation blocked: secrets detected in changes. " +
-            "Please remove any sensitive information (API keys, tokens, passwords) before creating a PR."
-        );
-      }
 
       const bodyWithFooter = buildPrBodyWithFooter(ctx, body);
 
