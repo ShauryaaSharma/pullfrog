@@ -43,17 +43,23 @@ function writeCodexConfig(ctx: AgentRunContext): string {
   }
   const featuresSection = features.length > 0 ? `[features]\n${features.join("\n")}` : "";
 
+  // trust the project so codex loads repo-level .codex/config.toml
+  const cwd = process.cwd();
+  const projectTrustSection = `[projects."${cwd}"]\ntrust_level = "trusted"`;
+
   writeFileSync(
     configPath,
     `# written by pullfrog
 ${featuresSection}
+
+${projectTrustSection}
 
 ${mcpServerSections.join("\n\n")}
 `.trim() + "\n"
   );
 
   log.info(
-    `» Codex config written to ${configPath} (shell: ${bash === "enabled" ? "enabled" : "disabled"})`
+    `» Codex config written to ${configPath} (shell: ${bash === "enabled" ? "enabled" : "disabled"}, project trusted: ${cwd})`
   );
 
   return codexDir;
@@ -133,7 +139,6 @@ export const codex = agent({
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      HOME: ctx.tmpdir,
       CODEX_HOME: codexDir,
       CODEX_API_KEY: apiKey,
     };

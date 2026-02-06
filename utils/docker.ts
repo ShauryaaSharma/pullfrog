@@ -202,6 +202,9 @@ export function buildDockerRunArgs(config: DockerRunArgsContext): string[] {
   const setupCmd = [
     // install sudo (node:24 is Debian-based) - check if already installed first
     `which sudo > /dev/null 2>&1 || (apt-get update -qq && apt-get install -qq -y sudo > /dev/null 2>&1)`,
+    // remove any existing user/group with the same uid/gid (e.g. node:24 has "node" at 1000:1000)
+    `existing_user=$(getent passwd ${config.ctx.uid} | cut -d: -f1) && [ -n "$existing_user" ] && [ "$existing_user" != "testuser" ] && userdel "$existing_user" 2>/dev/null || true`,
+    `existing_group=$(getent group ${config.ctx.gid} | cut -d: -f1) && [ -n "$existing_group" ] && [ "$existing_group" != "testuser" ] && groupdel "$existing_group" 2>/dev/null || true`,
     // create user matching host uid/gid for file permissions
     `id testuser > /dev/null 2>&1 || (groupadd -g ${config.ctx.gid} testuser 2>/dev/null || true; useradd -u ${config.ctx.uid} -g ${config.ctx.gid} -m -s /bin/bash testuser 2>/dev/null || true)`,
     // configure passwordless sudo (like GHA runners) - check if already configured
