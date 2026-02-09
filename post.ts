@@ -68,8 +68,8 @@ async function validateStuckProgressComment(
  * While the job is still in_progress, the individual steps may have their conclusions set.
  */
 async function getIsCancelled(params: {
-  repoContext: ReturnType<typeof parseRepoContext>,
-  octokit: ReturnType<typeof createOctokit>,
+  repoContext: ReturnType<typeof parseRepoContext>;
+  octokit: ReturnType<typeof createOctokit>;
   runIdStr: string;
 }): Promise<boolean> {
   try {
@@ -85,7 +85,7 @@ async function getIsCancelled(params: {
     // So we match jobs that START with the job ID
     const currentJobName = process.env.GITHUB_JOB;
     const currentJob = currentJobName
-      ? jobs.jobs.find(j => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`))
+      ? jobs.jobs.find((j) => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`))
       : jobs.jobs[0]; // fallback to first job
 
     if (!currentJob) {
@@ -97,14 +97,16 @@ async function getIsCancelled(params: {
     if (currentJob.conclusion === "cancelled") return true; // whole job explicit cancellation
 
     // but if it's still null, check steps for cancellation:
-    const cancelledStep = currentJob.steps?.find(step => step.conclusion === "cancelled");
+    const cancelledStep = currentJob.steps?.find((step) => step.conclusion === "cancelled");
     if (cancelledStep) {
       log.info(`[post] found cancelled step: ${cancelledStep.name}`);
       return true;
     }
     log.info("[post] no cancellation found, assuming failure");
   } catch (error) {
-    log.warning(`[post] failed to get job status: ${error instanceof Error ? error.message : String(error)}`);
+    log.warning(
+      `[post] failed to get job status: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
   return false; // assuming failure
 }
@@ -114,8 +116,7 @@ async function runPostCleanup(): Promise<void> {
 
   const runIdStr = process.env.GITHUB_RUN_ID;
 
-  if (!runIdStr)
-    return log.info("» [post] no GITHUB_RUN_ID available, skipping cleanup");
+  if (!runIdStr) return log.info("» [post] no GITHUB_RUN_ID available, skipping cleanup");
 
   // resolve prompt input once and use it for both issue number and comment ID extraction
   // only use the object form (JSON payload), not plain string prompts
@@ -124,7 +125,9 @@ async function runPostCleanup(): Promise<void> {
     const resolved = resolvePromptInput();
     if (typeof resolved !== "string") promptInput = resolved;
   } catch (error) {
-    log.warning(`[post] failed to resolve prompt input: ${error instanceof Error ? error.message : String(error)}`);
+    log.warning(
+      `[post] failed to resolve prompt input: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   // get job token for API calls
@@ -133,10 +136,14 @@ async function runPostCleanup(): Promise<void> {
   const octokit = createOctokit(token);
 
   // validate that progressCommentId from prompt input is stuck on "Leaping into action"
-  const commentId = await validateStuckProgressComment(promptInput, octokit, repoContext.owner, repoContext.name);
+  const commentId = await validateStuckProgressComment(
+    promptInput,
+    octokit,
+    repoContext.owner,
+    repoContext.name
+  );
 
-  if (!commentId)
-    return log.info("» [post] no stuck progress comment to update, skipping cleanup");
+  if (!commentId) return log.info("» [post] no stuck progress comment to update, skipping cleanup");
 
   log.info(`» [post] validated stuck comment: ${commentId}, updating with error message`);
 

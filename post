@@ -41449,28 +41449,35 @@ async function getIsCancelled(params) {
     }
     log.info("[post] no cancellation found, assuming failure");
   } catch (error2) {
-    log.warning(`[post] failed to get job status: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    log.warning(
+      `[post] failed to get job status: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
   }
   return false;
 }
 async function runPostCleanup() {
   log.info("\xBB [post] starting post cleanup");
   const runIdStr = process.env.GITHUB_RUN_ID;
-  if (!runIdStr)
-    return log.info("\xBB [post] no GITHUB_RUN_ID available, skipping cleanup");
+  if (!runIdStr) return log.info("\xBB [post] no GITHUB_RUN_ID available, skipping cleanup");
   let promptInput = null;
   try {
     const resolved = resolvePromptInput();
     if (typeof resolved !== "string") promptInput = resolved;
   } catch (error2) {
-    log.warning(`[post] failed to resolve prompt input: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    log.warning(
+      `[post] failed to resolve prompt input: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
   }
   const token = getJobToken();
   const repoContext = parseRepoContext();
   const octokit = createOctokit(token);
-  const commentId = await validateStuckProgressComment(promptInput, octokit, repoContext.owner, repoContext.name);
-  if (!commentId)
-    return log.info("\xBB [post] no stuck progress comment to update, skipping cleanup");
+  const commentId = await validateStuckProgressComment(
+    promptInput,
+    octokit,
+    repoContext.owner,
+    repoContext.name
+  );
+  if (!commentId) return log.info("\xBB [post] no stuck progress comment to update, skipping cleanup");
   log.info(`\xBB [post] validated stuck comment: ${commentId}, updating with error message`);
   try {
     const body = buildErrorCommentBody({
