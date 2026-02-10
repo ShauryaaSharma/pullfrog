@@ -39,7 +39,9 @@ export class ThinkingTimer {
 
   markToolCall(): void {
     const now = Date.now();
-    log.debug(`» thinking timer: markToolCall at ${now}, lastToolResult=${this.lastToolResultTimestamp}`);
+    log.debug(
+      `» thinking timer: markToolCall at ${now}, lastToolResult=${this.lastToolResultTimestamp}`
+    );
     if (this.lastToolResultTimestamp === null) return;
     const elapsed = now - this.lastToolResultTimestamp;
     if (elapsed < THINKING_THRESHOLD) return;
