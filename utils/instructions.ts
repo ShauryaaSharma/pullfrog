@@ -125,11 +125,11 @@ export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructi
   // user prompt is the user's actual request (body if @pullfrog tagged)
   const user = ctx.payload.prompt;
 
-  // event-level instructions are trigger-specific (macro-expanded server-side)
+  // event-level instructions are trigger-specific (flag-expanded server-side)
   // note: server only sends these when there's no user prompt (user request has precedence)
   const eventInstructions = ctx.payload.eventInstructions ?? "";
 
-  // repo-level instructions are macro-expanded server-side
+  // repo-level instructions are flag-expanded server-side
   const repo = ctx.payload.repoInstructions ?? "";
 
   // determine if this is a PR or issue for labeling

@@ -3,7 +3,7 @@
  * supports formats like "10m", "1h30m", "10m12s", "30s".
  */
 
-// special value indicating timeout is explicitly disabled via #notimeout macro
+// special value indicating timeout is explicitly disabled via --notimeout flag
 export const TIMEOUT_DISABLED = "none";
 
 // time string regex: supports formats like "10m", "1h30m", "10m12s", "30s"

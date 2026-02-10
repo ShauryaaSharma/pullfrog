@@ -248,9 +248,9 @@ export interface WriteablePayload {
   agent?: AgentName | undefined;
   /** the user's actual request (body if @pullfrog tagged) */
   prompt: string;
-  /** event-level instructions for this trigger type (macro-expanded server-side) */
+  /** event-level instructions for this trigger type (flag-expanded server-side) */
   eventInstructions?: string | undefined;
-  /** repo-level instructions (macro-expanded server-side) */
+  /** repo-level instructions (flag-expanded server-side) */
   repoInstructions?: string | undefined;
   /** event data from webhook payload - discriminated union based on trigger field */
   event: PayloadEvent;

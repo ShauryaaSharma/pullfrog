@@ -83,10 +83,10 @@ export async function main(): Promise<MainResult> {
   const runInfo = await resolveRun({ octokit });
 
   try {
-    // enable debug logging if #debug macro was used
+    // enable debug logging if --debug flag was used
     if (payload.debug) {
       process.env.LOG_LEVEL = "debug";
-      log.info("» debug mode enabled via #debug macro");
+      log.info("» debug mode enabled via --debug flag");
     }
 
     if (payload.cwd && process.cwd() !== payload.cwd) {
@@ -176,9 +176,9 @@ export async function main(): Promise<MainResult> {
       instructions,
     });
 
-    // timeout enforcement: default is 1 hour, but can be overridden via macros in the prompt:
-    // - #timeout2h (or any duration like "#timeout30m", "#timeout1h30m") to set a custom timeout
-    // - #notimeout to disable timeout entirely
+    // timeout enforcement: default is 1 hour, but can be overridden via flags in the prompt:
+    // - --timeout=2h (or any duration like "--timeout=30m", "--timeout=1h30m") to set a custom timeout
+    // - --notimeout to disable timeout entirely
     let result: Awaited<typeof agentPromise>;
     if (payload.timeout === TIMEOUT_DISABLED) {
       result = await Promise.race([agentPromise, activityTimeout.promise]);
