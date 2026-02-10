@@ -261,8 +261,8 @@ export const log = {
     const timestamp = isDebugEnabled() ? ` [${new Date().toISOString()}]` : "";
     const output =
       inputFormatted !== "{}"
-        ? `→ ${toolName}(${inputFormatted})${timestamp}`
-        : `→ ${toolName}()${timestamp}`;
+        ? `» ${toolName}(${inputFormatted})${timestamp}`
+        : `» ${toolName}()${timestamp}`;
 
     log.info(output.trimEnd());
   },

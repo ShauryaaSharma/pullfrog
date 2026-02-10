@@ -10,6 +10,7 @@ import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromGithub } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
+import { ThinkingTimer } from "../utils/timer.ts";
 import { getGitHubInstallationToken } from "../utils/token.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
@@ -112,17 +113,19 @@ const messageHandlers = {
       assistantMessageBuffer = "";
     }
   },
-  tool_use: (event: GeminiToolUseEvent) => {
+  tool_use: (event: GeminiToolUseEvent, thinkingTimer: ThinkingTimer) => {
     log.debug(JSON.stringify(event, null, 2));
     if (event.tool_name) {
+      thinkingTimer.markToolCall();
       log.toolCall({
         toolName: event.tool_name,
         input: event.parameters || {},
       });
     }
   },
-  tool_result: (event: GeminiToolResultEvent) => {
+  tool_result: (event: GeminiToolResultEvent, thinkingTimer: ThinkingTimer) => {
     log.debug(JSON.stringify(event, null, 2));
+    thinkingTimer.markToolResult();
     if (event.status === "error") {
       const errorMsg =
         typeof event.output === "string" ? event.output : JSON.stringify(event.output);
@@ -202,6 +205,7 @@ export const gemini = agent({
 
     let finalOutput = "";
     let stdoutBuffer = "";
+    const thinkingTimer = new ThinkingTimer();
 
     try {
       const result = await spawn({
@@ -230,7 +234,7 @@ export const gemini = agent({
               markActivity(); // reset activity timeout on every event
               const handler = messageHandlers[event.type as keyof typeof messageHandlers];
               if (handler) {
-                await handler(event as never);
+                await handler(event as never, thinkingTimer);
               }
             } catch {
               // ignore parse errors - might be non-JSON output from gemini cli

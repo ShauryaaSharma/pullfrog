@@ -8,6 +8,7 @@ import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
+import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
 async function installOpencode(): Promise<string> {
@@ -61,6 +62,7 @@ export const opencode = agent({
 
     const startTime = Date.now();
     let eventCount = 0;
+    const thinkingTimer = new ThinkingTimer();
 
     let output = "";
     let stdoutBuffer = ""; // buffer for incomplete lines across chunks
@@ -109,7 +111,7 @@ export const opencode = agent({
             markActivity(); // reset activity timeout on every event
             const handler = messageHandlers[event.type as keyof typeof messageHandlers];
             if (handler) {
-              await handler(event as never);
+              await handler(event as never, thinkingTimer);
             } else {
               // log unhandled event types for visibility
               log.info(
@@ -441,7 +443,7 @@ const messageHandlers = {
       currentStepType = null;
     }
   },
-  tool_use: (event: OpenCodeToolUseEvent) => {
+  tool_use: (event: OpenCodeToolUseEvent, thinkingTimer: ThinkingTimer) => {
     const toolName = event.part?.tool;
     const toolId = event.part?.callID;
     const parameters = event.part?.state?.input;
@@ -459,6 +461,7 @@ const messageHandlers = {
         stepHistory[stepHistory.length - 1].toolCalls.push(toolName);
       }
 
+      thinkingTimer.markToolCall();
       log.toolCall({
         toolName,
         input: parameters || {},
@@ -470,11 +473,13 @@ const messageHandlers = {
       }
     }
   },
-  tool_result: (event: OpenCodeToolResultEvent) => {
+  tool_result: (event: OpenCodeToolResultEvent, thinkingTimer: ThinkingTimer) => {
     // handle both new part structure and legacy flat structure
     const toolId = event.part?.callID || event.tool_id;
     const status = event.part?.state?.status || event.status || "unknown";
     const output = event.part?.state?.output || event.output;
+
+    thinkingTimer.markToolResult();
 
     if (toolId) {
       const toolStartTime = toolCallTimings.get(toolId);

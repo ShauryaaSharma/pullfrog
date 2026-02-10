@@ -11,6 +11,7 @@ import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
+import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
 // model selection based on effort level
@@ -119,6 +120,7 @@ export const claude = agent({
 
     // Track bash tool IDs to identify when bash tool results come back
     const bashToolIds = new Set<string>();
+    const thinkingTimer = new ThinkingTimer();
 
     const result = await spawn({
       cmd: "node",
@@ -147,7 +149,7 @@ export const claude = agent({
 
             const handler = messageHandlers[message.type];
             if (handler) {
-              await handler(message as never, bashToolIds);
+              await handler(message as never, bashToolIds, thinkingTimer);
             }
           } catch {
             // ignore parse errors - might be non-JSON output
@@ -192,7 +194,8 @@ type SDKMessageType = SDKMessage["type"];
 
 type SDKMessageHandler<type extends SDKMessageType = SDKMessageType> = (
   data: Extract<SDKMessage, { type: type }>,
-  bashToolIds: Set<string>
+  bashToolIds: Set<string>,
+  thinkingTimer: ThinkingTimer
 ) => void | Promise<void>;
 
 type SDKMessageHandlers = {
@@ -200,7 +203,7 @@ type SDKMessageHandlers = {
 };
 
 const messageHandlers: SDKMessageHandlers = {
-  assistant: (data, bashToolIds) => {
+  assistant: (data, bashToolIds, thinkingTimer) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (content.type === "text" && content.text?.trim()) {
@@ -211,6 +214,7 @@ const messageHandlers: SDKMessageHandlers = {
             bashToolIds.add(content.id);
           }
 
+          thinkingTimer.markToolCall();
           log.toolCall({
             toolName: content.name,
             input: content.input,
@@ -219,10 +223,12 @@ const messageHandlers: SDKMessageHandlers = {
       }
     }
   },
-  user: (data, bashToolIds) => {
+  user: (data, bashToolIds, thinkingTimer) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (content.type === "tool_result") {
+          thinkingTimer.markToolResult();
+
           const toolUseId = (content as any).tool_use_id;
           const isBashTool = toolUseId && bashToolIds.has(toolUseId);
 

@@ -10,6 +10,7 @@ import { ghPullfrogMcpName } from "../external.ts";
 import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromCurl } from "../utils/install.ts";
+import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
 // effort configuration for Cursor
@@ -144,6 +145,7 @@ export const cursor = agent({
     // track logged model_call_ids to avoid duplicates
     // cursor emits each assistant message twice: once without model_call_id, then again with it
     const loggedModelCallIds = new Set<string>();
+    const thinkingTimer = new ThinkingTimer();
 
     const messageHandlers = {
       system: (_event: CursorSystemEvent) => {
@@ -182,6 +184,7 @@ export const cursor = agent({
           const mcpToolCall = event.tool_call?.mcpToolCall;
           const builtinToolCall = (event.tool_call as any)?.builtinToolCall;
 
+          thinkingTimer.markToolCall();
           if (mcpToolCall?.args?.toolName && mcpToolCall?.args?.args) {
             log.toolCall({
               toolName: mcpToolCall.args.toolName,
@@ -194,6 +197,7 @@ export const cursor = agent({
             });
           }
         } else if (event.subtype === "completed") {
+          thinkingTimer.markToolResult();
           const result = event.tool_call?.mcpToolCall?.result?.success;
           const isError = result?.isError;
           if (isError) {

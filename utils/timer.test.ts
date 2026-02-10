@@ -1,5 +1,5 @@
 import * as cli from "./cli.ts";
-import { Timer } from "./timer.ts";
+import { ThinkingTimer, Timer } from "./timer.ts";
 
 describe("Timer", () => {
   beforeEach(() => {
@@ -101,6 +101,112 @@ describe("Timer", () => {
       timer.checkpoint("Custom Checkpoint Name");
 
       expect(cli.log.debug).toHaveBeenCalledWith("» Custom Checkpoint Name: 200ms");
+    });
+  });
+});
+
+describe("ThinkingTimer", () => {
+  beforeEach(() => {
+    vi.spyOn(cli.log, "info");
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  describe("markToolResult", () => {
+    it("should store the current timestamp", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 5000);
+      timer.markToolCall();
+
+      expect(cli.log.info).toHaveBeenCalled();
+    });
+  });
+
+  describe("markToolCall", () => {
+    it("should not log if markToolResult was never called", () => {
+      const timer = new ThinkingTimer();
+      timer.markToolCall();
+
+      expect(cli.log.info).not.toHaveBeenCalled();
+    });
+
+    it("should not log if elapsed time is below threshold (3000ms)", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 2999);
+      timer.markToolCall();
+
+      expect(cli.log.info).not.toHaveBeenCalled();
+    });
+
+    it("should log if elapsed time equals threshold (3000ms)", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 3000);
+      timer.markToolCall();
+
+      expect(cli.log.info).toHaveBeenCalledWith("» thought for 3 seconds");
+    });
+
+    it("should log if elapsed time exceeds threshold", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 5500);
+      timer.markToolCall();
+
+      expect(cli.log.info).toHaveBeenCalledWith("» thought for 5.5 seconds");
+    });
+
+    it("should format large durations correctly", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 15000);
+      timer.markToolCall();
+
+      expect(cli.log.info).toHaveBeenCalledWith("» thought for 15 seconds");
+    });
+
+    it("should handle multiple markToolCall invocations", () => {
+      const startTime = 1000000;
+      vi.setSystemTime(startTime);
+
+      const timer = new ThinkingTimer();
+      timer.markToolResult();
+
+      vi.setSystemTime(startTime + 4000);
+      timer.markToolCall();
+
+      vi.setSystemTime(startTime + 5000);
+      timer.markToolCall();
+
+      expect(cli.log.info).toHaveBeenCalledTimes(2);
+      expect(cli.log.info).toHaveBeenNthCalledWith(1, "» thought for 4 seconds");
+      expect(cli.log.info).toHaveBeenNthCalledWith(2, "» thought for 5 seconds");
     });
   });
 });

@@ -120,8 +120,6 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
   }
 
   // 2. setup authentication
-  log.info("» setting up git authentication...");
-
   // remove existing git auth headers that actions/checkout might have set
   try {
     execSync("git config --local --unset-all http.https://github.com/.extraheader", {
@@ -131,6 +129,29 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
     log.info("» removed existing authentication headers");
   } catch {
     log.debug("» no existing authentication headers to remove");
+  }
+
+  // remove includeIf entries that actions/checkout@v6 uses for credential persistence.
+  // v6 stores credentials in an external file loaded via includeIf.gitdir, which our
+  // --unset-all above doesn't catch. without this, $git() would produce duplicate
+  // Authorization headers (one from includeIf, one from GIT_CONFIG_PARAMETERS).
+  try {
+    const configOutput = execSync("git config --local --get-regexp ^includeif\\.", {
+      cwd: repoDir,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    for (const line of configOutput.trim().split("\n")) {
+      const key = line.split(" ")[0];
+      if (!key) continue;
+      execSync(`git config --local --unset "${key}"`, {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+    }
+    log.info("» removed includeIf credential entries");
+  } catch {
+    log.debug("» no includeIf credential entries to remove");
   }
 
   // SECURITY: set origin URL without token - auth is injected via GIT_CONFIG_PARAMETERS

@@ -41133,7 +41133,7 @@ var log = {
   toolCall: ({ toolName, input }) => {
     const inputFormatted = formatJsonValue(input);
     const timestamp = isDebugEnabled() ? ` [${(/* @__PURE__ */ new Date()).toISOString()}]` : "";
-    const output = inputFormatted !== "{}" ? `\u2192 ${toolName}(${inputFormatted})${timestamp}` : `\u2192 ${toolName}()${timestamp}`;
+    const output = inputFormatted !== "{}" ? `\xBB ${toolName}(${inputFormatted})${timestamp}` : `\xBB ${toolName}()${timestamp}`;
     log.info(output.trimEnd());
   }
 };

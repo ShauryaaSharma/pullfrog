@@ -55,7 +55,7 @@ function detectSandboxMethod(): SandboxMethod {
     });
     if (result.status === 0) {
       detectedSandboxMethod = "unshare";
-      log.info("PID namespace isolation enabled (unprivileged unshare)");
+      log.debug("PID namespace isolation enabled (unprivileged unshare)");
       return "unshare";
     }
   } catch {
@@ -70,7 +70,7 @@ function detectSandboxMethod(): SandboxMethod {
     });
     if (result.status === 0) {
       detectedSandboxMethod = "sudo-unshare";
-      log.info("PID namespace isolation enabled (sudo unshare)");
+      log.debug("PID namespace isolation enabled (sudo unshare)");
       return "sudo-unshare";
     }
   } catch {

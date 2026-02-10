@@ -10,6 +10,7 @@ import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
+import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
 // configuration based on effort level
@@ -136,6 +137,7 @@ export const codex = agent({
 
     // Track command execution IDs to identify when command results come back
     const commandExecutionIds = new Set<string>();
+    const thinkingTimer = new ThinkingTimer();
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -170,7 +172,7 @@ export const codex = agent({
 
             const handler = messageHandlers[event.type as keyof typeof messageHandlers];
             if (handler) {
-              await handler(event as never, commandExecutionIds);
+              await handler(event as never, commandExecutionIds, thinkingTimer);
             }
           } catch {
             // ignore parse errors - might be non-JSON output
@@ -210,7 +212,8 @@ export const codex = agent({
 
 type ThreadEventHandler<type extends ThreadEvent["type"]> = (
   event: Extract<ThreadEvent, { type: type }>,
-  commandExecutionIds: Set<string>
+  commandExecutionIds: Set<string>,
+  thinkingTimer: ThinkingTimer
 ) => void | Promise<void>;
 
 const messageHandlers: {
@@ -239,10 +242,11 @@ const messageHandlers: {
   "turn.failed": (event) => {
     log.error(`Turn failed: ${event.error.message}`);
   },
-  "item.started": (event, commandExecutionIds) => {
+  "item.started": (event, commandExecutionIds, thinkingTimer) => {
     const item = event.item;
     if (item.type === "command_execution") {
       commandExecutionIds.add(item.id);
+      thinkingTimer.markToolCall();
       log.toolCall({
         toolName: item.command,
         input: (item as any).args || {},
@@ -250,6 +254,7 @@ const messageHandlers: {
     } else if (item.type === "agent_message") {
       // Will be handled on completion
     } else if (item.type === "mcp_tool_call") {
+      thinkingTimer.markToolCall();
       log.toolCall({
         toolName: item.tool,
         input: {
@@ -268,13 +273,14 @@ const messageHandlers: {
       }
     }
   },
-  "item.completed": (event, commandExecutionIds) => {
+  "item.completed": (event, commandExecutionIds, thinkingTimer) => {
     const item = event.item;
     if (item.type === "agent_message") {
       log.box(item.text.trim(), { title: "Codex" });
     } else if (item.type === "command_execution") {
       const isTracked = commandExecutionIds.has(item.id);
       if (isTracked) {
+        thinkingTimer.markToolResult();
         log.startGroup(`bash output`);
         if (item.status === "failed" || (item.exit_code !== undefined && item.exit_code !== 0)) {
           log.warning(item.aggregated_output || "Command failed");
@@ -285,6 +291,7 @@ const messageHandlers: {
         commandExecutionIds.delete(item.id);
       }
     } else if (item.type === "mcp_tool_call") {
+      thinkingTimer.markToolResult();
       if (item.status === "failed" && item.error) {
         log.warning(`MCP tool call failed: ${item.error.message}`);
       } else if ((item as any).output) {
