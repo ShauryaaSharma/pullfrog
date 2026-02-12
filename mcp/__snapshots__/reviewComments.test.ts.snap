@@ -11,7 +11,7 @@ exports[`formatReviewThreads > formats thread blocks with TOC and correct line n
 
 ## .github/workflows/test.yml:7 [RESOLVED]
 
-\`\`\`\`comment author=cursor id=2544544046 review=3485940013 *
+\`\`\`\`comment author=cursor id=2544544046 review=3485940013 thread=PRRT_kwDOPaxxp85iysVl *
 ### Bug: GitHub Actions workflow triggered for wrong branch
 
 <!-- **High Severity** -->

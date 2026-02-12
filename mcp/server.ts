@@ -106,7 +106,11 @@ import { SetOutputTool } from "./output.ts";
 import { CreatePullRequestTool } from "./pr.ts";
 import { PullRequestInfoTool } from "./prInfo.ts";
 import { CreatePullRequestReviewTool } from "./review.ts";
-import { GetReviewCommentsTool, ListPullRequestReviewsTool } from "./reviewComments.ts";
+import {
+  GetReviewCommentsTool,
+  ListPullRequestReviewsTool,
+  ResolveReviewThreadTool,
+} from "./reviewComments.ts";
 import { SelectModeTool } from "./selectMode.ts";
 import { addTools } from "./shared.ts";
 import { UploadFileTool } from "./upload.ts";
@@ -166,6 +170,7 @@ function buildTools(ctx: ToolContext): Tool<any, any>[] {
     CheckoutPrTool(ctx),
     GetReviewCommentsTool(ctx),
     ListPullRequestReviewsTool(ctx),
+    ResolveReviewThreadTool(ctx),
     GetCheckSuiteLogsTool(ctx),
     AddLabelsTool(ctx),
     PushBranchTool(ctx),

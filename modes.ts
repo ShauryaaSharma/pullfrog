@@ -85,7 +85,7 @@ export function computeModes(): Mode[] {
 
 6. Make the necessary code changes to address the feedback. Work through each review comment systematically.
 
-7. **CRITICAL: Reply to EACH review comment individually.** After fixing each comment, use ${ghPullfrogMcpName}/reply_to_review_comment to reply directly to that comment thread. Keep replies extremely brief (1 sentence max, e.g., "Fixed by renaming to X" or "Added null check"). If suggesting a small, specific, self-contained code change, use GitHub's suggestion format with \`\`\`suggestion blocks.
+7. **CRITICAL: Reply to EACH review comment individually.** After fixing each comment, use ${ghPullfrogMcpName}/reply_to_review_comment to reply directly to that comment thread. Keep replies extremely brief (1 sentence max, e.g., "Fixed by renaming to X" or "Added null check"). If suggesting a small, specific, self-contained code change, use GitHub's suggestion format with \`\`\`suggestion blocks. After addressing a comment and posting your reply, use ${ghPullfrogMcpName}/resolve_review_thread with the thread_id to mark it as resolved. Only resolve threads where you made code changes to address the feedback—don't resolve threads that are already resolved, threads where no action was taken, or threads where you disagree with the feedback.
 
 8. Test your changes to ensure they work correctly.
 

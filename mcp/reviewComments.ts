@@ -395,7 +395,7 @@ export function buildThreadBlocks(
       const marker = isTargetReview ? " *" : "";
 
       block.push(
-        `\`\`\`\`comment author=${author} id=${comment.fullDatabaseId ?? "unknown"} review=${comment.pullRequestReview?.databaseId ?? "unknown"}${marker}`
+        `\`\`\`\`comment author=${author} id=${comment.fullDatabaseId ?? "unknown"} review=${comment.pullRequestReview?.databaseId ?? "unknown"} thread=${thread.id}${marker}`
       );
       block.push(comment.body || "(no comment body)");
       block.push("````");
@@ -573,6 +573,73 @@ export function ListPullRequestReviewsTool(ctx: ToolContext) {
         })),
         count: reviews.length,
       };
+    }),
+  });
+}
+
+const RESOLVE_REVIEW_THREAD_MUTATION = `
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+`;
+
+export const ResolveReviewThread = type({
+  thread_id: type.string.describe("The GraphQL node ID of the review thread to resolve"),
+});
+
+export function ResolveReviewThreadTool(ctx: ToolContext) {
+  return tool({
+    name: "resolve_review_thread",
+    description:
+      "Mark a review thread as resolved using GitHub's GraphQL API. " +
+      "Only call this after addressing the review feedback, implementing fixes, testing them, and posting a reply. " +
+      "Do not resolve threads that are already resolved, threads where no action was taken, or threads where you disagree with the feedback.",
+    parameters: ResolveReviewThread,
+    execute: execute(async (params) => {
+      try {
+        const response = await ctx.octokit.graphql<{
+          resolveReviewThread: {
+            thread: {
+              id: string;
+              isResolved: boolean;
+            };
+          };
+        }>(RESOLVE_REVIEW_THREAD_MUTATION, {
+          threadId: params.thread_id,
+        });
+
+        const thread = response.resolveReviewThread.thread;
+        log.debug(`resolved thread ${thread.id}, isResolved=${thread.isResolved}`);
+
+        return {
+          thread_id: thread.id,
+          is_resolved: thread.isResolved,
+          success: true,
+          message: "Thread resolved successfully",
+        };
+      } catch (error) {
+        // handle common error cases gracefully
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isResolved =
+          errorMessage.includes("already resolved") || errorMessage.includes("isResolved");
+
+        const message = isResolved
+          ? `thread ${params.thread_id} was already resolved`
+          : `failed to resolve thread ${params.thread_id}: ${errorMessage}`;
+        log.warning(message);
+
+        return {
+          thread_id: params.thread_id,
+          is_resolved: isResolved,
+          success: isResolved,
+          message,
+        };
+      }
     }),
   });
 }
