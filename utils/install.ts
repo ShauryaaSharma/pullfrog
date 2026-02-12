@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, createWriteStream, existsSync } from "node:fs";
+import { chmodSync, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,9 +18,16 @@ export interface InstallFromCurlParams {
   executableName: string;
 }
 
+export interface InstallFromDirectTarballParams {
+  url: string;
+  executablePath: string;
+  stripComponents?: number;
+}
+
 export interface InstallFromGithubParams {
   owner: string;
   repo: string;
+  tag?: string;
   assetName?: string;
   executablePath?: string;
   githubInstallationToken?: string;
@@ -29,6 +36,7 @@ export interface InstallFromGithubParams {
 export interface InstallFromGithubTarballParams {
   owner: string;
   repo: string;
+  tag?: string;
   assetNamePattern: string;
   executablePath: string;
   githubInstallationToken?: string;
@@ -181,8 +189,10 @@ async function fetchWithRetry(
 export async function installFromGithub(params: InstallFromGithubParams): Promise<string> {
   log.info(`» installing ${params.owner}/${params.repo} from GitHub releases...`);
 
-  // fetch release from GitHub API (latest)
-  const releaseUrl = `https://api.github.com/repos/${params.owner}/${params.repo}/releases/latest`;
+  // fetch release from GitHub API (pinned tag or latest)
+  const releaseUrl = params.tag
+    ? `https://api.github.com/repos/${params.owner}/${params.repo}/releases/tags/${params.tag}`
+    : `https://api.github.com/repos/${params.owner}/${params.repo}/releases/latest`;
   log.debug(`» fetching release from ${releaseUrl}...`);
 
   const headers: Record<string, string> = {};
@@ -261,8 +271,10 @@ export async function installFromGithubTarball(
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   const assetName = params.assetNamePattern.replace("{os}", os).replace("{arch}", arch);
 
-  // fetch release from GitHub API (latest)
-  const releaseUrl = `https://api.github.com/repos/${params.owner}/${params.repo}/releases/latest`;
+  // fetch release from GitHub API (pinned tag or latest)
+  const releaseUrl = params.tag
+    ? `https://api.github.com/repos/${params.owner}/${params.repo}/releases/tags/${params.tag}`
+    : `https://api.github.com/repos/${params.owner}/${params.repo}/releases/latest`;
   log.info(`» fetching release from ${releaseUrl}...`);
 
   const headers: Record<string, string> = {};
@@ -324,6 +336,59 @@ export async function installFromGithubTarball(
   chmodSync(cliPath, 0o755);
 
   log.info(`» ${params.owner}/${params.repo} installed at ${cliPath}`);
+
+  return cliPath;
+}
+
+/**
+ * Install a CLI tool from a direct tarball URL.
+ * Downloads the tarball, extracts it to a temp directory, and returns the path to the CLI executable.
+ */
+export async function installFromDirectTarball(
+  params: InstallFromDirectTarballParams
+): Promise<string> {
+  log.info(`» downloading tarball from ${params.url}...`);
+
+  const tempDir = process.env.PULLFROG_TEMP_DIR!;
+  const tarballPath = join(tempDir, "direct-package.tgz");
+
+  const response = await fetch(params.url);
+  if (!response.ok) {
+    throw new Error(`failed to download tarball: ${response.status} ${response.statusText}`);
+  }
+  if (!response.body) throw new Error("response body is null");
+
+  const fileStream = createWriteStream(tarballPath);
+  await pipeline(response.body, fileStream);
+  log.debug(`» downloaded tarball to ${tarballPath}`);
+
+  // always extract into a dedicated directory
+  const extractDir = join(tempDir, "direct-package");
+  mkdirSync(extractDir, { recursive: true });
+
+  const tarArgs = ["-xzf", tarballPath, "-C", extractDir];
+  if (params.stripComponents) {
+    tarArgs.push(`--strip-components=${params.stripComponents}`);
+  }
+
+  log.debug(`» extracting tarball...`);
+  const extractResult = spawnSync("tar", tarArgs, {
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+  if (extractResult.status !== 0) {
+    throw new Error(
+      `failed to extract tarball: ${extractResult.stderr || extractResult.stdout || "unknown error"}`
+    );
+  }
+
+  const cliPath = join(extractDir, params.executablePath);
+  if (!existsSync(cliPath)) {
+    throw new Error(`executable not found in extracted tarball at ${cliPath}`);
+  }
+
+  chmodSync(cliPath, 0o755);
+  log.info(`» installed at ${cliPath}`);
 
   return cliPath;
 }

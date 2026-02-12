@@ -24,7 +24,7 @@ const geminiEffortConfig: Record<Effort, { model: string; thinkingLevel: string 
   // pass the model directly it works if we ever did need to do something like this,
   // we could write to .gemini/settings.json
   mini: { model: "gemini-3-flash-preview", thinkingLevel: "LOW" },
-  auto: { model: "gemini-3-flash-preview", thinkingLevel: "HIGH" },
+  auto: { model: "gemini-3-pro-preview", thinkingLevel: "HIGH" },
   max: { model: "gemini-3-pro-preview", thinkingLevel: "HIGH" },
 } as const;
 
@@ -84,6 +84,9 @@ type GeminiEvent =
   | GeminiToolUseEvent
   | GeminiToolResultEvent
   | GeminiResultEvent;
+
+// pinned CLI version — gemini-cli is installed from GitHub releases, not npm
+const GEMINI_CLI_VERSION = "v0.28.2";
 
 // transient API error patterns that warrant a retry.
 // these are server-side issues, not client errors.
@@ -191,6 +194,7 @@ async function installGemini(githubInstallationToken?: string): Promise<string> 
   return await installFromGithub({
     owner: "google-gemini",
     repo: "gemini-cli",
+    tag: GEMINI_CLI_VERSION,
     assetName: "gemini.js",
     ...(githubInstallationToken && { githubInstallationToken }),
   });
@@ -231,6 +235,7 @@ export const gemini = agent({
           cmd: "node",
           args: [cliPath, ...args],
           env: process.env,
+          activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
           onStdout: async (chunk) => {
             const text = chunk.toString();
             finalOutput += text;

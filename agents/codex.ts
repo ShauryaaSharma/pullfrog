@@ -14,6 +14,10 @@ import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
+// pinned CLI version — no 1-1 package.json dependency for the CLI package
+// (package.json has @openai/codex-sdk which is the SDK, not the CLI)
+const CODEX_CLI_VERSION = "0.101.0";
+
 // configuration based on effort level
 // https://developers.openai.com/codex/models/
 type ModelReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -124,7 +128,7 @@ async function installCodex(): Promise<string> {
 
   const cliPath = await installFromNpmTarball({
     packageName: "@openai/codex",
-    version: "latest",
+    version: CODEX_CLI_VERSION,
     executablePath: "bin/codex.js",
     installDependencies: true,
   });
@@ -225,6 +229,7 @@ export const codex = agent({
       cwd: process.cwd(),
       env,
       stdio: ["ignore", "pipe", "pipe"],
+      activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
       onStdout: async (chunk) => {
         finalOutput += chunk;
 

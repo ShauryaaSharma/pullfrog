@@ -311,12 +311,12 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
     env.PULLFROG_TEST_REPO_SETUP = testConfig.repoSetup;
   }
 
-  // opencode: set model override so tests use a model with quota (avoids default picking one without quota)
+  // opencode: override to google/gemini-3-pro-preview to avoid flash's tight RPD quota limits
   if (ctx.agent === "opencode") {
-    env.OPENCODE_MODEL = "google/gemini-3-flash-preview";
+    env.OPENCODE_MODEL = "google/gemini-3-pro-preview";
   }
 
-  // gemini: use pro model for tests to avoid flash's tight RPD quota limits
+  // gemini: override to pro for all tests (including mini-effort) to avoid flash's tight RPD quota limits
   if (ctx.agent === "gemini") {
     env.GEMINI_MODEL = "gemini-3-pro-preview";
   }

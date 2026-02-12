@@ -12,6 +12,10 @@ import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
 
+// pinned CLI version — no 1-1 package.json dependency for the CLI package
+// (package.json has @opencode-ai/sdk which is the SDK, not the CLI)
+const OPENCODE_CLI_VERSION = "1.1.56";
+
 // known provider error patterns in stderr (from --print-logs output).
 // when OpenCode encounters these, it often goes silent on stdout (Issue #752),
 // so we surface them prominently instead of burying them in debug warnings.
@@ -37,7 +41,7 @@ function detectProviderError(text: string): string | null {
 async function installOpencode(): Promise<string> {
   return await installFromNpmTarball({
     packageName: "opencode-ai",
-    version: "latest",
+    version: OPENCODE_CLI_VERSION,
     executablePath: "bin/opencode",
     installDependencies: true,
   });
@@ -114,6 +118,7 @@ export const opencode = agent({
         cwd: repoDir,
         env,
         timeout: 600000, // 10 minutes timeout to prevent infinite hangs
+        activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
         stdio: ["ignore", "pipe", "pipe"],
         onStdout: async (chunk) => {
           const text = chunk.toString();

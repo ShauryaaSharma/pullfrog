@@ -139,6 +139,7 @@ export const claude = agent({
       cwd: process.cwd(),
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
       onStdout: async (chunk) => {
         finalOutput += chunk;
 

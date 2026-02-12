@@ -10,9 +10,14 @@ import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
 import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
-import { installFromCurl } from "../utils/install.ts";
+import { installFromDirectTarball } from "../utils/install.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
+
+// pinned CLI version — cursor-agent is downloaded as a tarball from downloads.cursor.com.
+// the version format is {date}-{commit_hash}. update by inspecting the install script:
+//   curl -fsSL https://cursor.com/install | grep DOWNLOAD_URL
+const CURSOR_CLI_VERSION = "2026.01.28-fd13201";
 
 // effort configuration for Cursor
 // only "max" overrides the model; mini/auto use default ("auto")
@@ -95,9 +100,12 @@ type CursorEvent =
   | CursorResultEvent;
 
 async function installCursor(): Promise<string> {
-  return await installFromCurl({
-    installUrl: "https://cursor.com/install",
-    executableName: "cursor-agent",
+  const os = process.platform === "darwin" ? "darwin" : "linux";
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  return await installFromDirectTarball({
+    url: `https://downloads.cursor.com/lab/${CURSOR_CLI_VERSION}/${os}/${arch}/agent-cli-package.tar.gz`,
+    executablePath: "cursor-agent",
+    stripComponents: 1,
   });
 }
 
