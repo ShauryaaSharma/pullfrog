@@ -1,22 +1,22 @@
+import { performance } from "node:perf_hooks";
 import * as cli from "./cli.ts";
 import { ThinkingTimer, Timer } from "./timer.ts";
 
 describe("Timer", () => {
   beforeEach(() => {
     vi.spyOn(cli.log, "debug");
-    // Mock Date.now to have predictable timestamps
-    vi.useFakeTimers();
+    // Mock performance.now() to have predictable timestamps
+    vi.spyOn(performance, "now");
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
   describe("constructor", () => {
     it("should initialize with current timestamp", () => {
       const mockTime = 1000000;
-      vi.setSystemTime(mockTime);
+      vi.mocked(performance.now).mockReturnValueOnce(mockTime).mockReturnValueOnce(mockTime);
 
       const timer = new Timer();
       timer.checkpoint("test");
@@ -28,11 +28,12 @@ describe("Timer", () => {
   describe("checkpoint", () => {
     it("should log duration from initial timestamp on first checkpoint", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
-      const timer = new Timer();
-
       const checkpointTime = startTime + 100;
-      vi.setSystemTime(checkpointTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // constructor
+        .mockReturnValueOnce(checkpointTime); // checkpoint
+
+      const timer = new Timer();
       timer.checkpoint("first");
 
       expect(cli.log.debug).toHaveBeenCalledWith("» first: 100ms");
@@ -40,17 +41,15 @@ describe("Timer", () => {
 
     it("should log duration from last checkpoint on subsequent checkpoints", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
-      const timer = new Timer();
-
-      // First checkpoint
       const firstCheckpointTime = startTime + 50;
-      vi.setSystemTime(firstCheckpointTime);
-      timer.checkpoint("first");
-
-      // Second checkpoint
       const secondCheckpointTime = firstCheckpointTime + 75;
-      vi.setSystemTime(secondCheckpointTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // constructor
+        .mockReturnValueOnce(firstCheckpointTime) // first checkpoint
+        .mockReturnValueOnce(secondCheckpointTime); // second checkpoint
+
+      const timer = new Timer();
+      timer.checkpoint("first");
       timer.checkpoint("second");
 
       expect(cli.log.debug).toHaveBeenCalledTimes(2);
@@ -60,19 +59,15 @@ describe("Timer", () => {
 
     it("should handle multiple checkpoints correctly", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // constructor
+        .mockReturnValueOnce(startTime + 10) // step1
+        .mockReturnValueOnce(startTime + 25) // step2
+        .mockReturnValueOnce(startTime + 45); // step3
+
       const timer = new Timer();
-
-      // First checkpoint
-      vi.setSystemTime(startTime + 10);
       timer.checkpoint("step1");
-
-      // Second checkpoint
-      vi.setSystemTime(startTime + 25);
       timer.checkpoint("step2");
-
-      // Third checkpoint
-      vi.setSystemTime(startTime + 45);
       timer.checkpoint("step3");
 
       expect(cli.log.debug).toHaveBeenCalledTimes(3);
@@ -83,10 +78,11 @@ describe("Timer", () => {
 
     it("should handle zero duration correctly", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
-      const timer = new Timer();
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // constructor
+        .mockReturnValueOnce(startTime); // checkpoint
 
-      // Checkpoint immediately
+      const timer = new Timer();
       timer.checkpoint("immediate");
 
       expect(cli.log.debug).toHaveBeenCalledWith("» immediate: 0ms");
@@ -94,10 +90,11 @@ describe("Timer", () => {
 
     it("should handle custom checkpoint names", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
-      const timer = new Timer();
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // constructor
+        .mockReturnValueOnce(startTime + 200); // checkpoint
 
-      vi.setSystemTime(startTime + 200);
+      const timer = new Timer();
       timer.checkpoint("Custom Checkpoint Name");
 
       expect(cli.log.debug).toHaveBeenCalledWith("» Custom Checkpoint Name: 200ms");
@@ -108,23 +105,22 @@ describe("Timer", () => {
 describe("ThinkingTimer", () => {
   beforeEach(() => {
     vi.spyOn(cli.log, "info");
-    vi.useFakeTimers();
+    vi.spyOn(performance, "now");
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
   describe("markToolResult", () => {
     it("should store the current timestamp", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 5000); // markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 5000);
       timer.markToolCall();
 
       expect(cli.log.info).toHaveBeenCalled();
@@ -141,12 +137,12 @@ describe("ThinkingTimer", () => {
 
     it("should not log if elapsed time is below threshold (3000ms)", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 2999); // markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 2999);
       timer.markToolCall();
 
       expect(cli.log.info).not.toHaveBeenCalled();
@@ -154,12 +150,12 @@ describe("ThinkingTimer", () => {
 
     it("should log if elapsed time equals threshold (3000ms)", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 3000); // markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 3000);
       timer.markToolCall();
 
       expect(cli.log.info).toHaveBeenCalledWith("» thought for 3 seconds");
@@ -167,12 +163,12 @@ describe("ThinkingTimer", () => {
 
     it("should log if elapsed time exceeds threshold", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 5500); // markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 5500);
       timer.markToolCall();
 
       expect(cli.log.info).toHaveBeenCalledWith("» thought for 5.5 seconds");
@@ -180,12 +176,12 @@ describe("ThinkingTimer", () => {
 
     it("should format large durations correctly", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 15000); // markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 15000);
       timer.markToolCall();
 
       expect(cli.log.info).toHaveBeenCalledWith("» thought for 15 seconds");
@@ -193,15 +189,14 @@ describe("ThinkingTimer", () => {
 
     it("should handle multiple markToolCall invocations", () => {
       const startTime = 1000000;
-      vi.setSystemTime(startTime);
+      vi.mocked(performance.now)
+        .mockReturnValueOnce(startTime) // markToolResult
+        .mockReturnValueOnce(startTime + 4000) // first markToolCall
+        .mockReturnValueOnce(startTime + 5000); // second markToolCall
 
       const timer = new ThinkingTimer();
       timer.markToolResult();
-
-      vi.setSystemTime(startTime + 4000);
       timer.markToolCall();
-
-      vi.setSystemTime(startTime + 5000);
       timer.markToolCall();
 
       expect(cli.log.info).toHaveBeenCalledTimes(2);

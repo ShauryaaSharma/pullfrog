@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import type { Effort } from "../external.ts";
 import { ghPullfrogMcpName } from "../external.ts";
 import { markActivity } from "../utils/activity.ts";
@@ -249,7 +250,7 @@ export const cursor = agent({
 
       log.info("» running Cursor CLI...");
 
-      const startTime = Date.now();
+      const startTime = performance.now();
 
       // create env without XDG_CONFIG_HOME so CLI uses $HOME/.cursor/ where we wrote config
       const cliEnv = Object.fromEntries(
@@ -307,7 +308,7 @@ export const cursor = agent({
             log.warning(`Cursor CLI terminated by signal: ${signal}`);
           }
 
-          const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+          const duration = ((performance.now() - startTime) / 1000).toFixed(1);
 
           if (code === 0) {
             log.success(`Cursor CLI completed successfully in ${duration}s`);
@@ -327,7 +328,7 @@ export const cursor = agent({
         });
 
         child.on("error", (error) => {
-          const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+          const duration = ((performance.now() - startTime) / 1000).toFixed(1);
           const errorMessage = error.message || String(error);
           log.error(`Cursor CLI execution failed after ${duration}s: ${errorMessage}`);
           resolve({

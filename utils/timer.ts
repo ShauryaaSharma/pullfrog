@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { log } from "./cli.ts";
 
 export class Timer {
@@ -5,11 +6,11 @@ export class Timer {
   private lastCheckpointTimestamp: number | null = null;
 
   constructor() {
-    this.initialTimestamp = Date.now();
+    this.initialTimestamp = performance.now();
   }
 
   checkpoint(name: string): void {
-    const now = Date.now();
+    const now = performance.now();
     const duration = this.lastCheckpointTimestamp
       ? now - this.lastCheckpointTimestamp
       : now - this.initialTimestamp;
@@ -33,12 +34,12 @@ export class ThinkingTimer {
   private lastToolResultTimestamp: number | null = null;
 
   markToolResult(): void {
-    this.lastToolResultTimestamp = Date.now();
+    this.lastToolResultTimestamp = performance.now();
     log.debug(`» thinking timer: markToolResult at ${this.lastToolResultTimestamp}`);
   }
 
   markToolCall(): void {
-    const now = Date.now();
+    const now = performance.now();
     log.debug(
       `» thinking timer: markToolCall at ${now}, lastToolResult=${this.lastToolResultTimestamp}`
     );

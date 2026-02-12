@@ -3,6 +3,7 @@
 // changes to web search configuration should be reflected in wiki/websearch.md
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import { ghPullfrogMcpName } from "../external.ts";
 import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
@@ -93,7 +94,7 @@ export const opencode = agent({
     log.debug(`» HOME: ${env.HOME}`);
     log.debug(`» XDG_CONFIG_HOME: ${env.XDG_CONFIG_HOME}`);
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     let eventCount = 0;
     const thinkingTimer = new ThinkingTimer();
 
@@ -190,8 +191,10 @@ export const opencode = agent({
         },
       });
 
-      const duration = Date.now() - startTime;
-      log.info(`» OpenCode CLI completed in ${duration}ms with exit code ${result.exitCode}`);
+      const duration = performance.now() - startTime;
+      log.info(
+        `» OpenCode CLI completed in ${Math.round(duration)}ms with exit code ${result.exitCode}`
+      );
 
       // if zero events processed, something went wrong - surface stderr context
       if (eventCount === 0) {
@@ -243,7 +246,7 @@ export const opencode = agent({
       };
     } catch (error) {
       // activity timeout or process timeout - surface the real cause
-      const duration = Date.now() - startTime;
+      const duration = performance.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isActivityTimeout = errorMessage.includes("activity timeout");
 
@@ -583,11 +586,11 @@ const messageHandlers = {
     if (toolId) {
       const toolStartTime = toolCallTimings.get(toolId);
       if (toolStartTime) {
-        const toolDuration = Date.now() - toolStartTime;
+        const toolDuration = performance.now() - toolStartTime;
         toolCallTimings.delete(toolId);
         const stepContext = currentStepId ? ` (step=${currentStepType || "unknown"})` : "";
         log.debug(
-          `» OpenCode tool_result${stepContext}: id=${toolId}, status=${status}, duration=${toolDuration}ms`
+          `» OpenCode tool_result${stepContext}: id=${toolId}, status=${status}, duration=${Math.round(toolDuration)}ms`
         );
         if (output) {
           log.debug(`  output: ${typeof output === "string" ? output : JSON.stringify(output)}`);

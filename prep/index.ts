@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { log } from "../utils/cli.ts";
 import { installNodeDependencies } from "./installNodeDependencies.ts";
 import { installPythonDependencies } from "./installPythonDependencies.ts";
@@ -14,7 +15,7 @@ const prepSteps: PrepDefinition[] = [installNodeDependencies, installPythonDepen
  */
 export async function runPrepPhase(options: PrepOptions): Promise<PrepResult[]> {
   log.debug("» starting prep phase...");
-  const startTime = Date.now();
+  const startTime = performance.now();
   const results: PrepResult[] = [];
 
   for (const step of prepSteps) {
@@ -35,8 +36,8 @@ export async function runPrepPhase(options: PrepOptions): Promise<PrepResult[]> 
     }
   }
 
-  const totalDurationMs = Date.now() - startTime;
-  log.debug(`» prep phase completed (${totalDurationMs}ms)`);
+  const totalDurationMs = performance.now() - startTime;
+  log.debug(`» prep phase completed (${Math.round(totalDurationMs)}ms)`);
 
   return results;
 }

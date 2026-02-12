@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
+import { performance } from "node:perf_hooks";
 import { DEFAULT_ACTIVITY_CHECK_INTERVAL_MS, DEFAULT_ACTIVITY_TIMEOUT_MS } from "./activity.ts";
 import { log } from "./cli.ts";
 
@@ -107,7 +108,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
 
   installSignalHandlers();
 
-  const startTime = Date.now();
+  const startTime = performance.now();
   let stdoutBuffer = "";
   let stderrBuffer = "";
 
@@ -129,7 +130,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     let activityCheckIntervalId: NodeJS.Timeout | undefined;
     let isTimedOut = false;
     let isActivityTimedOut = false;
-    let lastActivityTime = Date.now();
+    let lastActivityTime = performance.now();
 
     // overall timeout
     if (timeout) {
@@ -148,7 +149,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     // activity timeout: kill if no output for too long
     if (activityTimeoutMs > 0) {
       activityCheckIntervalId = setInterval(() => {
-        const idleMs = Date.now() - lastActivityTime;
+        const idleMs = performance.now() - lastActivityTime;
         if (idleMs > activityTimeoutMs) {
           isActivityTimedOut = true;
           const idleSec = Math.round(idleMs / 1000);
@@ -160,7 +161,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     }
 
     function updateActivity(): void {
-      lastActivityTime = Date.now();
+      lastActivityTime = performance.now();
     }
 
     if (child.stdout) {
@@ -182,7 +183,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     }
 
     child.on("close", (exitCode) => {
-      const durationMs = Date.now() - startTime;
+      const durationMs = performance.now() - startTime;
 
       untrackChild(child);
       if (timeoutId) clearTimeout(timeoutId);
@@ -194,7 +195,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
       }
 
       if (isActivityTimedOut) {
-        const idleSec = Math.round((Date.now() - lastActivityTime) / 1000);
+        const idleSec = Math.round((performance.now() - lastActivityTime) / 1000);
         reject(new Error(`activity timeout: no output for ${idleSec}s`));
         return;
       }
@@ -208,7 +209,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     });
 
     child.on("error", (error) => {
-      const durationMs = Date.now() - startTime;
+      const durationMs = performance.now() - startTime;
 
       untrackChild(child);
       if (timeoutId) clearTimeout(timeoutId);

@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 export const DEFAULT_ACTIVITY_TIMEOUT_MS = 60_000;
 export const DEFAULT_ACTIVITY_CHECK_INTERVAL_MS = 5_000;
 
@@ -28,21 +30,21 @@ type WriteFunction = {
 };
 
 // module-level activity tracking - allows agents to mark activity on any event
-let _lastActivity = Date.now();
+let _lastActivity = performance.now();
 
 /**
  * mark activity to reset the no-output timeout.
  * call this whenever the agent emits any event, even if it isn't logged to stdout.
  */
 export function markActivity(): void {
-  _lastActivity = Date.now();
+  _lastActivity = performance.now();
 }
 
 /**
  * get the time since last activity in milliseconds
  */
 export function getIdleMs(): number {
-  return Date.now() - _lastActivity;
+  return Math.round(performance.now() - _lastActivity);
 }
 
 function wrapWrite(original: WriteFunction, onActivity: () => void): WriteFunction {
