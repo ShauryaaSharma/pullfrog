@@ -40,11 +40,11 @@ export function computeModes(): Mode[] {
 
 4. Understand the requirements and any existing plan
 
-5. Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance. 
+5. Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance.
 
-6. Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
+6. Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat this step until everything passes.
 
-7. Test your changes to ensure they work correctly
+7. Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
 
 8. ${reportProgressInstruction}
 
@@ -87,7 +87,7 @@ export function computeModes(): Mode[] {
 
 7. **CRITICAL: Reply to EACH review comment individually.** After fixing each comment, use ${ghPullfrogMcpName}/reply_to_review_comment to reply directly to that comment thread. Keep replies extremely brief (1 sentence max, e.g., "Fixed by renaming to X" or "Added null check"). If suggesting a small, specific, self-contained code change, use GitHub's suggestion format with \`\`\`suggestion blocks. After addressing a comment and posting your reply, use ${ghPullfrogMcpName}/resolve_review_thread with the thread_id to mark it as resolved. Only resolve threads where you made code changes to address the feedback—don't resolve threads that are already resolved, threads where no action was taken, or threads where you disagree with the feedback.
 
-8. Test your changes to ensure they work correctly.
+8. Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat until everything passes.
 
 9. When done, commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. The push will automatically go to the correct remote (including fork repos). Do not create a new branch or PR - you are updating an existing one.
 
@@ -226,8 +226,8 @@ ${permalinkTip}`,
    - Create a branch using \`${ghPullfrogMcpName}/git\` (\`git checkout -b pullfrog/branch-name\`). Branch names should be prefixed with "pullfrog/" and reflect the exact changes you are making. Never commit directly to main, master, or production.
    - ${dependencyInstallationStep}
    - Use file operations to create/modify files with your changes.
+   - Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat until everything passes.
    - Commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
-   - Test your changes to ensure they work correctly.
    - Determine whether to create a PR:
      - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.
      - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
