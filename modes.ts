@@ -218,11 +218,15 @@ ${permalinkTip}`,
     {
       name: "Prompt",
       description:
-        "Fallback for tasks that don't fit other workflows, e.g. direct prompts via comments, or requests requiring general assistance",
+        "General-purpose tasks that don't fit other modes: answering questions, adding comments, labeling, running ad-hoc commands, or any direct request",
       prompt: `Follow these steps. THINK HARDER.
-1. Perform the requested task. Only take action if you have high confidence that you understand what is being asked. If you are not sure, ask for clarification. Take stock of the tools at your disposal. When creating comments, always use report_progress. Do not use create_issue_comment.
+1. Read the request carefully. Only take action if you have high confidence that you understand what is being asked. Take stock of the tools at your disposal.
 
-2. If the task involves making code changes:
+2. If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists. Skip this step if the prompt is trivial and self-contained.
+
+3. Perform the requested task.
+
+4. If the task involves making code changes:
    - Create a branch using \`${ghPullfrogMcpName}/git\` (\`git checkout -b pullfrog/branch-name\`). Branch names should be prefixed with "pullfrog/" and reflect the exact changes you are making. Never commit directly to main, master, or production.
    - ${dependencyInstallationStep}
    - Use file operations to create/modify files with your changes.
@@ -232,9 +236,9 @@ ${permalinkTip}`,
      - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.
      - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-3. ${reportProgressInstruction}
+5. ${reportProgressInstruction}
 
-4. When finished with the task, use report_progress one final time ONLY if you haven't already included all the important information (summary, links to PRs/issues) in a previous report_progress call. If you already called report_progress with complete information including links after creating artifacts, you do NOT need to call it again. **IMPORTANT**: Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task."`,
+**IMPORTANT**: Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.`,
     },
   ];
 }

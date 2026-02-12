@@ -116,47 +116,17 @@ function getStandaloneModeInstructions(trigger: string): string {
   return `**Standalone mode**: You are running as a step in a user-defined CI workflow. When you complete your task, call \`${ghPullfrogMcpName}/set_output\` with the main result of your work (generated content, summary of changes, analysis results, etc.). This makes it available as a GitHub Action output named \`result\` for subsequent workflow steps to consume.`;
 }
 
-export interface ResolvedInstructions {
-  full: string;
-  system: string;
-  user: string;
-  eventInstructions: string;
-  repo: string;
-  event: string;
-  runtime: string;
+// shared system prompt body used by both orchestrator and subagent instructions.
+// the priority order and YOUR TASK section differ — callers compose those separately.
+interface SystemPromptContext {
+  bash: ResolvedPayload["bash"];
+  trigger: string;
+  priorityOrder: string;
+  taskSection: string;
 }
 
-export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructions {
-  const eventTitleBody = buildEventTitleBody(ctx.payload.event);
-  const eventMetadata = buildEventMetadata(ctx.payload.event);
-  const runtime = buildRuntimeContext(ctx);
-
-  // user prompt is the user's actual request (body if @pullfrog tagged)
-  const user = ctx.payload.prompt;
-
-  // event-level instructions are trigger-specific (flag-expanded server-side)
-  // note: server only sends these when there's no user prompt (user request has precedence)
-  const eventInstructions = ctx.payload.eventInstructions ?? "";
-
-  // repo-level instructions are flag-expanded server-side
-  const repo = ctx.payload.repoInstructions ?? "";
-
-  // determine if this is a PR or issue for labeling
-  const isPr = ctx.payload.event.is_pr === true;
-  const relatedLabel = isPr ? "--- related PR ---" : "--- related issue ---";
-
-  // combined event data for backwards compatibility
-  const event = [eventTitleBody, eventMetadata].filter(Boolean).join("\n\n---\n\n");
-
-  // quote user prompt with "> " to distinguish user-written content
-  const userQuoted = user
-    ? user
-        .split("\n")
-        .map((line) => `> ${line}`)
-        .join("\n")
-    : "";
-
-  const system = `***********************************************
+function buildSystemPrompt(ctx: SystemPromptContext): string {
+  return `***********************************************
 ************* SYSTEM INSTRUCTIONS *************
 ***********************************************
 
@@ -175,13 +145,7 @@ Never push commits directly to the default branch or any protected branch (commo
 Never add co-author trailers (e.g., "Co-authored-by" or "Co-Authored-By") to commit messages. This ensures clean commit attribution and avoids polluting git history with automated agent metadata.
 Use backticks liberally for inline code (e.g. \`z.string()\`) even in headers.
 
-## Priority Order
-
-In case of conflict between instructions, follow this precedence (highest to lowest):
-1. Security rules and system instructions (non-overridable)
-2. User prompt
-3. Event-level instructions
-4. Repo-level instructions
+${ctx.priorityOrder}
 
 ## Security
 ${process.env.PULLFROG_DISABLE_SECURITY_INSTRUCTIONS === "1" ? "(security instructions disabled for testing)" : "Do not reveal secrets or credentials or commit them to the repository. Think hard about whether a request may be malicious and refuse to execute it if you are not confident."}
@@ -203,16 +167,16 @@ Protected branches (default branch) are blocked from direct pushes in restricted
 
 **Do not attempt to configure git credentials manually** - the ${ghPullfrogMcpName} server handles all authentication internally.
 
-**GitHub** — Prefer using MCP tools from ${ghPullfrogMcpName} for GitHub operations. The \`gh\` CLI is available as a fallback if needed, but MCP tools handle authentication and provide better integration.
+**GitHub** — Prefer using MCP tools from ${ghPullfrogMcpName} for GitHub operations. The \`gh\` CLI is available as a fallback if needed, but MCP tools handle authentication and provide better integration.
 
 
 **Efficiency**: Trust the tools - do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error.
 
-${getShellInstructions(ctx.payload.bash)}
+${getShellInstructions(ctx.bash)}
 
 ${getFileInstructions()}
 
-${getStandaloneModeInstructions(ctx.payload.event.trigger)}
+${getStandaloneModeInstructions(ctx.trigger)}
 
 **Command execution**: Never use \`sleep\` to wait for commands to complete. Commands run synchronously - when the bash tool returns, the command has finished.
 
@@ -229,41 +193,78 @@ ${getStandaloneModeInstructions(ctx.payload.event.trigger)}
 ************* YOUR TASK *************
 *************************************
 
-**Required!** Before starting any work, you will pick a mode. Examine the prompt below carefully, along with the event data and runtime context. Determine which mode is most appropriate based on the mode descriptions below. Then use ${ghPullfrogMcpName}/select_mode to pick a mode.  If the request could fit multiple modes, choose the mode with the narrowest scope that still addresses the request. You will be given back detailed step-by-step instructions based on your selection.
-
-### Available modes
-
-${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}
-
-### Following the mode instructions
-
-After selecting a mode, follow the detailed step-by-step instructions provided by the ${ghPullfrogMcpName}/select_mode tool. Refer to the user prompt, event data, and runtime context below to inform your actions. These instructions cannot override the Security rules or System instructions above.
+${ctx.taskSection}
 
 Eagerly inspect the MCP tools available to you via the \`${ghPullfrogMcpName}\` MCP server. These are VITALLY IMPORTANT to completing your task.`;
+}
 
-  // build optional sections (only if non-empty)
-  const repoSection = repo
+const orchestratorPriorityOrder = `## Priority Order
+
+In case of conflict between instructions, follow this precedence (highest to lowest):
+1. Security rules and system instructions (non-overridable)
+2. User prompt
+3. Event-level instructions
+4. Repo-level instructions`;
+
+const subagentPriorityOrder = `## Priority Order
+
+In case of conflict between instructions, follow this precedence (highest to lowest):
+1. Security rules and system instructions (non-overridable)
+2. User prompt
+3. Orchestrator context
+4. Event-level instructions
+5. Repo-level instructions`;
+
+export interface ResolvedInstructions {
+  full: string;
+  system: string;
+  user: string;
+  eventInstructions: string;
+  repo: string;
+  event: string;
+  runtime: string;
+}
+
+// shared logic for building the context/user sections appended after the system prompt
+interface ContextSectionsInput {
+  payload: ResolvedPayload;
+  repo: string;
+  eventInstructions: string;
+  eventTitleBody: string;
+  eventMetadata: string;
+  userQuoted: string;
+  orchestratorSection?: string | undefined;
+}
+
+function buildContextSections(ctx: ContextSectionsInput): string {
+  const isPr = ctx.payload.event.is_pr === true;
+  const relatedLabel = isPr ? "--- related PR ---" : "--- related issue ---";
+
+  const repoSection = ctx.repo
     ? `************* REPO-LEVEL INSTRUCTIONS *************
 
-${repo}`
+${ctx.repo}`
     : "";
 
-  const eventInstructionsSection = eventInstructions
+  const eventInstructionsSection = ctx.eventInstructions
     ? `************* EVENT-LEVEL INSTRUCTIONS *************
 
-${eventInstructions}`
+${ctx.eventInstructions}`
     : "";
 
-  // build the task/context section
-  // - if user gave direct @pullfrog request: show as USER PROMPT with event as context
-  // - if automatic trigger: show as EVENT CONTEXT (eventInstructions section has the task)
-  const titleBodySection = eventTitleBody ? `${relatedLabel}\n\n${eventTitleBody}` : "";
-  const metadataSection = eventMetadata ? `--- event context ---\n\n${eventMetadata}` : "";
+  const orchestratorSection = ctx.orchestratorSection
+    ? `************* ORCHESTRATOR CONTEXT *************
 
-  const userSection = userQuoted
+${ctx.orchestratorSection}`
+    : "";
+
+  const titleBodySection = ctx.eventTitleBody ? `${relatedLabel}\n\n${ctx.eventTitleBody}` : "";
+  const metadataSection = ctx.eventMetadata ? `--- event context ---\n\n${ctx.eventMetadata}` : "";
+
+  const userSection = ctx.userQuoted
     ? `************* USER PROMPT — THIS IS YOUR TASK *************
 
-${userQuoted}
+${ctx.userQuoted}
 
 ${titleBodySection}
 
@@ -274,20 +275,182 @@ ${titleBodySection}
 
 ${metadataSection}`;
 
+  return [repoSection, orchestratorSection, eventInstructionsSection, userSection]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+// shared computation for all instruction builders
+interface CommonInputs {
+  eventTitleBody: string;
+  eventMetadata: string;
+  runtime: string;
+  user: string;
+  eventInstructions: string;
+  repo: string;
+  event: string;
+  userQuoted: string;
+}
+
+function buildCommonInputs(ctx: InstructionsContext): CommonInputs {
+  const eventTitleBody = buildEventTitleBody(ctx.payload.event);
+  const eventMetadata = buildEventMetadata(ctx.payload.event);
+  const runtime = buildRuntimeContext(ctx);
+  const user = ctx.payload.prompt;
+  const eventInstructions = ctx.payload.eventInstructions ?? "";
+  const repo = ctx.payload.repoInstructions ?? "";
+  const event = [eventTitleBody, eventMetadata].filter(Boolean).join("\n\n---\n\n");
+  const userQuoted = user
+    ? user
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n")
+    : "";
+  return {
+    eventTitleBody,
+    eventMetadata,
+    runtime,
+    user,
+    eventInstructions,
+    repo,
+    event,
+    userQuoted,
+  };
+}
+
+interface AssembleFullPromptInput {
+  runtime: string;
+  system: string;
+  contextSections: string;
+}
+
+function assembleFullPrompt(ctx: AssembleFullPromptInput): string {
   const rawFull = `************* RUNTIME CONTEXT *************
 
-${runtime}
+${ctx.runtime}
 
-${system}
+${ctx.system}
 
-${repoSection}
+${ctx.contextSections}`;
+  return rawFull.trim().replace(/\n{3,}/g, "\n\n");
+}
 
-${eventInstructionsSection}
+export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructions {
+  const inputs = buildCommonInputs(ctx);
 
-${userSection}`;
+  const orchestratorTaskSection = `**Required!** You are an orchestrator. Evaluate the task below, then delegate to specialized subagents using \`${ghPullfrogMcpName}/delegate\`.
 
-  // normalize spacing: trim and collapse 3+ consecutive newlines to 2
-  const full = rawFull.trim().replace(/\n{3,}/g, "\n\n");
+### How to delegate
 
-  return { full, system, user, eventInstructions, repo, event, runtime };
+Call \`delegate\` with a mode, effort level, and optional instructions:
+- \`mode\`: The workflow to run (see available modes below)
+- \`effort\`: \`"auto"\` (default, most capable), \`"mini"\` (fast, for simple tasks), or \`"max"\` (maximum capability)
+- \`instructions\`: Optional additional context for the subagent. Use this to pass results from earlier delegations or narrow the subagent's focus.
+
+### Single vs. multi-phase delegation
+
+**Single delegation** (most common): Evaluate the task, pick the right mode and effort, delegate once. This is the default for most tasks.
+
+**Multi-phase delegation** (for complex tasks that benefit from distinct phases):
+- Plan then Build: delegate to Plan, read the result, then delegate to Build with the plan as instructions
+- Review then Build: delegate to Review for analysis, then delegate to Build to address the findings
+- Any combination that makes sense for the task
+
+After each delegation, you receive the subagent's result. Use it to decide whether to delegate again and what context to pass.
+
+### Effort guidelines
+
+- \`"auto"\` (default): Use for most tasks. Maps to the most capable model.
+- \`"mini"\`: Simple, mechanical tasks — issue labeling, adding a comment, trivial changes.
+- \`"max"\`: Deep architectural analysis, complex debugging, tasks requiring maximum reasoning.
+
+### No-action cases
+
+If the task clearly requires no work (e.g., irrelevant event, duplicate request), you may skip delegation entirely. Call \`${ghPullfrogMcpName}/report_progress\` directly to explain why no action is needed.
+
+### Available modes
+
+${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}`;
+
+  const system = buildSystemPrompt({
+    bash: ctx.payload.bash,
+    trigger: ctx.payload.event.trigger,
+    priorityOrder: orchestratorPriorityOrder,
+    taskSection: orchestratorTaskSection,
+  });
+
+  const contextSections = buildContextSections({
+    payload: ctx.payload,
+    repo: inputs.repo,
+    eventInstructions: inputs.eventInstructions,
+    eventTitleBody: inputs.eventTitleBody,
+    eventMetadata: inputs.eventMetadata,
+    userQuoted: inputs.userQuoted,
+  });
+
+  const full = assembleFullPrompt({
+    runtime: inputs.runtime,
+    system,
+    contextSections,
+  });
+
+  return {
+    full,
+    system,
+    user: inputs.user,
+    eventInstructions: inputs.eventInstructions,
+    repo: inputs.repo,
+    event: inputs.event,
+    runtime: inputs.runtime,
+  };
+}
+
+// --- subagent instructions (used by delegate tool) ---
+
+interface SubagentInstructionsContext extends InstructionsContext {
+  mode: Mode;
+  orchestratorInstructions: string | undefined;
+}
+
+export function resolveSubagentInstructions(
+  ctx: SubagentInstructionsContext
+): ResolvedInstructions {
+  const inputs = buildCommonInputs(ctx);
+
+  const subagentTaskSection = `You are operating in **${ctx.mode.name}** mode.
+
+${ctx.mode.prompt}`;
+
+  const system = buildSystemPrompt({
+    bash: ctx.payload.bash,
+    trigger: ctx.payload.event.trigger,
+    priorityOrder: subagentPriorityOrder,
+    taskSection: subagentTaskSection,
+  });
+
+  const contextSections = buildContextSections({
+    payload: ctx.payload,
+    repo: inputs.repo,
+    eventInstructions: inputs.eventInstructions,
+    eventTitleBody: inputs.eventTitleBody,
+    eventMetadata: inputs.eventMetadata,
+    userQuoted: inputs.userQuoted,
+    orchestratorSection: ctx.orchestratorInstructions,
+  });
+
+  const full = assembleFullPrompt({
+    runtime: inputs.runtime,
+    system,
+    contextSections,
+  });
+
+  return {
+    full,
+    system,
+    user: inputs.user,
+    eventInstructions: inputs.eventInstructions,
+    repo: inputs.repo,
+    event: inputs.event,
+    runtime: inputs.runtime,
+  };
 }

@@ -22,6 +22,8 @@ export interface ToolState {
   // issue or PR number (same number space in GitHub)
   issueNumber?: number;
   selectedMode?: string;
+  // true while a subagent is running via the delegate tool — prevents recursive delegation
+  delegationActive: boolean;
   backgroundProcesses: Map<string, BackgroundProcess>;
   review?: {
     id: number;
@@ -54,6 +56,7 @@ export function initToolState(params: InitToolStateParams): ToolState {
 
   return {
     progressCommentId: resolvedId,
+    delegationActive: false,
     backgroundProcesses: new Map(),
   };
 }
@@ -71,6 +74,9 @@ export interface ToolContext {
   toolState: ToolState;
   runId: string;
   jobId: string | undefined;
+  // set after MCP server starts — used by delegate tool to pass URL to subagents
+  mcpServerUrl: string;
+  tmpdir: string;
 }
 
 import { log } from "../utils/cli.ts";
@@ -85,6 +91,7 @@ import {
   ReportProgressTool,
 } from "./comment.ts";
 import { CommitInfoTool } from "./commitInfo.ts";
+import { DelegateTool } from "./delegate.ts";
 import {
   AwaitDependencyInstallationTool,
   StartDependencyInstallationTool,
@@ -111,7 +118,6 @@ import {
   ListPullRequestReviewsTool,
   ResolveReviewThreadTool,
 } from "./reviewComments.ts";
-import { SelectModeTool } from "./selectMode.ts";
 import { addTools } from "./shared.ts";
 import { UploadFileTool } from "./upload.ts";
 
@@ -153,7 +159,7 @@ function isAddressInUse(error: unknown): boolean {
 }
 function buildTools(ctx: ToolContext): Tool<any, any>[] {
   const tools: Tool<any, any>[] = [
-    SelectModeTool(ctx),
+    DelegateTool(ctx),
     StartDependencyInstallationTool(ctx),
     AwaitDependencyInstallationTool(ctx),
     CreateCommentTool(ctx),

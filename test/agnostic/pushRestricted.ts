@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput } from "../utils.ts";
+import { defineFixture, getStructuredOutput } from "../utils.ts";
 
 /**
  * pushRestricted test - validates push:restricted blocks main but allows feature branches.
@@ -25,7 +25,12 @@ const fixture = defineFixture(
 3. Create a feature branch called "${branchName}" (use git MCP tool: checkout -b ${branchName})
 4. Push the feature branch using push_branch MCP tool — this should succeed
 
-Report what worked and what failed.`,
+Call set_output with a JSON object:
+{
+  "main_push_blocked": true/false,
+  "main_push_error": "the error message from the blocked push, or null",
+  "feature_push_succeeded": true/false
+}`,
     push: "restricted",
     bash: "enabled",
     effort: "auto",
@@ -35,20 +40,23 @@ Report what worked and what failed.`,
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getAgentOutput(result);
-  const lowerOutput = output.toLowerCase();
+  const output = getStructuredOutput(result);
+  const setOutputCalled = output !== null;
 
-  // MCP tool returns "Push blocked: cannot push directly to default branch ..."
-  const mainBlocked = lowerOutput.includes("push blocked");
+  let parsed: Record<string, unknown> = {};
+  if (output) {
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      // not valid JSON
+    }
+  }
 
-  // MCP tool returns "successfully pushed <branch> to <remote>/<remoteBranch>"
-  // some agents (Claude) don't echo raw tool responses — they paraphrase
-  // as "Succeeded — pushed to ..." so we check for both patterns
-  const featureSucceeded =
-    lowerOutput.includes("successfully pushed") ||
-    (lowerOutput.includes(branchName) && /succeed|pushed to origin/i.test(output));
+  const mainBlocked = setOutputCalled && parsed.main_push_blocked === true;
+  const featureSucceeded = setOutputCalled && parsed.feature_push_succeeded === true;
 
   return [
+    { name: "set_output", passed: setOutputCalled },
     { name: "main_blocked", passed: mainBlocked },
     { name: "feature_succeeded", passed: featureSucceeded },
   ];

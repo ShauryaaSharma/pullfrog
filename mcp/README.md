@@ -196,7 +196,7 @@ see individual files for documentation on other tools:
 - `pr.ts` - create pull requests
 - `prInfo.ts` - get pull request information
 - `review.ts` - create pull request reviews
-- `selectMode.ts` - select execution mode
+- `delegate.ts` - delegate task to a subagent with a specific mode and effort level
 
 ## usage in agents
 

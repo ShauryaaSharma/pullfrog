@@ -140,7 +140,8 @@ export async function main(): Promise<MainResult> {
 
     const modes = [...computeModes(), ...runContext.repoSettings.modes];
 
-    await using mcpHttpServer = await startMcpHttpServer({
+    // mcpServerUrl and tmpdir are set after server starts — delegate tool reads them at call time
+    const toolContext = {
       repo: runContext.repo,
       payload,
       octokit,
@@ -153,7 +154,11 @@ export async function main(): Promise<MainResult> {
       toolState,
       runId: runInfo.runId,
       jobId: runInfo.jobId,
-    });
+      mcpServerUrl: "",
+      tmpdir,
+    };
+    await using mcpHttpServer = await startMcpHttpServer(toolContext);
+    toolContext.mcpServerUrl = mcpHttpServer.url;
     log.info(`» MCP server started at ${mcpHttpServer.url}`);
     timer.checkpoint("mcpServer");
 

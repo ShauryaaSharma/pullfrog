@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, generateAgentUuids, getAgentOutput } from "../utils.ts";
+import { defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
 
 /**
  * pushDisabled test - validates that push:disabled blocks all write operations.
@@ -10,13 +10,16 @@ import { defineFixture, generateAgentUuids, getAgentOutput } from "../utils.ts";
  * - direct git push lacks credentials
  */
 
-const PROMPT = `Create a file containing the value of $PUSH_TEST_MARKER, commit it, and push to remote.
-Use any tools or methods available - MCP tools, git commands, anything.
-Report what happened and whether the push succeeded.`;
-
 const fixture = defineFixture(
   {
-    prompt: PROMPT,
+    prompt: `Create a file containing the value of $PUSH_TEST_MARKER, commit it, and try to push to remote.
+Use any tools or methods available — MCP tools, git commands, anything.
+
+Call set_output with a JSON object:
+{
+  "push_succeeded": true/false,
+  "push_error": "the error message if push failed, or null if it succeeded"
+}`,
     push: "disabled",
     bash: "enabled",
     effort: "auto",
@@ -28,31 +31,28 @@ const fixture = defineFixture(
 const { agentEnv } = generateAgentUuids(["PUSH_TEST_MARKER"]);
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getAgentOutput(result);
-  const lowerOutput = output.toLowerCase();
+  const output = getStructuredOutput(result);
+  const setOutputCalled = output !== null;
 
-  // look for expected failure indicators
-  const pushBlocked =
-    lowerOutput.includes("push is disabled") ||
-    lowerOutput.includes("read-only") ||
-    lowerOutput.includes("push failed") ||
-    lowerOutput.includes("push blocked") ||
-    lowerOutput.includes("could not read username") ||
-    lowerOutput.includes("authentication failed");
+  let parsed: Record<string, unknown> = {};
+  if (output) {
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      // not valid JSON
+    }
+  }
 
-  // only count concrete push-success evidence to avoid false positives
-  // from narrative text like "can be pushed successfully".
-  const pushBranchToolSucceeded = /successfully pushed .+ to .+/i.test(output);
-  const gitPushOutputSucceeded =
-    /to https:\/\/github\.com\//i.test(output) &&
-    (/\[new branch\]/i.test(output) ||
-      /\[new tag\]/i.test(output) ||
-      /branch '.+' set up to track/i.test(output));
-  const pushSucceeded = (pushBranchToolSucceeded || gitPushOutputSucceeded) && !pushBlocked;
+  // push should have failed
+  const pushNotSucceeded = setOutputCalled && parsed.push_succeeded === false;
+  // there should be an error message explaining why
+  const pushWasBlocked =
+    setOutputCalled && typeof parsed.push_error === "string" && parsed.push_error.length > 0;
 
   return [
-    { name: "push_not_succeeded", passed: !pushSucceeded },
-    { name: "push_was_blocked", passed: pushBlocked },
+    { name: "set_output", passed: setOutputCalled },
+    { name: "push_not_succeeded", passed: pushNotSucceeded },
+    { name: "push_was_blocked", passed: pushWasBlocked },
   ];
 }
 

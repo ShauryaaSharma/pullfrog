@@ -335,7 +335,10 @@ export const gemini = agent({
  * See: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
  */
 function configureGeminiSettings(ctx: AgentRunContext): string {
-  const { model, thinkingLevel } = geminiEffortConfig[ctx.payload.effort];
+  const effortConfig = geminiEffortConfig[ctx.payload.effort];
+  // allow env var override for tests (e.g., to avoid flash RPD quota limits)
+  const model = process.env.GEMINI_MODEL ?? effortConfig.model;
+  const thinkingLevel = effortConfig.thinkingLevel;
   log.info(`» using model: ${model}, thinkingLevel: ${thinkingLevel}`);
 
   const realHome = homedir();

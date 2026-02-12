@@ -9,6 +9,7 @@ import { ghPullfrogMcpName } from "../external.ts";
 import { markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
+import { filterEnv } from "../utils/secrets.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
 import { type AgentRunContext, agent } from "./shared.ts";
@@ -77,7 +78,7 @@ function writeCodexConfig(ctx: AgentRunContext): string {
   const bash = ctx.payload.bash;
   const features: string[] = [];
   if (bash !== "enabled") {
-    features.push("shell_command_tool = false");
+    features.push("shell_tool = false");
     features.push("unified_exec = false");
   }
   // note: there is no Codex feature flag to disable the native apply_patch tool.
@@ -115,13 +116,21 @@ ${mcpServerSections.join("\n\n")}
   return codexDir;
 }
 
+// cache the installed CLI path so subagents don't re-download
+let cachedCliPath: string | null = null;
+
 async function installCodex(): Promise<string> {
-  return await installFromNpmTarball({
+  if (cachedCliPath) return cachedCliPath;
+
+  const cliPath = await installFromNpmTarball({
     packageName: "@openai/codex",
     version: "latest",
     executablePath: "bin/codex.js",
     installDependencies: true,
   });
+
+  cachedCliPath = cliPath;
+  return cliPath;
 }
 
 export const codex = agent({
@@ -196,10 +205,18 @@ export const codex = agent({
     const commandExecutionIds = new Set<string>();
     const thinkingTimer = new ThinkingTimer();
 
+    // when bash is restricted/disabled, filter sensitive env vars from the codex process.
+    // defense-in-depth: codex 0.99.0's shell_command_tool feature flag is unreliable,
+    // so native shell commands may still run. filtering the process env ensures secrets
+    // (matching *_TOKEN, *_KEY, *_SECRET, etc.) are not accessible even if native shell
+    // bypasses the MCP bash tool's filterEnv.
+    // API key is explicitly re-added since codex needs it for API calls.
+    const baseEnv = ctx.payload.bash === "enabled" ? process.env : filterEnv();
     const env: NodeJS.ProcessEnv = {
-      ...process.env,
+      ...baseEnv,
       CODEX_HOME: codexDir,
       CODEX_API_KEY: apiKey,
+      OPENAI_API_KEY: apiKey,
     };
 
     const result = await spawn({

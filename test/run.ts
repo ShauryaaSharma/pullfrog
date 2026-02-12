@@ -222,9 +222,23 @@ type RetryDecision = { retry: false } | { retry: true; reason: string; backoffMs
  *   - security checks failed (sandbox breach, token leak, etc.)
  *   - agent successfully ran and called set_output but produced wrong results
  */
+// detect rate limit / quota errors across all providers
+const RATE_LIMIT_PATTERNS = [
+  "Rate limit reached", // anthropic
+  "Resource has been exhausted", // google/gemini
+  "quota exceeded", // google/gemini
+  "429", // generic HTTP 429
+  "Too Many Requests", // generic
+];
+
+function isRateLimited(output: string): boolean {
+  const lower = output.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+}
+
 function shouldRetry(result: AgentResult, validation: ValidationResult): RetryDecision {
-  // rate limit: agent never got to run properly
-  if (!result.success && result.output.includes("Rate limit reached")) {
+  // rate limit / quota exhaustion: agent never got to run properly
+  if (!result.success && isRateLimited(result.output)) {
     return { retry: true, reason: "rate limited", backoffMs: RATE_LIMIT_BACKOFF_MS };
   }
 
@@ -242,10 +256,15 @@ function shouldRetry(result: AgentResult, validation: ValidationResult): RetryDe
   // issues (MCP connection drop, agent confusion, low effort level, etc.).
   const setOutputCheck = validation.checks.find((c) => c.name === "set_output");
   if (setOutputCheck && !setOutputCheck.passed) {
+    // if the output contains rate limit indicators, use the longer backoff
+    // (the agent process may have succeeded but the subagent hit quota limits)
+    const backoffMs = isRateLimited(result.output) ? RATE_LIMIT_BACKOFF_MS : FLAKY_RETRY_BACKOFF_MS;
     return {
       retry: true,
-      reason: "set_output not called (cascade)",
-      backoffMs: FLAKY_RETRY_BACKOFF_MS,
+      reason: isRateLimited(result.output)
+        ? "rate limited (set_output cascade)"
+        : "set_output not called (cascade)",
+      backoffMs,
     };
   }
 
@@ -295,6 +314,11 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
   // opencode: set model override so tests use a model with quota (avoids default picking one without quota)
   if (ctx.agent === "opencode") {
     env.OPENCODE_MODEL = "google/gemini-3-flash-preview";
+  }
+
+  // gemini: use pro model for tests to avoid flash's tight RPD quota limits
+  if (ctx.agent === "gemini") {
+    env.GEMINI_MODEL = "gemini-3-pro-preview";
   }
 
   // build file-based env vars for MCP servers that don't inherit parent env
