@@ -3,6 +3,8 @@
 import { build } from "esbuild";
 import { readFileSync, writeFileSync } from "fs";
 
+const isMainOnlyBuild = process.argv.includes("--main-only");
+
 // Plugin to strip shebangs from output files
 /**
  * @type {import("esbuild").Plugin}
@@ -67,20 +69,22 @@ await build({
   plugins: [stripShebangPlugin],
 });
 
-// Build the post cleanup entry bundle
-await build({
-  ...sharedConfig,
-  entryPoints: ["./post.ts"],
-  outfile: "./post",
-  plugins: [stripShebangPlugin],
-});
+if (!isMainOnlyBuild) {
+  // Build the post cleanup entry bundle
+  await build({
+    ...sharedConfig,
+    entryPoints: ["./post.ts"],
+    outfile: "./post",
+    plugins: [stripShebangPlugin],
+  });
 
-// Build the get-installation-token action
-await build({
-  ...sharedConfig,
-  entryPoints: ["./get-installation-token/entry.ts"],
-  outfile: "./get-installation-token/entry",
-  plugins: [stripShebangPlugin],
-});
+  // Build the get-installation-token action
+  await build({
+    ...sharedConfig,
+    entryPoints: ["./get-installation-token/entry.ts"],
+    outfile: "./get-installation-token/entry",
+    plugins: [stripShebangPlugin],
+  })
+}
 
 console.log("» build completed successfully");
