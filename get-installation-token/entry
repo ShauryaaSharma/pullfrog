@@ -25681,15 +25681,43 @@ var core2 = __toESM(require_core(), 1);
 import { createSign } from "node:crypto";
 
 // utils/apiUrl.ts
-function getApiUrl() {
-  const url = process.env.API_URL || "https://pullfrog.com";
-  log.debug(`resolved API_URL: ${url}`);
-  return url;
+function isLocalUrl(url) {
+  return url.hostname === "localhost" || url.hostname === "127.0.0.1";
 }
-function getVercelBypassHeaders() {
-  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (!secret) return {};
-  return { "x-vercel-protection-bypass": secret };
+function getApiUrl() {
+  const raw = process.env.API_URL || "https://pullfrog.com";
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "https:" && !isLocalUrl(parsed)) {
+    throw new Error(
+      `API_URL must use https:// (got ${parsed.protocol}). only localhost is exempt.`
+    );
+  }
+  log.debug(`resolved API_URL: ${raw}`);
+  return raw;
+}
+
+// utils/apiFetch.ts
+async function apiFetch(options) {
+  const apiUrl = getApiUrl();
+  const url = new URL(options.path, apiUrl);
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
+  }
+  const headers = {
+    ...options.headers
+  };
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+  log.debug(`api fetch: ${options.method ?? "GET"} ${url.pathname}`);
+  const init = {
+    method: options.method ?? "GET",
+    headers
+  };
+  if (options.body) init.body = options.body;
+  if (options.signal) init.signal = options.signal;
+  return fetch(url.toString(), init);
 }
 
 // utils/retry.ts
@@ -25729,37 +25757,26 @@ function isOIDCAvailable() {
 }
 async function acquireTokenViaOIDC(opts) {
   const oidcToken = await core2.getIDToken("pullfrog-api");
-  const apiUrl = getApiUrl();
-  const params = new URLSearchParams();
   const repos = [...opts?.repos ?? []];
   const targetRepo = process.env.GITHUB_REPOSITORY?.split("/")[1];
   if (targetRepo) {
     repos.push(targetRepo);
   }
-  if (repos.length) {
-    params.set("repos", repos.join(","));
-  }
-  const queryString = params.toString() ? `?${params.toString()}` : "";
+  const reposParam = repos.length ? `?repos=${repos.join(",")}` : "";
   const timeoutMs = 3e4;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const fetchOptions = {
+    const tokenResponse = await apiFetch({
+      path: `/api/github/installation-token${reposParam}`,
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
-        "Content-Type": "application/json",
-        ...getVercelBypassHeaders()
+        "Content-Type": "application/json"
       },
+      body: opts?.permissions ? JSON.stringify({ permissions: opts.permissions }) : void 0,
       signal: controller.signal
-    };
-    if (opts?.permissions) {
-      fetchOptions.body = JSON.stringify({ permissions: opts.permissions });
-    }
-    const tokenResponse = await fetch(
-      `${apiUrl}/api/github/installation-token${queryString}`,
-      fetchOptions
-    );
+    });
     clearTimeout(timeoutId);
     if (!tokenResponse.ok) {
       throw new Error(`Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText}`);

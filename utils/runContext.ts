@@ -1,5 +1,5 @@
 import type { AgentName, BashPermission, PushPermission, ToolPermission } from "../external.ts";
-import { getApiUrl, getVercelBypassHeaders } from "./apiUrl.ts";
+import { apiFetch } from "./apiFetch.ts";
 import type { RepoContext } from "./github.ts";
 
 export interface Mode {
@@ -52,24 +52,19 @@ export async function fetchRunContext(params: {
   token: string;
   repoContext: RepoContext;
 }): Promise<RunContext> {
-  const apiUrl = getApiUrl();
   const timeoutMs = 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(
-      `${apiUrl}/api/repo/${params.repoContext.owner}/${params.repoContext.name}/run-context`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${params.token}`,
-          "Content-Type": "application/json",
-          ...getVercelBypassHeaders(),
-        },
-        signal: controller.signal,
-      }
-    );
+    const response = await apiFetch({
+      path: `/api/repo/${params.repoContext.owner}/${params.repoContext.name}/run-context`,
+      headers: {
+        Authorization: `Bearer ${params.token}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
 
     clearTimeout(timeoutId);
 

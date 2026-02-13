@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type } from "arktype";
 import { fileTypeFromBuffer } from "file-type";
-import { getApiUrl, getVercelBypassHeaders } from "../utils/apiUrl.ts";
+import { apiFetch } from "../utils/apiFetch.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -25,14 +25,12 @@ export function UploadFileTool(ctx: ToolContext) {
       const fileType = await fileTypeFromBuffer(buffer);
       const contentType = fileType?.mime || "application/octet-stream";
 
-      const apiUrl = getApiUrl();
-
-      const response = await fetch(`${apiUrl}/api/upload/signed-url`, {
+      const response = await apiFetch({
+        path: "/api/upload/signed-url",
         method: "POST",
         headers: {
           Authorization: `Bearer ${ctx.apiToken}`,
           "Content-Type": "application/json",
-          ...getVercelBypassHeaders(),
         },
         body: JSON.stringify({
           filename,

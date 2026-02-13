@@ -3,7 +3,6 @@
  * Redacts actual secret values rather than using pattern matching
  */
 
-import { agentsManifest } from "../external.ts";
 import { getGitHubInstallationToken } from "./token.ts";
 
 // patterns for sensitive env var names
@@ -52,28 +51,14 @@ export function resolveEnv(mode: EnvMode | undefined): Record<string, string | u
 function getAllSecrets(): string[] {
   const secrets: string[] = [];
 
-  // get all API key values from agent manifest
-  for (const agent of Object.values(agentsManifest)) {
-    for (const keyName of agent.apiKeyNames) {
-      const envKey = keyName.toUpperCase();
-      const value = process.env[envKey];
-      if (value) {
-        secrets.push(value);
-      }
+  // collect all env var values matching SENSITIVE_PATTERNS
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && isSensitiveEnvName(key)) {
+      secrets.push(value);
     }
   }
 
-  // for OpenCode: also scan all API_KEY environment variables (since apiKeyNames is empty)
-  const opencodeAgent = agentsManifest.opencode;
-  if (opencodeAgent && opencodeAgent.apiKeyNames.length === 0) {
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value && typeof value === "string" && key.includes("API_KEY")) {
-        secrets.push(value);
-      }
-    }
-  }
-
-  // add GitHub installation token
+  // add GitHub installation token (stored in memory, not in env)
   try {
     const token = getGitHubInstallationToken();
     if (token) {

@@ -2,7 +2,7 @@ import { createSign } from "node:crypto";
 import * as core from "@actions/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { Octokit } from "@octokit/rest";
-import { getApiUrl, getVercelBypassHeaders } from "./apiUrl.ts";
+import { apiFetch } from "./apiFetch.ts";
 import { retry } from "./retry.ts";
 
 export interface InstallationToken {
@@ -85,41 +85,28 @@ type AcquireTokenOptions = {
 async function acquireTokenViaOIDC(opts?: AcquireTokenOptions): Promise<string> {
   const oidcToken = await core.getIDToken("pullfrog-api");
 
-  const apiUrl = getApiUrl();
-  const params = new URLSearchParams();
-
-  // ensure the token covers GITHUB_REPOSITORY (may differ from OIDC claims repo)
   const repos = [...(opts?.repos ?? [])];
   const targetRepo = process.env.GITHUB_REPOSITORY?.split("/")[1];
   if (targetRepo) {
     repos.push(targetRepo);
   }
-  if (repos.length) {
-    params.set("repos", repos.join(","));
-  }
-  const queryString = params.toString() ? `?${params.toString()}` : "";
+  const reposParam = repos.length ? `?repos=${repos.join(",")}` : "";
 
   const timeoutMs = 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const fetchOptions: RequestInit = {
+    const tokenResponse = await apiFetch({
+      path: `/api/github/installation-token${reposParam}`,
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
         "Content-Type": "application/json",
-        ...getVercelBypassHeaders(),
       },
+      body: opts?.permissions ? JSON.stringify({ permissions: opts.permissions }) : undefined,
       signal: controller.signal,
-    };
-    if (opts?.permissions) {
-      fetchOptions.body = JSON.stringify({ permissions: opts.permissions });
-    }
-    const tokenResponse = await fetch(
-      `${apiUrl}/api/github/installation-token${queryString}`,
-      fetchOptions
-    );
+    });
 
     clearTimeout(timeoutId);
 
