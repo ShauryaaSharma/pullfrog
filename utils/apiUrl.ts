@@ -10,7 +10,6 @@ export function getApiUrl(): string {
   const url = process.env.API_URL || "https://pullfrog.com";
   log.debug(`resolved API_URL: ${url}`);
   return url;
-
 }
 
 /**
