@@ -274,6 +274,24 @@ async function acquireTokenViaGitHubApp(opts?: AcquireTokenOptions): Promise<str
   return await createInstallationToken(jwt, installationId, opts?.permissions);
 }
 
+/**
+ * Ensure a GitHub token is available in the environment.
+ *
+ * If neither `GITHUB_TOKEN` nor `GH_TOKEN` is set, attempts to acquire an
+ * installation token using `GITHUB_APP_ID` / `GITHUB_PRIVATE_KEY`.
+ *
+ * **Not intended for production use** — this is a convenience for local
+ * development and test harnesses where tokens aren't pre-provisioned.
+ */
+export async function ensureGitHubToken(): Promise<void> {
+  if (!process.env.GITHUB_TOKEN && !process.env.GH_TOKEN) {
+    if (process.env.GITHUB_APP_ID && process.env.GITHUB_PRIVATE_KEY) {
+      const token = await acquireNewToken();
+      process.env.GITHUB_TOKEN = token;
+    }
+  }
+}
+
 export async function acquireNewToken(opts?: AcquireTokenOptions): Promise<string> {
   if (isOIDCAvailable()) {
     return await retry(() => acquireTokenViaOIDC(opts), {

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { runInDocker } from "../utils/docker.ts";
-import { acquireNewToken } from "../utils/github.ts";
+import { ensureGitHubToken } from "../utils/github.ts";
 import { isInsideDocker } from "../utils/globals.ts";
 import {
   installSignalHandlers,
@@ -388,13 +388,7 @@ async function main(): Promise<void> {
   // run in Docker unless already inside
   if (!isInsideDocker) {
     // acquire token for docker if needed
-    if (!process.env.GITHUB_TOKEN && !process.env.GH_TOKEN) {
-      if (process.env.GITHUB_APP_ID && process.env.GITHUB_PRIVATE_KEY) {
-        console.log("» acquiring github installation token...");
-        const token = await acquireNewToken();
-        process.env.GITHUB_TOKEN = token;
-      }
-    }
+    await ensureGitHubToken();
     runTestsInDocker(args);
   }
 

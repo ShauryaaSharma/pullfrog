@@ -10,6 +10,7 @@ import { type Inputs, main } from "./main.ts";
 import { defineFixture } from "./test/utils.ts";
 import { log } from "./utils/cli.ts";
 import { runInDocker } from "./utils/docker.ts";
+import { ensureGitHubToken } from "./utils/github.ts";
 import { isInsideDocker } from "./utils/globals.ts";
 import { setupTestRepo } from "./utils/setup.ts";
 
@@ -34,6 +35,8 @@ config();
 config({ path: join(__dirname, "..", ".env") });
 
 export async function run(inputsOrPrompt: Inputs | string): Promise<AgentResult> {
+  await ensureGitHubToken();
+
   // create unique temp directory path in OS temp location for parallel execution
   // use a parent dir from mkdtemp, then clone into a 'repo' subdirectory
   const tempParent = await mkdtemp(join(tmpdir(), "pullfrog-play-"));
