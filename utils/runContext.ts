@@ -1,5 +1,5 @@
 import type { AgentName, BashPermission, PushPermission, ToolPermission } from "../external.ts";
-import { getApiUrl } from "./apiUrl.ts";
+import { getApiUrl, getVercelBypassHeaders } from "./apiUrl.ts";
 import type { RepoContext } from "./github.ts";
 
 export interface Mode {
@@ -65,6 +65,7 @@ export async function fetchRunContext(params: {
         headers: {
           Authorization: `Bearer ${params.token}`,
           "Content-Type": "application/json",
+          ...getVercelBypassHeaders(),
         },
         signal: controller.signal,
       }

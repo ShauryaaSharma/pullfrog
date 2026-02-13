@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type } from "arktype";
 import { fileTypeFromBuffer } from "file-type";
-import { getApiUrl } from "../utils/apiUrl.ts";
+import { getApiUrl, getVercelBypassHeaders } from "../utils/apiUrl.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -32,6 +32,7 @@ export function UploadFileTool(ctx: ToolContext) {
         headers: {
           Authorization: `Bearer ${ctx.apiToken}`,
           "Content-Type": "application/json",
+          ...getVercelBypassHeaders(),
         },
         body: JSON.stringify({
           filename,

@@ -25682,7 +25682,14 @@ import { createSign } from "node:crypto";
 
 // utils/apiUrl.ts
 function getApiUrl() {
-  return process.env.API_URL || "https://pullfrog.com";
+  const url = process.env.API_URL || "https://pullfrog.com";
+  log.debug(`resolved API_URL: ${url}`);
+  return url;
+}
+function getVercelBypassHeaders() {
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (!secret) return {};
+  return { "x-vercel-protection-bypass": secret };
 }
 
 // utils/retry.ts
@@ -25741,7 +25748,8 @@ async function acquireTokenViaOIDC(opts) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...getVercelBypassHeaders()
       },
       signal: controller.signal
     };

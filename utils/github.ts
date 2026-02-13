@@ -2,7 +2,7 @@ import { createSign } from "node:crypto";
 import * as core from "@actions/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { Octokit } from "@octokit/rest";
-import { getApiUrl } from "./apiUrl.ts";
+import { getApiUrl, getVercelBypassHeaders } from "./apiUrl.ts";
 import { retry } from "./retry.ts";
 
 export interface InstallationToken {
@@ -109,6 +109,7 @@ async function acquireTokenViaOIDC(opts?: AcquireTokenOptions): Promise<string> 
       headers: {
         Authorization: `Bearer ${oidcToken}`,
         "Content-Type": "application/json",
+        ...getVercelBypassHeaders(),
       },
       signal: controller.signal,
     };
