@@ -329,7 +329,7 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
   return tool({
     name: "reply_to_review_comment",
     description:
-      "Reply to a PR review comment thread. Call this for EACH comment you address. Keep replies extremely brief (1 sentence max).",
+      "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). Call this for EACH comment you address in AddressReviews mode. Keep replies extremely brief (1 sentence max).",
     parameters: ReplyToReviewComment,
     execute: execute(async ({ pull_number, comment_id, body }) => {
       const bodyWithFooter = await addFooter(ctx, body);

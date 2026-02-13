@@ -169,6 +169,8 @@ interface IssuesLabeledEvent extends BasePayloadEvent {
 interface IssueCommentCreatedEvent extends BasePayloadEvent {
   trigger: "issue_comment_created";
   comment_id: number;
+  /** distinguishes this from PR review comments (which use pull_request_review_comment_created) */
+  comment_type: "issue";
   /** comment body is the primary content (null if already in prompt) */
   body: string | null;
   issue_number: number;

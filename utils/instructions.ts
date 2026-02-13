@@ -187,6 +187,8 @@ ${getStandaloneModeInstructions(ctx.trigger)}
 2. Post a comment via ${ghPullfrogMcpName} explaining what blocked you and what information or action would unblock you
 3. Make your blocker comment specific and actionable (e.g., "I need the database schema to proceed" not "I'm stuck")
 
+**Progress reporting**: ALWAYS use \`report_progress\` to share your results and progress — never \`create_issue_comment\`. The \`report_progress\` tool updates the pre-created progress comment on the issue/PR. Using \`create_issue_comment\` instead creates duplicate comments and leaves the progress comment stuck in its initial state. The \`create_issue_comment\` tool is only for creating NEW standalone comments unrelated to your task progress.
+
 **Agent context files** Check for an AGENTS.md file or an agent-specific equivalent that applies to you. If it exists, read it and follow the instructions unless they conflict with the Security, System or Mode instructions above
 
 *************************************
