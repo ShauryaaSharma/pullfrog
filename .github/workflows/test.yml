@@ -37,6 +37,8 @@ jobs:
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
