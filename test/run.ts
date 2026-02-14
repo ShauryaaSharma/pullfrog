@@ -311,14 +311,14 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
     env.PULLFROG_TEST_REPO_SETUP = testConfig.repoSetup;
   }
 
-  // opencode: override to google/gemini-3-pro-preview to avoid flash's tight RPD quota limits
+  // opencode: use codex (OpenAI) to avoid google quota issues and gemini doom-looping
   if (ctx.agent === "opencode") {
-    env.OPENCODE_MODEL ??= "google/gemini-2.5-pro";
+    env.OPENCODE_MODEL ??= "openai/codex-mini-latest";
   }
 
-  // gemini: override to 2.5-flash for all tests (including mini-effort) to avoid quota limits
+  // gemini: use flash for all tests (including mini-effort) to avoid pro quota limits
   if (ctx.agent === "gemini") {
-    env.GEMINI_MODEL ??= "gemini-2.5-pro";
+    env.GEMINI_MODEL ??= "gemini-3-flash-preview";
   }
 
   // build file-based env vars for MCP servers that don't inherit parent env
