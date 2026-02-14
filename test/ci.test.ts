@@ -58,10 +58,12 @@ const crossagentTests = getTestNamesFromDir("crossagent");
 const agnosticTests = getTestNamesFromDir("agnostic");
 const adhocTests = getTestNamesFromDir("adhoc");
 
-// all API key names from all agents + GITHUB_TOKEN
+// all API key names from all agents + GITHUB_TOKEN + model overrides
 const expectedAgentEnvVars = [
   "GITHUB_TOKEN",
   ...new Set(Object.values(agentsManifest).flatMap((a) => a.apiKeyNames)),
+  "GEMINI_MODEL",
+  "OPENCODE_MODEL",
 ].sort();
 
 // agnostic tests only run with claude
@@ -111,7 +113,7 @@ describe("ci workflow consistency", () => {
     });
 
     it("env vars cover all agent API keys", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(expect.arrayContaining(expectedAgentEnvVars));
+      expect(getEnvVarNames(rootJob)).toEqual(expectedAgentEnvVars);
     });
 
     it("fail-fast is enabled in both", () => {
