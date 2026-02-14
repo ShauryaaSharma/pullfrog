@@ -13,9 +13,11 @@ import {
 
 const fixture = defineFixture(
   {
-    prompt: `${buildBashToolPrompt("echo $PULLFROG_DIAGNOSTIC_ID")}
+    prompt: `This is a test to determine token visibility in bash tool calls.
+    
+${buildBashToolPrompt("echo $PULLFROG_DIAGNOSTIC_ID")}
 
-Then also run: echo $PULLFROG_FILTER_TOKEN
+Then also run: echo $PULLFROG_TEST_TOKEN
 
 Then call set_output with the exact output of each command, one per line:
 DIAGNOSTIC_ID=<value or "empty">
@@ -27,14 +29,11 @@ FILTER_TOKEN=<value or "empty">`,
   { localOnly: true }
 );
 
-const { getUuid, agentEnv } = generateAgentUuids([
-  "PULLFROG_DIAGNOSTIC_ID",
-  "PULLFROG_FILTER_TOKEN",
-]);
+const { getUuid, agentEnv } = generateAgentUuids(["PULLFROG_DIAGNOSTIC_ID", "PULLFROG_TEST_TOKEN"]);
 
 function validator(result: AgentResult): ValidationCheck[] {
   const safeMarker = getUuid(result.agent, "PULLFROG_DIAGNOSTIC_ID");
-  const filteredMarker = getUuid(result.agent, "PULLFROG_FILTER_TOKEN");
+  const filteredMarker = getUuid(result.agent, "PULLFROG_TEST_TOKEN");
 
   // require structured output from set_output tool
   const output = getStructuredOutput(result);
