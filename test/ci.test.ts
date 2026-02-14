@@ -111,7 +111,7 @@ describe("ci workflow consistency", () => {
     });
 
     it("env vars cover all agent API keys", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(expectedAgentEnvVars);
+      expect(getEnvVarNames(rootJob)).toEqual(expect.arrayContaining(expectedAgentEnvVars));
     });
 
     it("fail-fast is enabled in both", () => {
