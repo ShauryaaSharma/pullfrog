@@ -313,7 +313,7 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
 
   // opencode: use codex (OpenAI) to avoid google quota issues and gemini doom-looping
   if (ctx.agent === "opencode") {
-    env.OPENCODE_MODEL ??= "openai/codex-mini-latest";
+    env.OPENCODE_MODEL ??= "openai/gpt-5.1-codex-mini";
   }
 
   // gemini: use flash for all tests (including mini-effort) to avoid pro quota limits
