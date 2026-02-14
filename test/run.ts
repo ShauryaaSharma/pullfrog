@@ -311,9 +311,9 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
     env.PULLFROG_TEST_REPO_SETUP = testConfig.repoSetup;
   }
 
-  // opencode: use codex (OpenAI) to avoid google quota issues and gemini doom-looping
+  // opencode: use anthropic sonnet to avoid google quota issues and gemini doom-looping
   if (ctx.agent === "opencode") {
-    env.OPENCODE_MODEL ??= "openai/gpt-5.1-codex-mini";
+    env.OPENCODE_MODEL ??= "anthropic/claude-sonnet-4-5";
   }
 
   // gemini: use flash for all tests (including mini-effort) to avoid pro quota limits
