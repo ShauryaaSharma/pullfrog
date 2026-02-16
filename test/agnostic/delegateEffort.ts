@@ -30,11 +30,11 @@ function validator(result: AgentResult): ValidationCheck[] {
   const setOutputCalled = output !== null;
   const correctValue = setOutputCalled && /EFFORT_TEST_PASSED/i.test(output);
 
-  // the orchestrator runs at auto (effort=auto in its log line).
-  // the delegate tool should spawn the subagent at mini (effort=mini in its log line).
-  // if effort override works, we should see BOTH effort=auto AND effort=mini in the output.
-  const orchestratorEffort = /running \w+ with effort=auto/i.test(agentOutput);
-  const subagentEffort = /running \w+ with effort=mini/i.test(agentOutput);
+  // the orchestrator runs at auto (» effort:  auto in its log line).
+  // the delegate tool should spawn the subagent at mini (» effort:  mini in its log line).
+  // if effort override works, we should see BOTH effort values in the output.
+  const orchestratorEffort = /» effort:\s+auto/i.test(agentOutput);
+  const subagentEffort = /» effort:\s+mini/i.test(agentOutput);
 
   return [
     { name: "set_output", passed: setOutputCalled },

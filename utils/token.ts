@@ -105,12 +105,20 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
 
   // create git token based on push permission (assumed exfiltratable)
   // disabled = read-only, restricted/enabled = write (MCP tools enforce branch restrictions)
-  const gitContents = params.push === "disabled" ? "read" : "write";
-  const gitToken = await acquireNewToken({ permissions: { contents: gitContents } });
+  // workflows permission is write-only in the API, so only requested when pushing is allowed
+  const gitPermissions =
+    params.push === "disabled"
+      ? { contents: "read" as const }
+      : { contents: "write" as const, workflows: "write" as const };
+  const gitToken = await acquireNewToken({ permissions: gitPermissions });
   if (isGitHubActions) {
     core.setSecret(gitToken);
   }
-  log.info(`» acquired git token (contents:${gitContents})`);
+  log.info(
+    `» acquired git token (${Object.entries(gitPermissions)
+      .map((e) => e.join(":"))
+      .join(", ")})`
+  );
 
   // create full MCP token - not exfiltratable (only accessible via MCP tools)
   const mcpToken = await acquireNewToken();

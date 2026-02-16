@@ -53,33 +53,36 @@ function isOIDCAvailable(): boolean {
   );
 }
 
-// github installation token permission levels
 type ReadWrite = "read" | "write";
 type WriteOnly = "write";
-type ReadOnly = "read";
 
-// permission names use underscores (API format)
-type InstallationTokenPermissions = {
+/**
+ * GitHub App installation access token permissions.
+ * passed to `POST /app/installations/{id}/access_tokens` to scope the token.
+ * fields and allowed values come from the `app-permissions` OpenAPI schema.
+ * @see https://docs.github.com/en/rest/apps/installations#create-an-installation-access-token-for-an-app
+ * @see https://github.com/github/rest-api-description — components.schemas.app-permissions
+ */
+type GitHubAppPermissions = {
   actions?: ReadWrite;
   artifact_metadata?: ReadWrite;
   attestations?: ReadWrite;
   checks?: ReadWrite;
   contents?: ReadWrite;
   deployments?: ReadWrite;
-  id_token?: WriteOnly;
-  issues?: ReadWrite;
-  models?: ReadOnly;
   discussions?: ReadWrite;
+  issues?: ReadWrite;
   packages?: ReadWrite;
   pages?: ReadWrite;
   pull_requests?: ReadWrite;
   security_events?: ReadWrite;
   statuses?: ReadWrite;
+  workflows?: WriteOnly;
 };
 
 type AcquireTokenOptions = {
   repos?: string[];
-  permissions?: InstallationTokenPermissions;
+  permissions?: GitHubAppPermissions;
 };
 
 async function acquireTokenViaOIDC(opts?: AcquireTokenOptions): Promise<string> {
@@ -215,7 +218,7 @@ const checkRepositoryAccess = async (
 const createInstallationToken = async (
   jwt: string,
   installationId: number,
-  permissions?: InstallationTokenPermissions
+  permissions?: GitHubAppPermissions
 ): Promise<string> => {
   const requestOpts: { method: string; headers: Record<string, string>; body?: string } = {
     method: "POST",

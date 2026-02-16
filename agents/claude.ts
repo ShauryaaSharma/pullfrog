@@ -86,7 +86,7 @@ export const claude = agent({
     // select model and effort level
     const model = claudeEffortModels[ctx.payload.effort];
     const effortLevel = claudeEffortLevels[ctx.payload.effort];
-    log.info(`» using model: ${model}${effortLevel ? ` (effort: ${effortLevel})` : ""}`);
+    log.info(`» model: ${model}${effortLevel ? ` (effort: ${effortLevel})` : ""}`);
 
     // build disallowedTools based on tool permissions
     const disallowedTools = buildDisallowedTools(ctx);

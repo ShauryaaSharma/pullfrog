@@ -28,13 +28,15 @@ export const agent = <const input extends AgentInput>(input: input): defineAgent
   return {
     ...input,
     run: async (ctx: AgentRunContext): Promise<AgentResult> => {
-      const bash = ctx.payload.bash;
-      const web = ctx.payload.web;
-      const search = ctx.payload.search;
-      const push = ctx.payload.push;
-      log.info(
-        `» running ${input.name} with effort=${ctx.payload.effort}, timeout=${ctx.payload.timeout}...`
-      );
+      log.info(`» agent:   ${input.name}`);
+      log.info(`» effort:  ${ctx.payload.effort}`);
+      if (ctx.payload.timeout) log.info(`» timeout: ${ctx.payload.timeout}`);
+      log.info(`» web:     ${ctx.payload.web}`);
+      log.info(`» search:  ${ctx.payload.search}`);
+      log.info(`» push:    ${ctx.payload.push}`);
+      log.info(`» bash:    ${ctx.payload.bash}`);
+      log.debug(`» payload: ${JSON.stringify(ctx.payload, null, 2)}`);
+
       // build log box content: eventInstructions (if any) + user request (if any) + event data
       const logParts = [
         ctx.instructions.eventInstructions
@@ -46,7 +48,7 @@ export const agent = <const input extends AgentInput>(input: input): defineAgent
       log.box(logParts.join("\n\n---\n\n"), {
         title: "Instructions",
       });
-      log.info(`» tool permissions: web=${web}, search=${search}, push=${push}, bash=${bash}`);
+
       return input.run(ctx);
     },
     ...agentsManifest[input.name],

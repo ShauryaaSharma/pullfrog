@@ -72,7 +72,9 @@ export const opencode = agent({
     const modelOverride = process.env.OPENCODE_MODEL;
     if (modelOverride) {
       args.push("--model", modelOverride);
-      log.info(`» using model override: ${modelOverride}`);
+      log.info(`» model: ${modelOverride} (override)`);
+    } else {
+      log.info(`» model: auto-selected by OpenCode`);
     }
 
     process.env.HOME = tempHome;
@@ -186,13 +188,10 @@ export const opencode = agent({
             lastProviderError = providerError;
             log.error(`» provider error detected (${providerError}): ${trimmed.substring(0, 500)}`);
           } else {
-            // try to parse as JSON for structured logging, fall back to warning
-            try {
-              const parsed = JSON.parse(trimmed);
-              log.debug(JSON.stringify(parsed, null, 2));
-            } catch {
-              log.warning(trimmed);
-            }
+            // OpenCode's --print-logs output goes to stderr. demote internal
+            // INFO/DEBUG bus traffic to debug so it doesn't drown out tool
+            // call logs in the GitHub Actions step output.
+            log.debug(trimmed);
           }
         },
       });
@@ -325,7 +324,7 @@ function configureOpenCode(ctx: AgentRunContext): void {
   }
 
   log.info(`» OpenCode config written to ${configPath}`);
-  log.info(
+  log.debug(
     `» OpenCode permissions: edit=${permission.edit}, bash=${permission.bash}, webfetch=${permission.webfetch}`
   );
   log.debug(`OpenCode config contents:\n${configJson}`);
@@ -558,27 +557,28 @@ const messageHandlers = {
     const status = event.part?.state?.status;
     const output = event.part?.state?.output;
 
-    // debug log all tool_use events to diagnose missing bash/MCP tool calls
     if (!toolName || !toolId) {
-      log.debug(`» tool_use event missing toolName or toolId: ${JSON.stringify(event)}`);
+      // surface dropped tool_use events visibly so missing tool calls are diagnosable
+      log.info(
+        `» tool_use event missing toolName or toolId: ${JSON.stringify(event).substring(0, 500)}`
+      );
+      return;
     }
 
-    if (toolName && toolId) {
-      // track tool call in current step
-      if (stepHistory.length > 0) {
-        stepHistory[stepHistory.length - 1].toolCalls.push(toolName);
-      }
+    // track tool call in current step
+    if (stepHistory.length > 0) {
+      stepHistory[stepHistory.length - 1].toolCalls.push(toolName);
+    }
 
-      thinkingTimer.markToolCall();
-      log.toolCall({
-        toolName,
-        input: parameters || {},
-      });
+    thinkingTimer.markToolCall();
+    log.toolCall({
+      toolName,
+      input: parameters || {},
+    });
 
-      // if tool already completed (status in same event), log output
-      if (status === "completed" && output) {
-        log.debug(`  output: ${output}`);
-      }
+    // if tool already completed (status in same event), log output
+    if (status === "completed" && output) {
+      log.debug(`  output: ${output}`);
     }
   },
   tool_result: (event: OpenCodeToolResultEvent, thinkingTimer: ThinkingTimer) => {

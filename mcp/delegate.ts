@@ -45,7 +45,8 @@ export function DelegateTool(ctx: ToolContext) {
       // guard: prevent subagent recursion
       if (ctx.toolState.delegationActive) {
         return {
-          error: "delegation is not available inside a delegated subagent",
+          error:
+            "delegation is not available inside a subagent. you are already running as a delegated subagent. complete the task directly using the available tools. do not attempt to delegate further. your last agent message will be passed to your supervisor and it will decide what to do next.",
         };
       }
 

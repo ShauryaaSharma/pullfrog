@@ -155,10 +155,9 @@ export const codex = agent({
 
     // get model and reasoning effort based on effort level
     const effortConfig = getCodexEffortConfig(model)[ctx.payload.effort];
-    log.info(`» using model: ${effortConfig.model} (effort: ${ctx.payload.effort})`);
-    if (effortConfig.reasoningEffort) {
-      log.info(`» using modelReasoningEffort: ${effortConfig.reasoningEffort}`);
-    }
+    log.info(
+      `» model: ${effortConfig.model}${effortConfig.reasoningEffort ? ` (reasoningEffort: ${effortConfig.reasoningEffort})` : ""}`
+    );
 
     // determine sandbox mode based on push permission
     // push: "disabled" → read-only sandbox, otherwise workspace-write.

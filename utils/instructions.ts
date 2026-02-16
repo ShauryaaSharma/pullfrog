@@ -422,7 +422,13 @@ export function resolveSubagentInstructions(
 ): ResolvedInstructions {
   const inputs = buildCommonInputs(ctx);
 
-  const subagentTaskSection = `You are operating in **${ctx.mode.name}** mode.
+  const subagentTaskSection = `You are operating in **${ctx.mode.name}** mode as a delegated subagent. An orchestrator spawned you and will read your final output to decide what to do next.
+
+### Delegation rules
+
+- The \`delegate\` tool is NOT available to you — complete your task directly using the available tools.
+- When you finish, end with a clear, concise summary: what you did, what succeeded, what failed, and any blockers or next steps. The orchestrator uses this to decide whether to delegate again or report final results.
+- If you encounter an error you cannot resolve, report it clearly — do not attempt to delegate or re-run yourself.
 
 ${ctx.mode.prompt}`;
 

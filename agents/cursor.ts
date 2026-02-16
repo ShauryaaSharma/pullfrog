@@ -134,7 +134,7 @@ export const cursor = agent({
       try {
         const projectConfig = JSON.parse(readFileSync(projectCliConfigPath, "utf-8"));
         if (projectConfig.model) {
-          log.info(`» using model from project .cursor/cli.json: ${projectConfig.model}`);
+          log.info(`» model: ${projectConfig.model} (from .cursor/cli.json)`);
         } else {
           modelOverride = cursorEffortModels[ctx.payload.effort];
         }
@@ -146,9 +146,9 @@ export const cursor = agent({
     }
 
     if (modelOverride) {
-      log.info(`» using model: ${modelOverride}, effort=${ctx.payload.effort}`);
+      log.info(`» model: ${modelOverride}`);
     } else if (!existsSync(projectCliConfigPath)) {
-      log.info(`» using default model, effort=${ctx.payload.effort}`);
+      log.info(`» model: default`);
     }
 
     // track logged model_call_ids to avoid duplicates
@@ -439,5 +439,6 @@ function configureCursorTools(ctx: AgentRunContext): void {
   }
 
   writeFileSync(cliConfigPath, JSON.stringify(config, null, 2), "utf-8");
-  log.info(`» CLI config written to ${cliConfigPath}`, JSON.stringify(config, null, 2));
+  log.info(`» CLI config written to ${cliConfigPath}`);
+  log.debug(`» CLI config contents: ${JSON.stringify(config, null, 2)}`);
 }

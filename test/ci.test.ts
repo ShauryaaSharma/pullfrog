@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,6 +58,7 @@ const expectedAgents = Object.keys(agentsManifest).sort();
 const crossagentTests = getTestNamesFromDir("crossagent");
 const agnosticTests = getTestNamesFromDir("agnostic");
 const adhocTests = getTestNamesFromDir("adhoc");
+const dynamicAgentsExpression = "$" + "{{ fromJSON(needs.changes.outputs.agents) }}";
 
 // all API key names from all agents + GITHUB_TOKEN + model overrides
 const expectedAgentEnvVars = [
@@ -84,8 +86,25 @@ describe("ci workflow consistency", () => {
     const rootJob = rootWorkflow.jobs["action-agents"];
     const actionJob = actionWorkflow.jobs.agents;
 
-    it("root agent matrix matches agentsManifest", () => {
-      expect([...rootJob.strategy!.matrix.agent].sort()).toEqual(expectedAgents);
+    it("root agent matrix uses dynamic output from changes job", () => {
+      expect(rootJob.strategy!.matrix.agent).toBe(dynamicAgentsExpression);
+    });
+
+    it("changed-agents.sh falls back to claude when shared agent code changed", () => {
+      const input = JSON.stringify(["action/agents/shared.ts"]);
+      const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
+        input,
+        encoding: "utf-8",
+      });
+      expect(JSON.parse(output)).toEqual(["claude"]);
+    });
+
+    it("changed-agents.sh falls back to claude for non-agent action changes", () => {
+      const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
+        input: JSON.stringify(["action/mcp/delegate.ts"]),
+        encoding: "utf-8",
+      });
+      expect(JSON.parse(output)).toEqual(["claude"]);
     });
 
     it("action agent matrix matches agentsManifest", () => {

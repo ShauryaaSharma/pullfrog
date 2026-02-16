@@ -69,7 +69,7 @@ export interface SetupGitParams extends GitContext {
  * - sets up authentication via gitToken (minimal contents:write)
  * - for PR events, checks out the PR branch using shared helper
  *
- * gitToken is a minimal-permission token (contents:write only) used for git operations.
+ * gitToken is a minimal-permission token (contents + workflows) used for git operations.
  * it is assumed to be potentially exfiltratable, so it has limited scope.
  */
 export async function setupGit(params: SetupGitParams): Promise<void> {

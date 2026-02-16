@@ -345,7 +345,7 @@ function configureGeminiSettings(ctx: AgentRunContext): string {
   // allow env var override for tests (e.g., to avoid flash RPD quota limits)
   const model = process.env.GEMINI_MODEL ?? effortConfig.model;
   const thinkingLevel = effortConfig.thinkingLevel;
-  log.info(`» using model: ${model}, thinkingLevel: ${thinkingLevel}`);
+  log.info(`» model: ${model} (thinkingLevel: ${thinkingLevel})`);
 
   const realHome = homedir();
   const geminiConfigDir = join(realHome, ".gemini");
