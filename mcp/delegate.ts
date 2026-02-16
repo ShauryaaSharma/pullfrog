@@ -12,7 +12,7 @@ export const DelegateParams = type({
     "the name of the mode to delegate to (e.g., 'Build', 'Plan', 'Review', 'Fix', 'AddressReviews')"
   ),
   "effort?": Effort.describe(
-    'effort level for the subagent: "mini" (fast), "auto" (default, highly capable), or "max" (maximum capability)'
+    'effort level for the subagent: "mini" (low-effort and fast, only for simple tasks), "auto" (medium-effort, good for typical tasks that don\'t require significant reasoning), or "max" (high-effort, good for PR reviews and complex coding tasks)'
   ),
   "instructions?": type.string.describe(
     "optional additional context or instructions for the subagent — use this to pass results from earlier delegations or narrow the subagent's focus"

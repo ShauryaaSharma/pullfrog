@@ -148,10 +148,14 @@ export const ReportProgress = type({
 });
 
 /**
- * Standalone function to report progress to GitHub comment.
- * Can be called directly without going through the MCP tool interface.
- * Returns result data if successful.
- * When there's no comment target (no progressCommentId and no issueNumber), returns a "skipped" result.
+ * Report progress to a GitHub comment.
+ *
+ * progressCommentId has three states:
+ *   - undefined: no comment yet — will create one if an issue/PR target exists
+ *   - number:    active comment — will update it in place
+ *   - null:      deliberately deleted (e.g. after submitting a PR review) — skips silently
+ *
+ * The body is always tracked in lastProgressBody for the job summary regardless of comment state.
  */
 export async function reportProgress(
   ctx: ToolContext,
@@ -199,6 +203,11 @@ export async function reportProgress(
       body: result.data.body || "",
       action: "updated",
     };
+  }
+
+  // null = progress comment was deliberately deleted (e.g. by create_pull_request_review)
+  if (existingCommentId === null) {
+    return { body, action: "skipped" };
   }
 
   // no existing comment - need an issue/PR to create one on
@@ -288,6 +297,8 @@ export function ReportProgressTool(ctx: ToolContext) {
 /**
  * Delete the progress comment if it exists.
  * Used after submitting a PR review since the review body contains all necessary info.
+ * Sets progressCommentId to null, which prevents future report_progress calls from
+ * creating a new comment (the agent may call report_progress again after this).
  */
 export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> {
   const existingCommentId = ctx.toolState.progressCommentId;
@@ -310,7 +321,7 @@ export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> 
     }
   }
 
-  // reset state and mark as updated so post script doesn't try to handle it
+  // set to null (not undefined) so report_progress skips instead of creating a new comment
   ctx.toolState.progressCommentId = null;
   ctx.toolState.wasUpdated = true;
 

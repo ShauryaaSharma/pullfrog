@@ -3,7 +3,7 @@ import { type } from "arktype";
 import { log } from "../utils/cli.ts";
 import { $git } from "../utils/gitAuth.ts";
 import { $ } from "../utils/shell.ts";
-import type { ToolContext } from "./server.ts";
+import type { StoredPushDest, ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 type PushDestination = {
@@ -14,17 +14,27 @@ type PushDestination = {
 
 /**
  * get where git would actually push this branch.
- * reads branch.X.pushRemote and branch.X.merge set by checkout_pr.
+ * prefers the stored destination from toolState (set by checkout_pr) when it
+ * matches the current branch, because git config reads can silently fail in
+ * certain environments causing pushes to the wrong remote branch.
  *
- * NOTE: we read git config directly instead of using @{push} because
- * push.default=simple (git's default) requires local/remote branch names
- * to match. since checkout_pr uses pr-N as the local name, @{push} resolves
- * to origin/pr-N instead of the actual remote branch.
- *
- * for branches created via checkout_pr: uses configured pushRemote/merge
- * for new branches (git checkout -b): falls back to origin/<branch>
+ * falls back to reading branch.X.pushRemote and branch.X.merge from git config,
+ * and finally to origin/<branch> for branches created without checkout_pr.
  */
-function getPushDestination(branch: string): PushDestination {
+function getPushDestination(
+  branch: string,
+  storedDest: StoredPushDest | undefined
+): PushDestination {
+  // prefer stored destination from checkout_pr when it matches the current branch
+  if (storedDest && storedDest.localBranch === branch) {
+    log.debug(`using stored push destination: ${storedDest.remoteName}/${storedDest.remoteBranch}`);
+    const url = $("git", ["remote", "get-url", "--push", storedDest.remoteName], {
+      log: false,
+    }).trim();
+    return { remoteName: storedDest.remoteName, remoteBranch: storedDest.remoteBranch, url };
+  }
+
+  // fall back to git config (for branches not created by checkout_pr)
   try {
     const pushRemote = $("git", ["config", `branch.${branch}.pushRemote`], { log: false }).trim();
     const merge = $("git", ["config", `branch.${branch}.merge`], { log: false }).trim();
@@ -49,6 +59,7 @@ function normalizeUrl(url: string): string {
 type ValidatePushParams = {
   branch: string;
   pushUrl: string;
+  storedDest: StoredPushDest | undefined;
 };
 
 /**
@@ -56,7 +67,7 @@ type ValidatePushParams = {
  * pushUrl is set by setupGit (base repo) and updated by checkout_pr (fork repo).
  */
 function validatePushDestination(params: ValidatePushParams): PushDestination {
-  const dest = getPushDestination(params.branch);
+  const dest = getPushDestination(params.branch, params.storedDest);
 
   if (normalizeUrl(dest.url) !== normalizeUrl(params.pushUrl)) {
     throw new Error(
@@ -102,7 +113,11 @@ export function PushBranchTool(ctx: ToolContext) {
       if (!pushUrl) {
         throw new Error("pushUrl not set - setupGit must run before push_branch");
       }
-      const pushDest = validatePushDestination({ branch, pushUrl });
+      const pushDest = validatePushDestination({
+        branch,
+        pushUrl,
+        storedDest: ctx.toolState.pushDest,
+      });
 
       // block pushes to default branch in restricted mode
       if (pushPermission === "restricted" && pushDest.remoteBranch === defaultBranch) {

@@ -346,7 +346,10 @@ export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructi
 
 Call \`delegate\` with a mode, effort level, and optional instructions:
 - \`mode\`: The workflow to run (see available modes below)
-- \`effort\`: \`"auto"\` (default, most capable), \`"mini"\` (fast, for simple tasks), or \`"max"\` (maximum capability)
+- \`effort\`: 
+  - \`"mini"\`: low-effort and fast, for simple tasks
+  - \`"auto"\`: medium-effort, good for typical tasks that don't require significant reasoning
+  - \`"max"\`: high-effort, good for PR reviews and complex coding tasks.
 - \`instructions\`: Optional additional context for the subagent. Use this to pass results from earlier delegations or narrow the subagent's focus.
 
 ### Single vs. multi-phase delegation

@@ -290,6 +290,15 @@ export async function checkoutPrBranch(
     toolState.pushUrl = `https://github.com/${headRepo.full_name}.git`;
   }
 
+  // store push destination so push_branch can use it directly
+  // git config is the primary mechanism, but toolState serves as a reliable fallback
+  // in case git config reads fail in certain environments
+  toolState.pushDest = {
+    remoteName: isFork ? `pr-${pullNumber}` : "origin",
+    remoteBranch: headBranch,
+    localBranch,
+  };
+
   // execute post-checkout lifecycle hook
   await executeLifecycleHook({
     event: "post-checkout",

@@ -15,10 +15,19 @@ export type BackgroundProcess = {
   pidPath: string;
 };
 
+export type StoredPushDest = {
+  remoteName: string;
+  remoteBranch: string;
+  localBranch: string;
+};
+
 export interface ToolState {
   // where we're allowed to push - base repo initially, fork URL for fork PRs
   // set by setupGit, updated by checkout_pr. always set before push validation.
   pushUrl?: string;
+  // push destination set by checkout_pr - used as primary source in push_branch
+  // because git config reads can fail in certain environments
+  pushDest?: StoredPushDest;
   // issue or PR number (same number space in GitHub)
   issueNumber?: number;
   selectedMode?: string;
@@ -34,7 +43,8 @@ export interface ToolState {
     promise: Promise<PrepResult[]> | undefined;
     results: PrepResult[] | undefined;
   };
-  progressCommentId: number | null;
+  // undefined = no comment yet, number = active comment, null = deliberately deleted
+  progressCommentId: number | null | undefined;
   lastProgressBody?: string;
   wasUpdated?: boolean;
   output?: string;
@@ -45,13 +55,11 @@ interface InitToolStateParams {
 }
 
 export function initToolState(params: InitToolStateParams): ToolState {
-  const progressCommentId = params.progressCommentId
-    ? parseInt(params.progressCommentId, 10)
-    : null;
-  const resolvedId = Number.isNaN(progressCommentId) ? null : progressCommentId;
+  const parsed = params.progressCommentId ? parseInt(params.progressCommentId, 10) : NaN;
+  const resolvedId = Number.isNaN(parsed) ? undefined : parsed;
 
-  if (progressCommentId) {
-    log.info(`» using pre-created progress comment: ${progressCommentId}`);
+  if (resolvedId) {
+    log.info(`» using pre-created progress comment: ${resolvedId}`);
   }
 
   return {
