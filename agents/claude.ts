@@ -239,10 +239,13 @@ const messageHandlers: SDKMessageHandlers = {
   user: (data, bashToolIds, thinkingTimer) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
+        if (typeof content === "string") {
+          continue;
+        }
         if (content.type === "tool_result") {
           thinkingTimer.markToolResult();
 
-          const toolUseId = (content as any).tool_use_id;
+          const toolUseId = content.tool_use_id;
           const isBashTool = toolUseId && bashToolIds.has(toolUseId);
 
           const outputContent =
@@ -250,7 +253,9 @@ const messageHandlers: SDKMessageHandlers = {
               ? content.content
               : Array.isArray(content.content)
                 ? content.content
-                    .map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c)))
+                    .map((c) =>
+                      typeof c === "string" ? c : "text" in c ? c.text : JSON.stringify(c)
+                    )
                     .join("\n")
                 : String(content.content);
 
