@@ -161,7 +161,7 @@ export function $git(
 
   if (result.status !== 0) {
     const stderr = result.stderr?.trim() ?? "";
-    log.error(`git ${subcommand} failed: ${stderr}`);
+    log.info(`git ${subcommand} failed: ${stderr}`);
     throw new Error(`git ${subcommand} failed: ${stderr}`);
   }
 

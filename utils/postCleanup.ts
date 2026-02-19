@@ -50,7 +50,7 @@ async function validateStuckProgressComment(
     return null;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`[post] failed to get comment ${commentId}: ${errorMessage}`);
+    log.info(`[post] failed to get comment ${commentId}: ${errorMessage}`);
     return null;
   }
 }
@@ -97,7 +97,7 @@ async function getIsCancelled(params: {
     }
     log.info("[post] no cancellation found, assuming failure");
   } catch (error) {
-    log.warning(
+    log.info(
       `[post] failed to get job status: ${error instanceof Error ? error.message : String(error)}`
     );
   }
@@ -116,7 +116,7 @@ export async function runPostCleanup(): Promise<void> {
     const resolved = resolvePromptInput();
     if (typeof resolved !== "string") promptInput = resolved;
   } catch (error) {
-    log.warning(
+    log.info(
       `[post] failed to resolve prompt input: ${error instanceof Error ? error.message : String(error)}`
     );
   }
@@ -158,6 +158,6 @@ export async function runPostCleanup(): Promise<void> {
     log.info("» [post] successfully updated progress comment");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`[post] failed to update comment: ${errorMessage}`);
+    log.info(`[post] failed to update comment: ${errorMessage}`);
   }
 }

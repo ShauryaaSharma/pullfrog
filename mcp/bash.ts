@@ -78,7 +78,7 @@ function detectSandboxMethod(): SandboxMethod {
   }
 
   detectedSandboxMethod = "none";
-  log.warning("PID namespace isolation not available - falling back to env filtering only");
+  log.info("PID namespace isolation not available - falling back to env filtering only");
   return "none";
 }
 
@@ -243,8 +243,8 @@ Use this tool to:
 
       const finalExitCode = exitCode ?? (timedOut ? 124 : -1);
       if (finalExitCode !== 0) {
-        log.error(`bash command failed with exit code ${finalExitCode}: ${params.command}`);
-        if (output) log.error(`output: ${output.trim()}`);
+        log.info(`bash command failed with exit code ${finalExitCode}: ${params.command}`);
+        if (output) log.info(`output: ${output.trim()}`);
       }
 
       return {

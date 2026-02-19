@@ -173,8 +173,7 @@ export const claude = agent({
       onStderr: (chunk) => {
         const trimmed = chunk.trim();
         if (trimmed) {
-          log.debug(`[claude stderr] ${trimmed}`);
-          log.warning(trimmed);
+          log.info(`[claude stderr] ${trimmed}`);
           finalOutput += trimmed + "\n";
         }
       },
@@ -267,7 +266,7 @@ const messageHandlers: SDKMessageHandlers = {
             // Log bash output in a collapsed group
             log.startGroup(`bash output`);
             if (content.is_error) {
-              log.warning(outputContent);
+              log.info(outputContent);
             } else {
               log.info(outputContent);
             }
@@ -275,7 +274,7 @@ const messageHandlers: SDKMessageHandlers = {
             // Clean up the tracked ID
             bashToolIds.delete(toolUseId);
           } else if (content.is_error) {
-            log.warning(`Tool error: ${outputContent}`);
+            log.info(`Tool error: ${outputContent}`);
           } else {
             // log successful non-bash tool result at debug level
             log.debug(`tool output: ${outputContent}`);
@@ -310,11 +309,11 @@ const messageHandlers: SDKMessageHandlers = {
         ],
       ]);
     } else if (data.subtype === "error_max_turns") {
-      log.error(`Max turns reached: ${JSON.stringify(data)}`);
+      log.info(`Max turns reached: ${JSON.stringify(data)}`);
     } else if (data.subtype === "error_during_execution") {
-      log.error(`Execution error: ${JSON.stringify(data)}`);
+      log.info(`Execution error: ${JSON.stringify(data)}`);
     } else {
-      log.error(`Failed: ${JSON.stringify(data)}`);
+      log.info(`Failed: ${JSON.stringify(data)}`);
     }
   },
   system: () => {},

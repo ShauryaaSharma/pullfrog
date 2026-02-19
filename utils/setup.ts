@@ -121,9 +121,7 @@ export async function setupGit(params: SetupGitParams): Promise<void> {
   } catch (error) {
     // If git config fails, log warning but don't fail the action
     // This can happen if we're not in a git repo or git isn't available
-    log.warning(
-      `Failed to set git config: ${error instanceof Error ? error.message : String(error)}`
-    );
+    log.info(`Failed to set git config: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // 2. setup authentication

@@ -210,7 +210,7 @@ export const cursor = agent({
           const result = event.tool_call?.mcpToolCall?.result?.success;
           const isError = result?.isError;
           if (isError) {
-            log.warning("Tool call failed");
+            log.info("Tool call failed");
           } else {
             // log successful tool result so it appears in output
             // handle both formats: { text: string } or { text: { text: string } }
@@ -320,12 +320,12 @@ export const cursor = agent({
           const text = data.toString();
           stderr += text;
           process.stderr.write(text);
-          log.warning(text);
+          log.info(text);
         });
 
         child.on("close", async (code, signal) => {
           if (signal) {
-            log.warning(`Cursor CLI terminated by signal: ${signal}`);
+            log.info(`Cursor CLI terminated by signal: ${signal}`);
           }
 
           const duration = ((performance.now() - startTime) / 1000).toFixed(1);

@@ -112,7 +112,7 @@ export function DelegateTool(ctx: ToolContext) {
       } catch (err) {
         // normalize agent crashes into the same return shape as clean failures
         const errorMessage = err instanceof Error ? err.message : String(err);
-        log.error(`» delegation to ${selectedMode.name} crashed: ${errorMessage}`);
+        log.info(`» delegation to ${selectedMode.name} crashed: ${errorMessage}`);
         return {
           success: false,
           mode: selectedMode.name,

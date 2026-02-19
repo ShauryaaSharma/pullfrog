@@ -632,7 +632,7 @@ export function ResolveReviewThreadTool(ctx: ToolContext) {
         const message = isResolved
           ? `thread ${params.thread_id} was already resolved`
           : `failed to resolve thread ${params.thread_id}: ${errorMessage}`;
-        log.warning(message);
+        log.info(message);
 
         return {
           thread_id: params.thread_id,

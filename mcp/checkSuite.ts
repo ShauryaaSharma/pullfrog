@@ -213,7 +213,7 @@ export function GetCheckSuiteLogsTool(ctx: ToolContext) {
 
             log.debug(`analyzed logs for job ${job.name}: ${analysis.index.length} indexed lines`);
           } catch (error) {
-            log.error(`failed to fetch logs for job ${job.id}: ${error}`);
+            log.info(`failed to fetch logs for job ${job.id}: ${error}`);
           }
         }
       }

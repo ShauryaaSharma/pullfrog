@@ -169,7 +169,7 @@ export async function revokeGitHubInstallationToken(token: string): Promise<void
     });
     log.debug("» installation token revoked");
   } catch (error) {
-    log.warning(
+    log.info(
       `Failed to revoke installation token: ${error instanceof Error ? error.message : String(error)}`
     );
   }

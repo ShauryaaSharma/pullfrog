@@ -399,7 +399,7 @@ var require_tunnel = __commonJS({
         connectOptions.headers = connectOptions.headers || {};
         connectOptions.headers["Proxy-Authorization"] = "Basic " + new Buffer(connectOptions.proxyAuth).toString("base64");
       }
-      debug2("making CONNECT request");
+      debug3("making CONNECT request");
       var connectReq = self2.request(connectOptions);
       connectReq.useChunkedEncodingByDefault = false;
       connectReq.once("response", onResponse);
@@ -419,7 +419,7 @@ var require_tunnel = __commonJS({
         connectReq.removeAllListeners();
         socket.removeAllListeners();
         if (res.statusCode !== 200) {
-          debug2(
+          debug3(
             "tunneling socket could not be established, statusCode=%d",
             res.statusCode
           );
@@ -431,7 +431,7 @@ var require_tunnel = __commonJS({
           return;
         }
         if (head.length > 0) {
-          debug2("got illegal response body from proxy");
+          debug3("got illegal response body from proxy");
           socket.destroy();
           var error2 = new Error("got illegal response body from proxy");
           error2.code = "ECONNRESET";
@@ -439,13 +439,13 @@ var require_tunnel = __commonJS({
           self2.removeSocket(placeholder);
           return;
         }
-        debug2("tunneling connection has established");
+        debug3("tunneling connection has established");
         self2.sockets[self2.sockets.indexOf(placeholder)] = socket;
         return cb(socket);
       }
       function onError(cause) {
         connectReq.removeAllListeners();
-        debug2(
+        debug3(
           "tunneling socket could not be established, cause=%s\n",
           cause.message,
           cause.stack
@@ -507,9 +507,9 @@ var require_tunnel = __commonJS({
       }
       return target;
     }
-    var debug2;
+    var debug3;
     if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
-      debug2 = function() {
+      debug3 = function() {
         var args = Array.prototype.slice.call(arguments);
         if (typeof args[0] === "string") {
           args[0] = "TUNNEL: " + args[0];
@@ -519,10 +519,10 @@ var require_tunnel = __commonJS({
         console.error.apply(console, args);
       };
     } else {
-      debug2 = function() {
+      debug3 = function() {
       };
     }
-    exports.debug = debug2;
+    exports.debug = debug3;
   }
 });
 
@@ -19733,10 +19733,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       return process.env["RUNNER_DEBUG"] === "1";
     }
     exports.isDebug = isDebug2;
-    function debug2(message) {
+    function debug3(message) {
       (0, command_1.issueCommand)("debug", {}, message);
     }
-    exports.debug = debug2;
+    exports.debug = debug3;
     function error2(message, properties = {}) {
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
@@ -25515,7 +25515,12 @@ var isGitHubActions = !!process.env.GITHUB_ACTIONS;
 var isInsideDocker = existsSync("/.dockerenv");
 
 // utils/log.ts
-var isDebugEnabled = () => process.env.LOG_LEVEL === "debug" || process.env.ACTIONS_STEP_DEBUG === "true" || core.isDebug();
+var isRunnerDebugEnabled = () => core.isDebug();
+var isLocalDebugEnabled = () => process.env.LOG_LEVEL === "debug" || process.env.ACTIONS_STEP_DEBUG === "true";
+var isDebugEnabled = () => isLocalDebugEnabled() || isRunnerDebugEnabled();
+function ts() {
+  return isDebugEnabled() ? `[${(/* @__PURE__ */ new Date()).toISOString()}] ` : "";
+}
 function formatArgs(args) {
   return args.map((arg) => {
     if (typeof arg === "string") return arg;
@@ -25626,19 +25631,16 @@ function separator(length = 50) {
   const separatorText = "\u2500".repeat(length);
   core.info(separatorText);
 }
-function ts() {
-  return isDebugEnabled() ? `[${(/* @__PURE__ */ new Date()).toISOString()}] ` : "";
-}
 var log = {
   /** Print info message */
   info: (...args) => {
     core.info(`${ts()}${formatArgs(args)}`);
   },
-  /** Print warning message */
+  /** Print a warning message. Use only for warnings that should be displayed in the job summary. */
   warning: (...args) => {
     core.warning(`${ts()}${formatArgs(args)}`);
   },
-  /** Print error message */
+  /** Print an error message. Use only for errors that should be displayed in the job summary. */
   error: (...args) => {
     core.error(`${ts()}${formatArgs(args)}`);
   },
@@ -25646,10 +25648,14 @@ var log = {
   success: (...args) => {
     core.info(`${ts()}\xBB ${formatArgs(args)}`);
   },
-  /** Print debug message (only if LOG_LEVEL=debug) */
+  /** Print debug message (only when debug mode is enabled) */
   debug: (...args) => {
-    if (isDebugEnabled()) {
-      core.info(`[${(/* @__PURE__ */ new Date()).toISOString()}] [DEBUG] ${formatArgs(args)}`);
+    if (isRunnerDebugEnabled()) {
+      core.debug(formatArgs(args));
+      return;
+    }
+    if (isLocalDebugEnabled()) {
+      core.info(`${ts()}[DEBUG] ${formatArgs(args)}`);
     }
   },
   /** Print a formatted box with text */
@@ -25740,9 +25746,7 @@ async function retry(fn, options = {}) {
         throw error2;
       }
       const delay = delayMs * attempt;
-      log.warning(
-        `\xBB ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`
-      );
+      log.info(`\xBB ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -25925,7 +25929,7 @@ async function revokeGitHubInstallationToken(token) {
     });
     log.debug("\xBB installation token revoked");
   } catch (error2) {
-    log.warning(
+    log.info(
       `Failed to revoke installation token: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }

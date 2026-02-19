@@ -157,7 +157,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
         if (idleMs > activityTimeoutMs) {
           isActivityTimedOut = true;
           const idleSec = Math.round(idleMs / 1000);
-          log.error(`no output for ${idleSec}s from pid=${child.pid} (${cmd}), killing process`);
+          log.info(`no output for ${idleSec}s from pid=${child.pid} (${cmd}), killing process`);
           child.kill("SIGKILL");
           clearInterval(activityCheckIntervalId);
         }

@@ -37,9 +37,7 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
       }
 
       const delay = delayMs * attempt;
-      log.warning(
-        `» ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`
-      );
+      log.info(`» ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

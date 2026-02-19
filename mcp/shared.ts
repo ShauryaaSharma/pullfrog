@@ -53,7 +53,7 @@ export const execute = <T, R extends Record<string, any> | string>(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const prefix = toolName ? `[${toolName}]` : "tool";
-      log.error(`${prefix} error: ${errorMessage}`);
+      log.info(`${prefix} error: ${errorMessage}`);
       log.debug(`${prefix} params: ${formatJsonValue(params)}`);
       return handleToolError(error);
     }

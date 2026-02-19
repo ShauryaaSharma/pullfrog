@@ -6,8 +6,17 @@ import * as core from "@actions/core";
 import { table } from "table";
 import { isGitHubActions, isInsideDocker } from "./globals.ts";
 
-const isDebugEnabled = () =>
-  process.env.LOG_LEVEL === "debug" || process.env.ACTIONS_STEP_DEBUG === "true" || core.isDebug();
+const isRunnerDebugEnabled = () => core.isDebug();
+
+const isLocalDebugEnabled = () =>
+  process.env.LOG_LEVEL === "debug" || process.env.ACTIONS_STEP_DEBUG === "true";
+
+const isDebugEnabled = () => isLocalDebugEnabled() || isRunnerDebugEnabled();
+
+/** timestamp prefix for debug mode — empty string when debug is off */
+function ts(): string {
+  return isDebugEnabled() ? `[${new Date().toISOString()}] ` : "";
+}
 
 /**
  * Format arguments into a single string for logging
@@ -206,23 +215,18 @@ function separator(length: number = 50): void {
 /**
  * Main logging utility object - import this once and access all utilities
  */
-/** timestamp prefix for debug mode — empty string when debug is off */
-function ts(): string {
-  return isDebugEnabled() ? `[${new Date().toISOString()}] ` : "";
-}
-
 export const log = {
   /** Print info message */
   info: (...args: unknown[]): void => {
     core.info(`${ts()}${formatArgs(args)}`);
   },
 
-  /** Print warning message */
+  /** Print a warning message. Use only for warnings that should be displayed in the job summary. */
   warning: (...args: unknown[]): void => {
     core.warning(`${ts()}${formatArgs(args)}`);
   },
 
-  /** Print error message */
+  /** Print an error message. Use only for errors that should be displayed in the job summary. */
   error: (...args: unknown[]): void => {
     core.error(`${ts()}${formatArgs(args)}`);
   },
@@ -232,10 +236,14 @@ export const log = {
     core.info(`${ts()}» ${formatArgs(args)}`);
   },
 
-  /** Print debug message (only if LOG_LEVEL=debug) */
+  /** Print debug message (only when debug mode is enabled) */
   debug: (...args: unknown[]): void => {
-    if (isDebugEnabled()) {
-      core.info(`[${new Date().toISOString()}] [DEBUG] ${formatArgs(args)}`);
+    if (isRunnerDebugEnabled()) {
+      core.debug(formatArgs(args));
+      return;
+    }
+    if (isLocalDebugEnabled()) {
+      core.info(`${ts()}[DEBUG] ${formatArgs(args)}`);
     }
   },
 

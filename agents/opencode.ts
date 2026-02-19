@@ -154,7 +154,7 @@ export const opencode = agent({
                   activeToolCalls > 0
                     ? ` (waiting for ${activeToolCalls} tool call${activeToolCalls > 1 ? "s" : ""})`
                     : " (OpenCode may be processing internally - LLM calls, planning, etc.)";
-                log.warning(
+                log.info(
                   `» no activity for ${(timeSinceLastActivity / 1000).toFixed(1)}s${toolCallInfo} (${eventCount} events processed so far)`
                 );
               }
@@ -186,7 +186,7 @@ export const opencode = agent({
           const providerError = detectProviderError(trimmed);
           if (providerError) {
             lastProviderError = providerError;
-            log.error(`» provider error detected (${providerError}): ${trimmed.substring(0, 500)}`);
+            log.info(`» provider error detected (${providerError}): ${trimmed.substring(0, 500)}`);
           } else {
             // OpenCode's --print-logs output goes to stderr. demote internal
             // INFO/DEBUG bus traffic to debug so it doesn't drown out tool
@@ -207,9 +207,9 @@ export const opencode = agent({
         const diagnosis = lastProviderError
           ? `provider error: ${lastProviderError}`
           : "unknown cause (no stdout events received)";
-        log.error(`» OpenCode produced 0 events (${diagnosis})`);
+        log.info(`» OpenCode produced 0 events (${diagnosis})`);
         if (stderrContext) {
-          log.error(`» last stderr output:\n${stderrContext}`);
+          log.info(`» last stderr output:\n${stderrContext}`);
         }
       }
 
@@ -263,12 +263,12 @@ export const opencode = agent({
           ? "OpenCode produced 0 stdout events - check if the model provider is reachable"
           : `${eventCount} events were processed before the hang`;
 
-      log.error(
+      log.info(
         `» OpenCode ${isActivityTimeout ? "hung" : "failed"} after ${(duration / 1000).toFixed(1)}s: ${errorMessage}`
       );
-      log.error(`» diagnosis: ${diagnosis}`);
+      log.info(`» diagnosis: ${diagnosis}`);
       if (stderrContext) {
-        log.error(
+        log.info(
           `» recent stderr (last ${Math.min(recentStderr.length, 10)} lines):\n${stderrContext}`
         );
       }
@@ -600,7 +600,7 @@ const messageHandlers = {
           log.debug(`  output: ${typeof output === "string" ? output : JSON.stringify(output)}`);
         }
         if (toolDuration > 5000) {
-          log.warning(
+          log.info(
             `» ⚠️ tool call took ${(toolDuration / 1000).toFixed(1)}s - this may indicate network latency or slow processing`
           );
         }
@@ -608,7 +608,7 @@ const messageHandlers = {
     }
     if (status === "error") {
       const errorMsg = typeof output === "string" ? output : JSON.stringify(output);
-      log.error(`» ❌ tool call failed: ${errorMsg}`);
+      log.info(`» ❌ tool call failed: ${errorMsg}`);
     } else if (output) {
       // log successful tool result so it appears in captured output
       const outputStr = typeof output === "string" ? output : JSON.stringify(output);
@@ -624,7 +624,7 @@ const messageHandlers = {
     );
 
     if (event.status === "error") {
-      log.error(`» OpenCode CLI failed: ${JSON.stringify(event)}`);
+      log.info(`» OpenCode CLI failed: ${JSON.stringify(event)}`);
     } else {
       // log tokens once at the end (use stats from result if available, otherwise use accumulated from step_finish)
       const inputTokens = event.stats?.input_tokens || accumulatedTokens.input || 0;

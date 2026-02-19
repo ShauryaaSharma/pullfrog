@@ -43,7 +43,7 @@ async function isModelAvailable(ctx: { apiKey: string; model: string }): Promise
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      log.warning(
+      log.info(
         `failed to list models (HTTP ${response.status}), falling back to ${FALLBACK_MODEL}`
       );
       return false;
@@ -51,7 +51,7 @@ async function isModelAvailable(ctx: { apiKey: string; model: string }): Promise
     const body = (await response.json()) as { data: Array<{ id: string }> };
     return body.data.some((m) => m.id === ctx.model);
   } catch (err) {
-    log.warning(`failed to list models: ${err}, falling back to ${FALLBACK_MODEL}`);
+    log.info(`failed to list models: ${err}, falling back to ${FALLBACK_MODEL}`);
     return false;
   }
 }
@@ -262,8 +262,7 @@ export const codex = agent({
       onStderr: (chunk) => {
         const trimmed = chunk.trim();
         if (trimmed) {
-          log.debug(`[codex stderr] ${trimmed}`);
-          log.warning(trimmed);
+          log.info(`[codex stderr] ${trimmed}`);
           finalOutput += trimmed + "\n";
         }
       },
@@ -319,7 +318,7 @@ const messageHandlers: {
     ]);
   },
   "turn.failed": (event) => {
-    log.error(`Turn failed: ${event.error.message}`);
+    log.info(`Turn failed: ${event.error.message}`);
   },
   "item.started": (event, commandExecutionIds, thinkingTimer) => {
     const item = event.item;
@@ -362,7 +361,7 @@ const messageHandlers: {
         thinkingTimer.markToolResult();
         log.startGroup(`bash output`);
         if (item.status === "failed" || (item.exit_code !== undefined && item.exit_code !== 0)) {
-          log.warning(item.aggregated_output || "Command failed");
+          log.info(item.aggregated_output || "Command failed");
         } else {
           log.info(item.aggregated_output || "");
         }
@@ -372,7 +371,7 @@ const messageHandlers: {
     } else if (item.type === "mcp_tool_call") {
       thinkingTimer.markToolResult();
       if (item.status === "failed" && item.error) {
-        log.warning(`MCP tool call failed: ${item.error.message}`);
+        log.info(`MCP tool call failed: ${item.error.message}`);
       } else if ((item as any).output) {
         // log successful MCP tool call output so it appears in captured output
         const output = (item as any).output;
@@ -388,6 +387,6 @@ const messageHandlers: {
     }
   },
   error: (event) => {
-    log.error(`Error: ${event.message}`);
+    log.info(`Error: ${event.message}`);
   },
 };

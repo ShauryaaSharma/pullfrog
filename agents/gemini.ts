@@ -149,7 +149,7 @@ const messageHandlers = {
     if (event.status === "error") {
       const errorMsg =
         typeof event.output === "string" ? event.output : JSON.stringify(event.output);
-      log.warning(`Tool call failed: ${errorMsg}`);
+      log.info(`Tool call failed: ${errorMsg}`);
     } else if (event.output) {
       // log successful tool result so it appears in output
       const outputStr =
@@ -270,8 +270,7 @@ export const gemini = agent({
           onStderr: (chunk) => {
             const trimmed = chunk.trim();
             if (trimmed) {
-              log.debug(`[gemini stderr] ${trimmed}`);
-              log.warning(trimmed);
+              log.info(`[gemini stderr] ${trimmed}`);
               finalOutput += trimmed + "\n";
             }
           },
@@ -286,7 +285,7 @@ export const gemini = agent({
 
           // retry on transient API errors (500, 503, INTERNAL, etc.)
           if (attempt < MAX_ATTEMPTS && isTransientApiError(errorMessage)) {
-            log.warning(
+            log.info(
               `» transient Gemini API error on attempt ${attempt}/${MAX_ATTEMPTS}, retrying in ${RETRY_DELAY_MS / 1000}s...`
             );
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
@@ -313,7 +312,7 @@ export const gemini = agent({
 
         // retry on transient API errors from spawn exceptions too
         if (attempt < MAX_ATTEMPTS && isTransientApiError(errorMessage)) {
-          log.warning(
+          log.info(
             `» transient Gemini API error on attempt ${attempt}/${MAX_ATTEMPTS}, retrying in ${RETRY_DELAY_MS / 1000}s...`
           );
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
