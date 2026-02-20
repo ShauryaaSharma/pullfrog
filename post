@@ -41198,37 +41198,8 @@ var ReplyToReviewComment = type({
   )
 });
 
-// utils/token.ts
-var core3 = __toESM(require_core(), 1);
-function getJobToken() {
-  const inputToken = core3.getInput("token");
-  if (inputToken) {
-    return inputToken;
-  }
-  const fallbackToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (fallbackToken) {
-    return fallbackToken;
-  }
-  throw new Error("token input is required");
-}
-
-// utils/exitHandler.ts
-function buildErrorCommentBody(params) {
-  const workflowRunLink = params.runId ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})` : "workflow run logs";
-  const errorMessage = params.isCancellation ? `This run was cancelled \u{1F6D1}
-
-The workflow was cancelled before completion. Please check the ${workflowRunLink} for details.` : `This run croaked \u{1F635}
-
-The workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
-  const footer = buildPullfrogFooter({
-    triggeredBy: true,
-    workflowRun: params.runId ? { owner: params.owner, repo: params.repo, runId: params.runId } : void 0
-  });
-  return `${errorMessage}${footer}`;
-}
-
 // utils/payload.ts
-var core4 = __toESM(require_core(), 1);
+var core3 = __toESM(require_core(), 1);
 
 // external.ts
 var agentsManifest = {
@@ -41399,7 +41370,7 @@ var Inputs = type({
   "cwd?": type.string.or("undefined")
 });
 function resolvePromptInput() {
-  const prompt = core4.getInput("prompt", { required: true });
+  const prompt = core3.getInput("prompt", { required: true });
   let parsed2;
   try {
     parsed2 = JSON.parse(prompt);
@@ -41414,8 +41385,35 @@ function resolvePromptInput() {
   return jsonPayload;
 }
 
+// utils/token.ts
+var core4 = __toESM(require_core(), 1);
+function getJobToken() {
+  const inputToken = core4.getInput("token");
+  if (inputToken) {
+    return inputToken;
+  }
+  const fallbackToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (fallbackToken) {
+    return fallbackToken;
+  }
+  throw new Error("token input is required");
+}
+
 // utils/postCleanup.ts
 var SHOULD_CHECK_REASON = true;
+function buildErrorCommentBody(params) {
+  const workflowRunLink = params.runId ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})` : "workflow run logs";
+  const errorMessage = params.isCancellation ? `This run was cancelled \u{1F6D1}
+
+The workflow was cancelled before completion. Please check the ${workflowRunLink} for details.` : `This run croaked \u{1F635}
+
+The workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
+  const footer = buildPullfrogFooter({
+    triggeredBy: true,
+    workflowRun: params.runId ? { owner: params.owner, repo: params.repo, runId: params.runId } : void 0
+  });
+  return `${errorMessage}${footer}`;
+}
 async function validateStuckProgressComment(promptInput, octokit, owner, repo) {
   if (!promptInput?.progressCommentId) {
     log.info("[post] no progressCommentId in prompt input, skipping cleanup");

@@ -6,7 +6,6 @@
 
 import * as core from "@actions/core";
 import { main } from "./main.ts";
-import { runCleanup } from "./utils/exitHandler.ts";
 
 async function run(): Promise<void> {
   try {
@@ -22,8 +21,6 @@ async function run(): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     core.setFailed(`Action failed: ${errorMessage}`);
-  } finally {
-    await runCleanup();
   }
 }
 

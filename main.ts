@@ -12,7 +12,6 @@ import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
 import { log, writeSummary } from "./utils/cli.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
-import { setupExitHandler } from "./utils/exitHandler.ts";
 import { resolveGit } from "./utils/gitAuth.ts";
 import { createOctokit } from "./utils/github.ts";
 import { resolveInstructions } from "./utils/instructions.ts";
@@ -51,8 +50,6 @@ export async function main(): Promise<MainResult> {
     progressCommentId:
       typeof resolvedPromptInput !== "string" ? resolvedPromptInput.progressCommentId : undefined,
   });
-
-  setupExitHandler(toolState);
 
   // resolve and fingerprint git binary before any agent code runs
   resolveGit();
@@ -247,8 +244,6 @@ export async function main(): Promise<MainResult> {
       error: errorMessage,
     };
   } finally {
-    if (activityTimeout) {
-      activityTimeout.stop();
-    }
+    activityTimeout?.stop();
   }
 }

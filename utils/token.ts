@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as core from "@actions/core";
 import type { PushPermission } from "../external.ts";
 import { log } from "./cli.ts";
+import { onExitSignal } from "./exitHandler.ts";
 import { acquireNewToken } from "./github.ts";
 import { isGitHubActions } from "./globals.ts";
 
@@ -131,18 +132,35 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
   const revertGithubToken = setEnvironmentVariable("GITHUB_TOKEN", mcpToken);
   mcpTokenValue = mcpToken;
 
-  return {
-    gitToken,
-    mcpToken,
-    async [Symbol.asyncDispose]() {
+  let disposingRef: PromiseWithResolvers<void> | undefined;
+
+  const dispose = async () => {
+    if (disposingRef) {
+      // this can happen if the signal arrives when disposing tokens
+      // we make sure to wait for the current dispose to complete
+      return disposingRef.promise;
+    }
+    disposingRef = Promise.withResolvers();
+    try {
       mcpTokenValue = undefined;
       revertGithubToken();
-      // revoke both tokens
       await Promise.all([
         revokeGitHubInstallationToken(gitToken),
         revokeGitHubInstallationToken(mcpToken),
       ]);
-    },
+    } finally {
+      removeSignalHandler();
+      disposingRef.resolve();
+      disposingRef = undefined;
+    }
+  };
+
+  const removeSignalHandler = onExitSignal(dispose);
+
+  return {
+    gitToken,
+    mcpToken,
+    [Symbol.asyncDispose]: dispose,
   };
 }
 

@@ -2,6 +2,7 @@ import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import { DEFAULT_ACTIVITY_CHECK_INTERVAL_MS, DEFAULT_ACTIVITY_TIMEOUT_MS } from "./activity.ts";
 import { log } from "./cli.ts";
+import { onExitSignal } from "./exitHandler.ts";
 
 export type TrackChildOptions = {
   child: ChildProcess;
@@ -18,6 +19,9 @@ let externalSignalHandler: SignalHandler | null = null;
 
 // track a child process for cleanup on Ctrl+C
 export function trackChild(options: TrackChildOptions): void {
+  // the signal handler cleans up all tracked children
+  // so we only have to install it once some child gets tracked
+  installSignalHandler();
   activeChildren.set(options.child, options.killGroup ?? false);
 }
 
@@ -32,8 +36,7 @@ export function setSignalHandler(handler: SignalHandler | null): void {
 }
 
 // kill all tracked children without exiting
-export function killTrackedChildren(): number {
-  const count = activeChildren.size;
+export function killTrackedChildren() {
   for (const entry of activeChildren) {
     const child = entry[0];
     const killGroup = entry[1];
@@ -47,35 +50,24 @@ export function killTrackedChildren(): number {
     }
     child.kill("SIGKILL");
   }
-  return count;
-}
-
-// cleanup handler for SIGINT/SIGTERM - kills all tracked children
-function cleanupAndExit(signal: string): void {
-  const count = killTrackedChildren();
-  if (count > 0) {
-    log.info(`» received ${signal}, killing ${count} subprocess(es)...`);
-  }
-  // force exit after a short delay if process is stuck
-  setTimeout(() => process.exit(1), 500).unref();
-  process.exit(1);
-}
-
-function handleSignal(signal: NodeJS.Signals): void {
-  if (externalSignalHandler) {
-    externalSignalHandler(signal);
-    return;
-  }
-  cleanupAndExit(signal);
 }
 
 // install signal handlers once (call early in process lifecycle)
 let handlersInstalled = false;
-export function installSignalHandlers(): void {
+function installSignalHandler(): void {
   if (handlersInstalled) return;
   handlersInstalled = true;
-  process.on("SIGINT", () => handleSignal("SIGINT"));
-  process.on("SIGTERM", () => handleSignal("SIGTERM"));
+  onExitSignal((signal) => {
+    if (externalSignalHandler) {
+      externalSignalHandler(signal);
+      return;
+    }
+    const count = activeChildren.size;
+    if (count > 0) {
+      log.info(`» received ${signal}, killing ${count} subprocess(es)...`);
+    }
+    killTrackedChildren();
+  });
 }
 
 export interface SpawnOptions {
@@ -106,7 +98,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
   const { cmd, args, env, input, timeout, cwd, stdio, onStdout, onStderr } = options;
   const activityTimeoutMs = options.activityTimeout ?? DEFAULT_ACTIVITY_TIMEOUT_MS;
 
-  installSignalHandlers();
+  installSignalHandler();
 
   const startTime = performance.now();
   let stdoutBuffer = "";

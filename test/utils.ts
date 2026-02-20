@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentsManifest } from "../external.ts";
 import type { Inputs } from "../main.ts";
-import { installSignalHandlers, trackChild, untrackChild } from "../utils/subprocess.ts";
+import { trackChild, untrackChild } from "../utils/subprocess.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -165,8 +165,6 @@ const DEFAULT_TEST_TIMEOUT = "10m";
 // run agent and stream output with prefix labels
 // note: activity timeout is enforced in action main and subprocess utils
 export async function runAgentStreaming(options: RunStreamingOptions): Promise<AgentResult> {
-  installSignalHandlers();
-
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     const prefix = getPrefix({ test: options.test, agent: options.agent });

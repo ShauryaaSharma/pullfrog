@@ -1,6 +1,6 @@
 import { LEAPING_INTO_ACTION_PREFIX } from "../mcp/comment.ts";
+import { buildPullfrogFooter } from "./buildPullfrogFooter.ts";
 import { log } from "./cli.ts";
-import { buildErrorCommentBody } from "./exitHandler.ts";
 import { createOctokit, parseRepoContext } from "./github.ts";
 import { type ResolvedPromptInput, resolvePromptInput } from "./payload.ts";
 import { getJobToken } from "./token.ts";
@@ -13,6 +13,30 @@ type JsonPromptInput = Extract<ResolvedPromptInput, object>; // not string
  * YAML file cannot supply it (not in ENV), so an extra request is required to check it.
  * */
 const SHOULD_CHECK_REASON = true;
+
+/**
+ * Build error comment body with error message and footer
+ */
+function buildErrorCommentBody(params: {
+  owner: string;
+  repo: string;
+  runId: string | undefined;
+  isCancellation: boolean;
+}): string {
+  const workflowRunLink = params.runId
+    ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})`
+    : "workflow run logs";
+  const errorMessage = params.isCancellation
+    ? `This run was cancelled 🛑\n\nThe workflow was cancelled before completion. Please check the ${workflowRunLink} for details.`
+    : `This run croaked 😵\n\nThe workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
+  const footer = buildPullfrogFooter({
+    triggeredBy: true,
+    workflowRun: params.runId
+      ? { owner: params.owner, repo: params.repo, runId: params.runId }
+      : undefined,
+  });
+  return `${errorMessage}${footer}`;
+}
 
 /**
  * Validate that the progress comment is stuck on "Leaping into action"

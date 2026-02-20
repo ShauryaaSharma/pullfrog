@@ -5,11 +5,7 @@ import { config } from "dotenv";
 import { runInDocker } from "../utils/docker.ts";
 import { ensureGitHubToken } from "../utils/github.ts";
 import { isInsideDocker } from "../utils/globals.ts";
-import {
-  installSignalHandlers,
-  killTrackedChildren,
-  setSignalHandler,
-} from "../utils/subprocess.ts";
+import { killTrackedChildren, setSignalHandler } from "../utils/subprocess.ts";
 import {
   type AgentResult,
   agents,
@@ -482,7 +478,6 @@ async function main(): Promise<void> {
   }
 
   setSignalHandler(handleCancel);
-  installSignalHandlers();
 
   // run tests with limited concurrency to avoid overwhelming agent APIs
   const maxConcurrency = 5;
