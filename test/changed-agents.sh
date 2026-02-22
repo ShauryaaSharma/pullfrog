@@ -35,11 +35,13 @@ while IFS= read -r file; do
 done <<< "$files"
 
 # output agents based on change type.
-# non-agent action changes run claude as a canary.
+# non-agent action changes always include claude as a canary.
+if $has_non_agent_change; then
+  changed_agents+=("claude")
+fi
+
 if [[ ${#changed_agents[@]} -gt 0 ]]; then
   printf '%s\n' "${changed_agents[@]}" | sort -u | jq -R . | jq -sc .
-elif $has_non_agent_change; then
-  echo '["claude"]'
 else
   echo '[]'
 fi

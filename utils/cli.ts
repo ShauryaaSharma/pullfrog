@@ -6,7 +6,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 // re-export logging utilities for backward compatibility
-export { formatIndentedField, formatJsonValue, log, writeSummary } from "./log.ts";
+export {
+  formatIndentedField,
+  formatJsonValue,
+  formatUsageSummary,
+  log,
+  writeSummary,
+} from "./log.ts";
 
 /**
  * Finds a CLI executable path by checking if it's installed globally

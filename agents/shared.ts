@@ -5,6 +5,18 @@ import type { ResolvedInstructions } from "../utils/instructions.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
 
 /**
+ * token/cost usage data from a single agent run
+ */
+export interface AgentUsage {
+  agent: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number | undefined;
+  cacheWriteTokens?: number | undefined;
+  costUsd?: number | undefined;
+}
+
+/**
  * Result returned by agent execution
  */
 export interface AgentResult {
@@ -12,6 +24,7 @@ export interface AgentResult {
   output?: string | undefined;
   error?: string | undefined;
   metadata?: Record<string, unknown>;
+  usage?: AgentUsage | undefined;
 }
 
 /**

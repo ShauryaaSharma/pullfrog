@@ -58,7 +58,6 @@ export const execute = <T, R extends Record<string, any> | string>(
       return handleToolError(error);
     }
   };
-  (_fn as any).raw = fn;
   return _fn;
 };
 
@@ -183,7 +182,7 @@ function sanitizeTool<T extends Tool<any, any>>(tool: T): T {
   } as T;
 }
 
-export const addTools = (ctx: ToolContext, server: FastMCP, tools: Tool<any, any>[]) => {
+export const addTools = (ctx: ToolContext, server: FastMCP<any>, tools: Tool<any, any>[]) => {
   // sanitize schemas for gemini agent and opencode (when using Google API)
   // both have issues with draft-2020-12 schemas and any_of enum constructs
   const shouldSanitize = ctx.agent.name === "gemini" || ctx.agent.name === "opencode";

@@ -15,10 +15,10 @@ const fixture = defineFixture(
   {
     prompt: `This is a multi-delegation test. You must delegate exactly twice:
 
-Phase 1: Delegate to Plan mode with mini effort. Pass these instructions:
+Phase 1: Select Plan mode via select_mode, then delegate with mini effort. Your subagent instructions:
 "Your task is to call set_output with the value 'PHASE_1_MARKER'. Do not create plans or PRs."
 
-Phase 2: After Phase 1 completes, delegate to Plan mode again with mini effort. Pass these instructions (include the result from Phase 1 as context):
+Phase 2: After Phase 1 completes, select Plan mode again and delegate with mini effort. Include the result from Phase 1. Your subagent instructions:
 "Your task is to call set_output with the value 'MULTI_DELEGATE_PASSED'. Do not create plans or PRs."
 
 Both delegations must complete successfully.`,
@@ -36,8 +36,7 @@ function validator(result: AgentResult): ValidationCheck[] {
   // the last set_output call wins — should be from Phase 2
   const finalValue = setOutputCalled && /MULTI_DELEGATE_PASSED/i.test(output);
 
-  // count delegation evidence — match the exact log line format from the delegate handler
-  const delegationMatches = agentOutput.match(/» delegating to/g);
+  const delegationMatches = agentOutput.match(/» delegating subagent=/g);
   const twoDelegations = delegationMatches !== null && delegationMatches.length >= 2;
 
   return [

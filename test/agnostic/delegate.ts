@@ -4,14 +4,14 @@ import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts"
 /**
  * delegate test - validates core end-to-end delegation flow.
  *
- * the orchestrator delegates to Plan mode with mini effort, passing instructions
- * that tell the subagent to call set_output with a specific value.
+ * the orchestrator selects Plan mode, then delegates with mini effort, passing
+ * instructions that tell the subagent to call set_output with a specific value.
  * validates that the subagent executed and the result flows back.
  */
 
 const fixture = defineFixture(
   {
-    prompt: `Delegate to the Plan mode with mini effort. Pass these instructions to the subagent:
+    prompt: `Select the Plan mode via select_mode, then delegate with mini effort. Your subagent instructions should be:
 "This is a delegation test. Your only task is to call set_output with the value 'DELEGATE_BASIC_PASSED'. Do not create plans, branches, or PRs. Just call set_output."`,
     effort: "mini",
     timeout: "5m",
@@ -25,8 +25,7 @@ function validator(result: AgentResult): ValidationCheck[] {
 
   const setOutputCalled = output !== null;
   const correctValue = setOutputCalled && /DELEGATE_BASIC_PASSED/i.test(output);
-  // check for the specific log line emitted by the delegate tool handler
-  const delegationOccurred = /» delegating to \w+ mode/i.test(agentOutput);
+  const delegationOccurred = /» delegating subagent=/i.test(agentOutput);
 
   return [
     { name: "set_output", passed: setOutputCalled },

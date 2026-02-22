@@ -12,7 +12,7 @@ import { installFromGithub } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
 import { getGitHubInstallationToken } from "../utils/token.ts";
-import { type AgentRunContext, agent } from "./shared.ts";
+import { type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 // effort configuration: model + thinking level
 // thinkingLevel is set via settings.json modelConfig.generateContentConfig.thinkingConfig
@@ -105,90 +105,107 @@ function isTransientApiError(output: string): boolean {
 const MAX_ATTEMPTS = 2;
 const RETRY_DELAY_MS = 5_000;
 
-let assistantMessageBuffer = "";
-
-const messageHandlers = {
-  init: (_event: GeminiInitEvent) => {
-    log.debug(JSON.stringify(_event, null, 2));
-    // initialization event - no logging needed
-    assistantMessageBuffer = "";
-  },
-  message: (event: GeminiMessageEvent) => {
-    log.debug(JSON.stringify(event, null, 2));
-    if (event.role === "assistant" && event.content?.trim()) {
-      if (event.delta) {
-        // accumulate delta messages
-        assistantMessageBuffer += event.content;
-      } else {
-        // final message - log it
-        const message = event.content.trim();
-        if (message) {
-          log.box(message, { title: "Gemini" });
-        }
-        assistantMessageBuffer = "";
-      }
-    } else if (event.role === "assistant" && !event.delta && assistantMessageBuffer.trim()) {
-      // if we have buffered content and get a non-delta message, log the buffer
-      log.box(assistantMessageBuffer.trim(), { title: "Gemini" });
-      assistantMessageBuffer = "";
-    }
-  },
-  tool_use: (event: GeminiToolUseEvent, thinkingTimer: ThinkingTimer) => {
-    log.debug(JSON.stringify(event, null, 2));
-    if (event.tool_name) {
-      thinkingTimer.markToolCall();
-      log.toolCall({
-        toolName: event.tool_name,
-        input: event.parameters || {},
-      });
-    }
-  },
-  tool_result: (event: GeminiToolResultEvent, thinkingTimer: ThinkingTimer) => {
-    log.debug(JSON.stringify(event, null, 2));
-    thinkingTimer.markToolResult();
-    if (event.status === "error") {
-      const errorMsg =
-        typeof event.output === "string" ? event.output : JSON.stringify(event.output);
-      log.info(`Tool call failed: ${errorMsg}`);
-    } else if (event.output) {
-      // log successful tool result so it appears in output
-      const outputStr =
-        typeof event.output === "string" ? event.output : JSON.stringify(event.output);
-      log.debug(`tool output: ${outputStr}`);
-    }
-  },
-  result: async (event: GeminiResultEvent) => {
-    log.debug(JSON.stringify(event, null, 2));
-    // log any remaining buffered assistant message
-    if (assistantMessageBuffer.trim()) {
-      log.box(assistantMessageBuffer.trim(), { title: "Gemini" });
-      assistantMessageBuffer = "";
-    }
-
-    if (event.status === "success" && event.stats) {
-      const stats = event.stats;
-      const rows: Array<Array<{ data: string; header?: boolean } | string>> = [
-        [
-          { data: "Input Tokens", header: true },
-          { data: "Output Tokens", header: true },
-          { data: "Total Tokens", header: true },
-          { data: "Tool Calls", header: true },
-          { data: "Duration (ms)", header: true },
-        ],
-        [
-          String(stats.input_tokens || 0),
-          String(stats.output_tokens || 0),
-          String(stats.total_tokens || 0),
-          String(stats.tool_calls || 0),
-          String(stats.duration_ms || 0),
-        ],
-      ];
-      log.table(rows);
-    } else if (event.status === "error") {
-      log.error(`Gemini CLI failed: ${JSON.stringify(event)}`);
-    }
-  },
+// run-local state container — passed to handlers via closure for parallel-safe runs
+type GeminiRunState = {
+  assistantMessageBuffer: string;
+  usage: AgentUsage | null;
 };
+
+function createMessageHandlers(runState: GeminiRunState) {
+  return {
+    init: (_event: GeminiInitEvent) => {
+      log.debug(JSON.stringify(_event, null, 2));
+      // initialization event - no logging needed
+      runState.assistantMessageBuffer = "";
+    },
+    message: (event: GeminiMessageEvent) => {
+      log.debug(JSON.stringify(event, null, 2));
+      if (event.role === "assistant" && event.content?.trim()) {
+        if (event.delta) {
+          // accumulate delta messages
+          runState.assistantMessageBuffer += event.content;
+        } else {
+          // final message - log it
+          const message = event.content.trim();
+          if (message) {
+            log.box(message, { title: "Gemini" });
+          }
+          runState.assistantMessageBuffer = "";
+        }
+      } else if (
+        event.role === "assistant" &&
+        !event.delta &&
+        runState.assistantMessageBuffer.trim()
+      ) {
+        // if we have buffered content and get a non-delta message, log the buffer
+        log.box(runState.assistantMessageBuffer.trim(), { title: "Gemini" });
+        runState.assistantMessageBuffer = "";
+      }
+    },
+    tool_use: (event: GeminiToolUseEvent, thinkingTimer: ThinkingTimer) => {
+      log.debug(JSON.stringify(event, null, 2));
+      if (event.tool_name) {
+        thinkingTimer.markToolCall();
+        log.toolCall({
+          toolName: event.tool_name,
+          input: event.parameters || {},
+        });
+      }
+    },
+    tool_result: (event: GeminiToolResultEvent, thinkingTimer: ThinkingTimer) => {
+      log.debug(JSON.stringify(event, null, 2));
+      thinkingTimer.markToolResult();
+      if (event.status === "error") {
+        const errorMsg =
+          typeof event.output === "string" ? event.output : JSON.stringify(event.output);
+        log.info(`Tool call failed: ${errorMsg}`);
+      } else if (event.output) {
+        // log successful tool result so it appears in output
+        const outputStr =
+          typeof event.output === "string" ? event.output : JSON.stringify(event.output);
+        log.debug(`tool output: ${outputStr}`);
+      }
+    },
+    result: async (event: GeminiResultEvent) => {
+      log.debug(JSON.stringify(event, null, 2));
+      // log any remaining buffered assistant message
+      if (runState.assistantMessageBuffer.trim()) {
+        log.box(runState.assistantMessageBuffer.trim(), { title: "Gemini" });
+        runState.assistantMessageBuffer = "";
+      }
+
+      if (event.status === "success" && event.stats) {
+        const stats = event.stats;
+
+        runState.usage = {
+          agent: "gemini",
+          inputTokens: stats.input_tokens ?? 0,
+          outputTokens: stats.output_tokens ?? 0,
+        };
+
+        const rows: Array<Array<{ data: string; header?: boolean } | string>> = [
+          [
+            { data: "Input Tokens", header: true },
+            { data: "Output Tokens", header: true },
+            { data: "Total Tokens", header: true },
+            { data: "Tool Calls", header: true },
+            { data: "Duration (ms)", header: true },
+          ],
+          [
+            String(stats.input_tokens || 0),
+            String(stats.output_tokens || 0),
+            String(stats.total_tokens || 0),
+            String(stats.tool_calls || 0),
+            String(stats.duration_ms || 0),
+          ],
+        ];
+        log.table(rows);
+      } else if (event.status === "error") {
+        log.error(`Gemini CLI failed: ${JSON.stringify(event)}`);
+      }
+    },
+  };
+}
 
 async function installGemini(githubInstallationToken?: string): Promise<string> {
   return await installFromGithub({
@@ -227,7 +244,8 @@ export const gemini = agent({
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let finalOutput = "";
       let stdoutBuffer = "";
-      assistantMessageBuffer = "";
+      const runState: GeminiRunState = { assistantMessageBuffer: "", usage: null };
+      const messageHandlers = createMessageHandlers(runState);
       const thinkingTimer = new ThinkingTimer();
 
       try {
@@ -235,7 +253,7 @@ export const gemini = agent({
           cmd: "node",
           args: [cliPath, ...args],
           env: process.env,
-          activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
+          activityTimeout: 0, // process-level activity timeout (5min) is the single authority
           onStdout: async (chunk) => {
             const text = chunk.toString();
             finalOutput += text;
@@ -297,6 +315,7 @@ export const gemini = agent({
             success: false,
             error: errorMessage,
             output: finalOutput || result.stdout || "",
+            usage: runState.usage ?? undefined,
           };
         }
 
@@ -306,6 +325,7 @@ export const gemini = agent({
         return {
           success: true,
           output: finalOutput,
+          usage: runState.usage ?? undefined,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -324,6 +344,7 @@ export const gemini = agent({
           success: false,
           error: errorMessage,
           output: finalOutput || "",
+          usage: runState.usage ?? undefined,
         };
       }
     }

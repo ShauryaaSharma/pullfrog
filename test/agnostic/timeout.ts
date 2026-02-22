@@ -9,8 +9,7 @@ import { defineFixture } from "../utils.ts";
 
 const fixture = defineFixture(
   {
-    prompt: `Call the delegate tool with mode "Build" and effort "mini", then analyze the result.
-Then call delegate with mode "Review" and effort "mini".
+    prompt: `Select the Build mode via select_mode, then delegate with mini effort. After that completes, select Review mode and delegate again with mini effort.
 Finally call set_output with "TIMEOUT TEST COMPLETED".`,
     timeout: "5s",
     effort: "mini",

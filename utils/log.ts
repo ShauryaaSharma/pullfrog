@@ -4,6 +4,7 @@
 
 import * as core from "@actions/core";
 import { table } from "table";
+import type { AgentUsage } from "../agents/shared.ts";
 import { isGitHubActions, isInsideDocker } from "./globals.ts";
 
 const isRunnerDebugEnabled = () => core.isDebug();
@@ -297,4 +298,59 @@ export function formatIndentedField(label: string, content: string): string {
     formatted += `    ${lines[i]}\n`;
   }
   return formatted;
+}
+
+/**
+ * format aggregated usage data as a markdown table for the GitHub step summary
+ */
+export function formatUsageSummary(entries: AgentUsage[]): string {
+  if (entries.length === 0) return "";
+
+  const hasCost = entries.some((e) => e.costUsd !== undefined);
+
+  const header = hasCost
+    ? "| Agent | Input | Output | Cache Read | Cache Write | Cost |"
+    : "| Agent | Input | Output | Cache Read | Cache Write |";
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const separatorRow = hasCost
+    ? "| --- | ---: | ---: | ---: | ---: | ---: |"
+    : "| --- | ---: | ---: | ---: | ---: |";
+
+  const rows = entries.map((e) => {
+    const base = `| ${e.agent} | ${fmt(e.inputTokens)} | ${fmt(e.outputTokens)} | ${fmt(e.cacheReadTokens ?? 0)} | ${fmt(e.cacheWriteTokens ?? 0)} |`;
+    return hasCost
+      ? `${base} ${e.costUsd !== undefined ? `$${e.costUsd.toFixed(4)}` : "-"} |`
+      : base;
+  });
+
+  // totals row (only useful when there are multiple entries)
+  const totalsRows: string[] = [];
+  if (entries.length > 1) {
+    const totalInput = entries.reduce((sum, e) => sum + e.inputTokens, 0);
+    const totalOutput = entries.reduce((sum, e) => sum + e.outputTokens, 0);
+    const totalCacheRead = entries.reduce((sum, e) => sum + (e.cacheReadTokens ?? 0), 0);
+    const totalCacheWrite = entries.reduce((sum, e) => sum + (e.cacheWriteTokens ?? 0), 0);
+    const totalBase = `| **Total** | **${fmt(totalInput)}** | **${fmt(totalOutput)}** | **${fmt(totalCacheRead)}** | **${fmt(totalCacheWrite)}** |`;
+
+    if (hasCost) {
+      const totalCost = entries.reduce((sum, e) => sum + (e.costUsd ?? 0), 0);
+      totalsRows.push(`${totalBase} **$${totalCost.toFixed(4)}** |`);
+    } else {
+      totalsRows.push(totalBase);
+    }
+  }
+
+  return [
+    "<details>",
+    "<summary>Usage</summary>",
+    "",
+    header,
+    separatorRow,
+    ...rows,
+    ...totalsRows,
+    "",
+    "</details>",
+  ].join("\n");
 }

@@ -7,22 +7,19 @@ import { getJobToken } from "./token.ts";
 
 type JsonPromptInput = Extract<ResolvedPromptInput, object>; // not string
 
-/**
- * Controls whether the script should check the reason for the workflow termination.
- * It can be either canceled or failed.
- * YAML file cannot supply it (not in ENV), so an extra request is required to check it.
- * */
+// controls whether the script should check the reason for the workflow termination.
+// it can be either canceled or failed.
+// YAML file cannot supply it (not in ENV), so an extra request is required to check it.
 const SHOULD_CHECK_REASON = true;
 
-/**
- * Build error comment body with error message and footer
- */
-function buildErrorCommentBody(params: {
+type BuildErrorCommentBodyParams = {
   owner: string;
   repo: string;
   runId: string | undefined;
   isCancellation: boolean;
-}): string {
+};
+
+function buildErrorCommentBody(params: BuildErrorCommentBodyParams): string {
   const workflowRunLink = params.runId
     ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})`
     : "workflow run logs";
@@ -38,34 +35,31 @@ function buildErrorCommentBody(params: {
   return `${errorMessage}${footer}`;
 }
 
-/**
- * Validate that the progress comment is stuck on "Leaping into action"
- * Fetches the comment by ID and checks if it starts with LEAPING_INTO_ACTION_PREFIX
- * Returns the comment ID if stuck, null otherwise
- */
+type ValidateStuckCommentParams = {
+  promptInput: JsonPromptInput | null;
+  octokit: ReturnType<typeof createOctokit>;
+  owner: string;
+  repo: string;
+};
 async function validateStuckProgressComment(
-  promptInput: JsonPromptInput | null,
-  octokit: ReturnType<typeof createOctokit>,
-  owner: string,
-  repo: string
+  params: ValidateStuckCommentParams
 ): Promise<number | null> {
-  if (!promptInput?.progressCommentId) {
+  if (!params.promptInput?.progressCommentId) {
     log.info("[post] no progressCommentId in prompt input, skipping cleanup");
     return null;
   }
 
-  const commentId = parseInt(promptInput.progressCommentId, 10);
+  const commentId = parseInt(params.promptInput.progressCommentId, 10);
   log.info(`[post] validating progressCommentId from prompt input: ${commentId}`);
 
   try {
-    const { data: comment } = await octokit.rest.issues.getComment({
-      owner,
-      repo,
+    const commentResult = await params.octokit.rest.issues.getComment({
+      owner: params.owner,
+      repo: params.repo,
       comment_id: commentId,
     });
 
-    // check if comment is stuck on "Leaping into action"
-    if (comment.body?.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
+    if (commentResult.data.body?.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
       log.info(`[post] comment ${commentId} is stuck on "Leaping into action"`);
       return commentId;
     }
@@ -79,31 +73,31 @@ async function validateStuckProgressComment(
   }
 }
 
-/**
- * Detect if the workflow or its steps is cancelled.
- * While the job is still in_progress, the individual steps may have their conclusions set.
- */
-async function getIsCancelled(params: {
+type GetIsCancelledParams = {
   repoContext: ReturnType<typeof parseRepoContext>;
   octokit: ReturnType<typeof createOctokit>;
   runIdStr: string | undefined;
-}): Promise<boolean> {
+};
+
+async function getIsCancelled(params: GetIsCancelledParams): Promise<boolean> {
   if (!params.runIdStr) return false; // can't check without a run ID — assume failure
   try {
-    const { data: jobs } = await params.octokit.rest.actions.listJobsForWorkflowRun({
+    const jobsResult = await params.octokit.rest.actions.listJobsForWorkflowRun({
       owner: params.repoContext.owner,
       repo: params.repoContext.name,
       run_id: Number.parseInt(params.runIdStr, 10),
     });
 
-    // find current job by matching GITHUB_JOB env var
-    // Note: GITHUB_JOB is the job ID (yaml key), but job.name is the display name
-    // For matrix jobs, the name includes matrix values like "build (ubuntu-latest, node-18)"
-    // So we match jobs that START with the job ID
+    // find current job by matching GITHUB_JOB env var.
+    // GITHUB_JOB is the job ID (yaml key), but job.name is the display name.
+    // for matrix jobs, the name includes matrix values like "build (ubuntu-latest, node-18)"
+    // so we match jobs that START with the job ID
     const currentJobName = process.env.GITHUB_JOB;
     const currentJob = currentJobName
-      ? jobs.jobs.find((j) => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`))
-      : jobs.jobs[0]; // fallback to first job
+      ? jobsResult.data.jobs.find(
+          (j) => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`)
+        )
+      : jobsResult.data.jobs[0]; // fallback to first job
 
     if (!currentJob) {
       log.warning("[post] could not find current job");
@@ -150,13 +144,12 @@ export async function runPostCleanup(): Promise<void> {
   const repoContext = parseRepoContext();
   const octokit = createOctokit(token);
 
-  // validate that progressCommentId from prompt input is stuck on "Leaping into action"
-  const commentId = await validateStuckProgressComment(
+  const commentId = await validateStuckProgressComment({
     promptInput,
     octokit,
-    repoContext.owner,
-    repoContext.name
-  );
+    owner: repoContext.owner,
+    repo: repoContext.name,
+  });
 
   if (!commentId) return log.info("» [post] no stuck progress comment to update, skipping cleanup");
 

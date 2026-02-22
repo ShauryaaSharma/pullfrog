@@ -4,7 +4,7 @@ import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts"
 /**
  * delegateEffort test - validates effort selection for delegation.
  *
- * the orchestrator delegates to Plan mode with mini effort.
+ * the orchestrator selects Plan mode, then delegates with mini effort.
  * validates that the subagent runs at mini effort (visible in agent logs
  * as "effort=mini" or sonnet model selection for claude).
  */
@@ -14,8 +14,8 @@ import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts"
 // the model selection — if it were ignored, the subagent would also run at auto.
 const fixture = defineFixture(
   {
-    prompt: `This is a simple task. Delegate to the Plan mode with MINI effort (this is a trivial task).
-Pass these instructions to the subagent:
+    prompt: `This is a simple task. Select the Plan mode via select_mode, then delegate with MINI effort (this is a trivial task).
+Your subagent instructions should be:
 "Call set_output with the value 'EFFORT_TEST_PASSED'. Do not create plans or PRs. Just call set_output."`,
     effort: "auto",
     timeout: "5m",

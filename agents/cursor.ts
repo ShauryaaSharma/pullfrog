@@ -421,6 +421,8 @@ function configureCursorTools(ctx: AgentRunContext): void {
   if (bash !== "enabled") deny.push("Shell(*)");
   // always block native file tools (use MCP file_read/file_write instead)
   deny.push("Read(*)", "Write(*)", "StrReplace(*)", "EditNotebook(*)", "Delete(*)");
+  // block built-in subagent spawning — delegation is handled by gh_pullfrog/delegate
+  deny.push("Task(*)");
 
   const config: CursorCliConfig = {
     permissions: {

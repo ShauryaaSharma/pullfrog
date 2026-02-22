@@ -24,31 +24,60 @@ function buildPrBodyWithFooter(ctx: ToolContext, body: string): string {
   return `${bodyWithoutFooter}${footer}`;
 }
 
+export const UpdatePullRequestBody = type({
+  pull_number: type.number.describe("the pull request number to update"),
+  body: type.string.describe("the new body content for the pull request"),
+});
+
+export function UpdatePullRequestBodyTool(ctx: ToolContext) {
+  return tool({
+    name: "update_pull_request_body",
+    description: "Update the body/description of an existing pull request",
+    parameters: UpdatePullRequestBody,
+    execute: execute(async (params) => {
+      const bodyWithFooter = buildPrBodyWithFooter(ctx, params.body);
+
+      const result = await ctx.octokit.rest.pulls.update({
+        owner: ctx.repo.owner,
+        repo: ctx.repo.name,
+        pull_number: params.pull_number,
+        body: bodyWithFooter,
+      });
+
+      return {
+        success: true,
+        number: result.data.number,
+        url: result.data.html_url,
+      };
+    }),
+  });
+}
+
 export function CreatePullRequestTool(ctx: ToolContext) {
   return tool({
     name: "create_pull_request",
     description: "Create a pull request from the current branch",
     parameters: PullRequest,
-    execute: execute(async ({ title, body, base }) => {
+    execute: execute(async (params) => {
       const currentBranch = $("git", ["rev-parse", "--abbrev-ref", "HEAD"], { log: false });
       log.debug(`Current branch: ${currentBranch}`);
 
-      const bodyWithFooter = buildPrBodyWithFooter(ctx, body);
+      const bodyWithFooter = buildPrBodyWithFooter(ctx, params.body);
 
       const result = await ctx.octokit.rest.pulls.create({
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
-        title: title,
+        title: params.title,
         body: bodyWithFooter,
         head: currentBranch,
-        base: base,
+        base: params.base,
       });
 
       // best-effort: request review from the user who triggered the workflow
       const reviewer = ctx.payload.triggeringUser;
       if (reviewer) {
         try {
-          log.debug(`Requesting review from ${reviewer} on PR #${result.data.number}`);
+          log.debug(`requesting review from ${reviewer} on PR #${result.data.number}`);
           await ctx.octokit.rest.pulls.requestReviewers({
             owner: ctx.repo.owner,
             repo: ctx.repo.name,

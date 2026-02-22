@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { log } from "./log.ts";
 
-export const DEFAULT_ACTIVITY_TIMEOUT_MS = 60_000;
+export const DEFAULT_ACTIVITY_TIMEOUT_MS = 300_000;
 export const DEFAULT_ACTIVITY_CHECK_INTERVAL_MS = 5_000;
 
 type ActivityTimeoutContext = {

@@ -254,13 +254,11 @@ function shouldRetry(result: AgentResult, validation: ValidationResult): RetryDe
   if (setOutputCheck && !setOutputCheck.passed) {
     // if the output contains rate limit indicators, use the longer backoff
     // (the agent process may have succeeded but the subagent hit quota limits)
-    const backoffMs = isRateLimited(result.output) ? RATE_LIMIT_BACKOFF_MS : FLAKY_RETRY_BACKOFF_MS;
+    const rateLimited = isRateLimited(result.output);
     return {
       retry: true,
-      reason: isRateLimited(result.output)
-        ? "rate limited (set_output cascade)"
-        : "set_output not called (cascade)",
-      backoffMs,
+      reason: rateLimited ? "rate limited (set_output cascade)" : "set_output not called (cascade)",
+      backoffMs: rateLimited ? RATE_LIMIT_BACKOFF_MS : FLAKY_RETRY_BACKOFF_MS,
     };
   }
 
@@ -312,9 +310,9 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
     env.OPENCODE_MODEL ??= "anthropic/claude-sonnet-4-5";
   }
 
-  // gemini: use flash for all tests (including mini-effort) to avoid pro quota limits
+  // gemini: use 2.5 pro for testing
   if (ctx.agent === "gemini") {
-    env.GEMINI_MODEL ??= "gemini-3-flash-preview";
+    env.GEMINI_MODEL ??= "gemini-2.5-pro";
   }
 
   // build file-based env vars for MCP servers that don't inherit parent env

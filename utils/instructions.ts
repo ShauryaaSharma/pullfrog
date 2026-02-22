@@ -167,7 +167,7 @@ Protected branches (default branch) are blocked from direct pushes in restricted
 
 **Do not attempt to configure git credentials manually** - the ${ghPullfrogMcpName} server handles all authentication internally.
 
-**GitHub** — Prefer using MCP tools from ${ghPullfrogMcpName} for GitHub operations. The \`gh\` CLI is available as a fallback if needed, but MCP tools handle authentication and provide better integration.
+**GitHub** — Use MCP tools from ${ghPullfrogMcpName} for all GitHub operations. Never use the \`gh\` CLI — it is not authenticated and will fail. The MCP tools handle authentication, enforce permissions, and integrate with the delegation system.
 
 
 **Efficiency**: Trust the tools - do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error.
@@ -208,15 +208,6 @@ In case of conflict between instructions, follow this precedence (highest to low
 3. Event-level instructions
 4. Repo-level instructions`;
 
-const subagentPriorityOrder = `## Priority Order
-
-In case of conflict between instructions, follow this precedence (highest to lowest):
-1. Security rules and system instructions (non-overridable)
-2. User prompt
-3. Orchestrator context
-4. Event-level instructions
-5. Repo-level instructions`;
-
 export interface ResolvedInstructions {
   full: string;
   system: string;
@@ -235,7 +226,6 @@ interface ContextSectionsInput {
   eventTitleBody: string;
   eventMetadata: string;
   userQuoted: string;
-  orchestratorSection?: string | undefined;
 }
 
 function buildContextSections(ctx: ContextSectionsInput): string {
@@ -252,12 +242,6 @@ ${ctx.repo}`
     ? `************* EVENT-LEVEL INSTRUCTIONS *************
 
 ${ctx.eventInstructions}`
-    : "";
-
-  const orchestratorSection = ctx.orchestratorSection
-    ? `************* ORCHESTRATOR CONTEXT *************
-
-${ctx.orchestratorSection}`
     : "";
 
   const titleBodySection = ctx.eventTitleBody ? `${relatedLabel}\n\n${ctx.eventTitleBody}` : "";
@@ -277,9 +261,7 @@ ${titleBodySection}
 
 ${metadataSection}`;
 
-  return [repoSection, orchestratorSection, eventInstructionsSection, userSection]
-    .filter(Boolean)
-    .join("\n\n");
+  return [repoSection, eventInstructionsSection, userSection].filter(Boolean).join("\n\n");
 }
 
 // shared computation for all instruction builders
@@ -340,42 +322,48 @@ ${ctx.contextSections}`;
 export function resolveInstructions(ctx: InstructionsContext): ResolvedInstructions {
   const inputs = buildCommonInputs(ctx);
 
-  const orchestratorTaskSection = `**Required!** You are an orchestrator. Evaluate the task below, then delegate to specialized subagents using \`${ghPullfrogMcpName}/delegate\`.
+  const orchestratorTaskSection = `**Required!** You are an orchestrator. Evaluate the task below, then delegate to specialized subagents.
 
-### How to delegate
+### Step 1: Select a mode
 
-Call \`delegate\` with a mode, effort level, and optional instructions:
-- \`mode\`: The workflow to run (see available modes below)
-- \`effort\`: 
-  - \`"mini"\`: low-effort and fast, for simple tasks
-  - \`"auto"\`: medium-effort, good for typical tasks that don't require significant reasoning
-  - \`"max"\`: high-effort, good for PR reviews and complex coding tasks.
-- \`instructions\`: Optional additional context for the subagent. Use this to pass results from earlier delegations or narrow the subagent's focus.
+Call \`${ghPullfrogMcpName}/select_mode\` with the appropriate mode name. This returns orchestrator-level guidance on how to handle the task — including suggested delegation phases and prompt-crafting tips.
 
-### Single vs. multi-phase delegation
+Available modes:
+${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}
 
-**Single delegation** (most common): Evaluate the task, pick the right mode and effort, delegate once. This is the default for most tasks.
+### Step 2: Craft subagent prompts and delegate
 
-**Multi-phase delegation** (for complex tasks that benefit from distinct phases):
-- Plan then Build: delegate to Plan, read the result, then delegate to Build with the plan as instructions
-- Review then Build: delegate to Review for analysis, then delegate to Build to address the findings
-- Any combination that makes sense for the task
+Based on the guidance from select_mode, craft a focused, self-contained prompt for each subagent, then call \`${ghPullfrogMcpName}/delegate\` with:
+- \`instructions\`: Your crafted prompt. **The subagent receives ONLY this text — no other context is added.** Include everything it needs: file paths, constraints, conventions, tool usage instructions, and any relevant context from the codebase or previous phases.
+- \`effort\`: \`"mini"\` (simple tasks), \`"auto"\` (typical tasks), or \`"max"\` (complex tasks requiring deep reasoning).
 
-After each delegation, you receive the subagent's result. Use it to decide whether to delegate again and what context to pass.
+### Step 3: Post-delegation (your responsibility)
 
-### Effort guidelines
+After each delegation, you receive the subagent's summary (via set_output) and a path to its full stdout log (which you can inspect via \`${ghPullfrogMcpName}/file_read\` if needed). Use this to decide whether to delegate again or finalize.
 
-- \`"auto"\` (default): Use for most tasks. Maps to the most capable model.
-- \`"mini"\`: Simple, mechanical tasks — issue labeling, adding a comment, trivial changes.
-- \`"max"\`: Deep architectural analysis, complex debugging, tasks requiring maximum reasoning.
+**Remote operations are YOUR job.** Subagents do NOT have push, PR creation, or other remote-mutating tools. After a subagent that makes code changes completes, you must:
+- Push the branch via \`${ghPullfrogMcpName}/push_branch\`
+- Create a PR via \`${ghPullfrogMcpName}/create_pull_request\` (if needed)
+- Call \`${ghPullfrogMcpName}/report_progress\` with the final summary including PR links
+
+When all delegations are complete, call \`${ghPullfrogMcpName}/set_output\` with the final result — the last subagent's summary or a synthesis of all phases. This is required: it makes the result available as the GitHub Action output for downstream steps.
+
+### Information gathering
+
+Use \`${ghPullfrogMcpName}/ask_question\` to spawn a lightweight subagent that answers a specific question about the codebase. The intermediate exploration context stays in the subagent — only the concise answer returns to you.
+
+### Prompt-crafting rules
+
+- Your subagent has NO context beyond what you write. No repo instructions, no event instructions, no user prompt — only your crafted instructions.
+- Include MCP tool names when the subagent needs them (e.g., "commit via \`${ghPullfrogMcpName}/git\`").
+- Subagents do NOT have \`push_branch\`, \`create_pull_request\`, \`update_pull_request_body\`, \`delete_branch\`, or \`push_tags\`. Never instruct a subagent to push or create PRs — that is your job as the orchestrator.
+- Include branch naming conventions, testing expectations, and commit instructions when relevant.
+- For multi-phase flows, pass results from earlier phases directly into the next subagent's prompt.
+- The subagent should call \`${ghPullfrogMcpName}/set_output\` with a concise summary when done (include the branch name if code changes were made).
 
 ### No-action cases
 
-If the task clearly requires no work (e.g., irrelevant event, duplicate request), you may skip delegation entirely. Call \`${ghPullfrogMcpName}/report_progress\` directly to explain why no action is needed.
-
-### Available modes
-
-${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}`;
+If the task clearly requires no work (e.g., irrelevant event, duplicate request), skip delegation entirely. Call \`${ghPullfrogMcpName}/report_progress\` directly to explain why no action is needed.`;
 
   const system = buildSystemPrompt({
     bash: ctx.payload.bash,
@@ -391,62 +379,6 @@ ${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}`;
     eventTitleBody: inputs.eventTitleBody,
     eventMetadata: inputs.eventMetadata,
     userQuoted: inputs.userQuoted,
-  });
-
-  const full = assembleFullPrompt({
-    runtime: inputs.runtime,
-    system,
-    contextSections,
-  });
-
-  return {
-    full,
-    system,
-    user: inputs.user,
-    eventInstructions: inputs.eventInstructions,
-    repo: inputs.repo,
-    event: inputs.event,
-    runtime: inputs.runtime,
-  };
-}
-
-// --- subagent instructions (used by delegate tool) ---
-
-interface SubagentInstructionsContext extends InstructionsContext {
-  mode: Mode;
-  orchestratorInstructions: string | undefined;
-}
-
-export function resolveSubagentInstructions(
-  ctx: SubagentInstructionsContext
-): ResolvedInstructions {
-  const inputs = buildCommonInputs(ctx);
-
-  const subagentTaskSection = `You are operating in **${ctx.mode.name}** mode as a delegated subagent. An orchestrator spawned you and will read your final output to decide what to do next.
-
-### Delegation rules
-
-- The \`delegate\` tool is NOT available to you — complete your task directly using the available tools.
-- When you finish, end with a clear, concise summary: what you did, what succeeded, what failed, and any blockers or next steps. The orchestrator uses this to decide whether to delegate again or report final results.
-- If you encounter an error you cannot resolve, report it clearly — do not attempt to delegate or re-run yourself.
-
-${ctx.mode.prompt}`;
-
-  const system = buildSystemPrompt({
-    bash: ctx.payload.bash,
-    trigger: ctx.payload.event.trigger,
-    priorityOrder: subagentPriorityOrder,
-    taskSection: subagentTaskSection,
-  });
-
-  const contextSections = buildContextSections({
-    payload: ctx.payload,
-    repo: inputs.repo,
-    eventInstructions: inputs.eventInstructions,
-    eventTitleBody: inputs.eventTitleBody,
-    eventMetadata: inputs.eventMetadata,
-    userQuoted: inputs.userQuoted,
-    orchestratorSection: ctx.orchestratorInstructions,
   });
 
   const full = assembleFullPrompt({

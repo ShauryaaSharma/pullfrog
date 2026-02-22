@@ -169,6 +169,12 @@ export async function reportProgress(
   // always track the body for job summary
   ctx.toolState.lastProgressBody = body;
 
+  // silent events (e.g., auto-label, PR summary) should never create or update progress comments.
+  // the body is still tracked above for the GitHub Actions job summary.
+  if (ctx.payload.event.silent) {
+    return { body, action: "skipped" };
+  }
+
   const existingCommentId = ctx.toolState.progressCommentId;
   const issueNumber = ctx.toolState.issueNumber ?? ctx.payload.event.issue_number;
   const isPlanMode = ctx.toolState.selectedMode === "Plan";

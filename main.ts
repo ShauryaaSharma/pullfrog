@@ -1,5 +1,5 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
-import { initToolState, startMcpHttpServer } from "./mcp/server.ts";
+import { initToolState, startMcpHttpServer, type ToolState } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
 import {
   type ActivityTimeout,
@@ -10,7 +10,7 @@ import {
 import { resolveAgent } from "./utils/agent.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
-import { log, writeSummary } from "./utils/cli.ts";
+import { formatUsageSummary, log, writeSummary } from "./utils/cli.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
 import { resolveGit } from "./utils/gitAuth.ts";
 import { createOctokit } from "./utils/github.ts";
@@ -34,6 +34,14 @@ export interface MainResult {
   output?: string | undefined;
   error?: string | undefined;
   result?: string | undefined;
+}
+
+async function writeJobSummary(toolState: ToolState): Promise<void> {
+  const usageSummary = formatUsageSummary(toolState.usageEntries);
+  const summaryParts = [toolState.lastProgressBody, usageSummary].filter(Boolean);
+  if (summaryParts.length > 0) {
+    await writeSummary(summaryParts.join("\n\n"));
+  }
 }
 
 export async function main(): Promise<MainResult> {
@@ -216,10 +224,12 @@ export async function main(): Promise<MainResult> {
       }
     }
 
-    // write last progress body to job summary
-    if (toolState.lastProgressBody) {
-      await writeSummary(toolState.lastProgressBody);
+    // accumulate top-level agent usage
+    if (result.usage) {
+      toolState.usageEntries.push(result.usage);
     }
+
+    await writeJobSummary(toolState);
 
     // emit structured output marker for test validation
     if (toolState.output) {
@@ -234,6 +244,12 @@ export async function main(): Promise<MainResult> {
     const errorMessage = error instanceof Error ? error.message : "unknown error occurred";
     killTrackedChildren();
     log.error(errorMessage);
+
+    // best-effort summary — don't mask the original error
+    try {
+      await writeJobSummary(toolState);
+    } catch {}
+
     try {
       await reportErrorToComment({ toolState, error: errorMessage });
     } catch {

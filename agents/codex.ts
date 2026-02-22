@@ -12,7 +12,7 @@ import { installFromNpmTarball } from "../utils/install.ts";
 import { filterEnv } from "../utils/secrets.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
-import { type AgentRunContext, agent } from "./shared.ts";
+import { type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 // pinned CLI version — no 1-1 package.json dependency for the CLI package
 // (package.json has @openai/codex-sdk which is the SDK, not the CLI)
@@ -200,6 +200,8 @@ export const codex = agent({
       `» Codex options: sandboxMode=${sandboxMode}, networkAccess=${networkAccessEnabled}, webSearch=${webSearchEnabled}`
     );
     log.info("» running Codex CLI...");
+    const runState: CodexRunState = { usage: null };
+    const messageHandlers = createMessageHandlers();
 
     let stdoutBuffer = "";
     let finalOutput = "";
@@ -228,7 +230,7 @@ export const codex = agent({
       cwd: process.cwd(),
       env,
       stdio: ["ignore", "pipe", "pipe"],
-      activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
+      activityTimeout: 0, // process-level activity timeout (5min) is the single authority
       onStdout: async (chunk) => {
         finalOutput += chunk;
         markActivity(); // reset activity timeout on any CLI output
@@ -251,7 +253,7 @@ export const codex = agent({
 
             const handler = messageHandlers[event.type as keyof typeof messageHandlers];
             if (handler) {
-              await handler(event as never, commandExecutionIds, thinkingTimer);
+              await handler(event as never, commandExecutionIds, thinkingTimer, runState);
             }
           } catch {
             // ignore parse errors - might be non-JSON output
@@ -276,6 +278,7 @@ export const codex = agent({
         success: false,
         error: errorMessage,
         output: finalOutput || result.stdout || "",
+        usage: runState.usage ?? undefined,
       };
     }
 
@@ -284,109 +287,134 @@ export const codex = agent({
     return {
       success: true,
       output: finalOutput || result.stdout || "",
+      usage: runState.usage ?? undefined,
     };
   },
 });
 
+// run-local usage accumulator — passed to handlers via closure for parallel-safe runs.
+// codex fires turn.completed per-turn (not once at the end like claude/gemini),
+// so we must accumulate rather than overwrite.
+type CodexRunState = { usage: AgentUsage | null };
+
 type ThreadEventHandler<type extends ThreadEvent["type"]> = (
   event: Extract<ThreadEvent, { type: type }>,
   commandExecutionIds: Set<string>,
-  thinkingTimer: ThinkingTimer
+  thinkingTimer: ThinkingTimer,
+  runState: CodexRunState
 ) => void | Promise<void>;
 
-const messageHandlers: {
+function createMessageHandlers(): {
   [type in ThreadEvent["type"]]: ThreadEventHandler<type>;
-} = {
-  "thread.started": () => {
-    // No logging needed
-  },
-  "turn.started": () => {
-    // No logging needed
-  },
-  "turn.completed": async (event) => {
-    log.table([
-      [
-        { data: "Input Tokens", header: true },
-        { data: "Cached Input Tokens", header: true },
-        { data: "Output Tokens", header: true },
-      ],
-      [
-        String(event.usage.input_tokens || 0),
-        String(event.usage.cached_input_tokens || 0),
-        String(event.usage.output_tokens || 0),
-      ],
-    ]);
-  },
-  "turn.failed": (event) => {
-    log.info(`Turn failed: ${event.error.message}`);
-  },
-  "item.started": (event, commandExecutionIds, thinkingTimer) => {
-    const item = event.item;
-    if (item.type === "command_execution") {
-      commandExecutionIds.add(item.id);
-      thinkingTimer.markToolCall();
-      log.toolCall({
-        toolName: item.command,
-        input: (item as any).args || {},
-      });
-    } else if (item.type === "agent_message") {
-      // Will be handled on completion
-    } else if (item.type === "mcp_tool_call") {
-      thinkingTimer.markToolCall();
-      log.toolCall({
-        toolName: item.tool,
-        input: {
-          server: item.server,
-          ...((item as any).arguments || {}),
-        },
-      });
-    }
-    // Reasoning items are handled on completion for better readability
-  },
-  "item.updated": (event) => {
-    const item = event.item;
-    if (item.type === "command_execution") {
-      if (item.status === "in_progress" && item.aggregated_output) {
-        // Command is still running, could show progress if needed
+} {
+  return {
+    "thread.started": () => {
+      // No logging needed
+    },
+    "turn.started": () => {
+      // No logging needed
+    },
+    "turn.completed": async (event, _commandExecutionIds, _thinkingTimer, runState) => {
+      const inputTokens = event.usage.input_tokens ?? 0;
+      const cachedInputTokens = event.usage.cached_input_tokens ?? 0;
+      const outputTokens = event.usage.output_tokens ?? 0;
+
+      // accumulate across turns (codex fires turn.completed per-turn, not once at end).
+      // note: openai's input_tokens already includes cached tokens (unlike claude's API),
+      // so we do not add cachedInputTokens to inputTokens — that would double-count.
+      if (runState.usage) {
+        runState.usage.inputTokens += inputTokens;
+        runState.usage.outputTokens += outputTokens;
+        runState.usage.cacheReadTokens = (runState.usage.cacheReadTokens ?? 0) + cachedInputTokens;
+      } else {
+        runState.usage = {
+          agent: "codex",
+          inputTokens,
+          outputTokens,
+          cacheReadTokens: cachedInputTokens,
+        };
       }
-    }
-  },
-  "item.completed": (event, commandExecutionIds, thinkingTimer) => {
-    const item = event.item;
-    if (item.type === "agent_message") {
-      log.box(item.text.trim(), { title: "Codex" });
-    } else if (item.type === "command_execution") {
-      const isTracked = commandExecutionIds.has(item.id);
-      if (isTracked) {
-        thinkingTimer.markToolResult();
-        log.startGroup(`bash output`);
-        if (item.status === "failed" || (item.exit_code !== undefined && item.exit_code !== 0)) {
-          log.info(item.aggregated_output || "Command failed");
-        } else {
-          log.info(item.aggregated_output || "");
+
+      log.table([
+        [
+          { data: "Input Tokens", header: true },
+          { data: "Cached Input Tokens", header: true },
+          { data: "Output Tokens", header: true },
+        ],
+        [String(inputTokens), String(cachedInputTokens), String(outputTokens)],
+      ]);
+    },
+    "turn.failed": (event) => {
+      log.info(`Turn failed: ${event.error.message}`);
+    },
+    "item.started": (event, commandExecutionIds, thinkingTimer) => {
+      const item = event.item;
+      if (item.type === "command_execution") {
+        commandExecutionIds.add(item.id);
+        thinkingTimer.markToolCall();
+        log.toolCall({
+          toolName: item.command,
+          input: (item as any).args || {},
+        });
+      } else if (item.type === "agent_message") {
+        // Will be handled on completion
+      } else if (item.type === "mcp_tool_call") {
+        thinkingTimer.markToolCall();
+        log.toolCall({
+          toolName: item.tool,
+          input: {
+            server: item.server,
+            ...((item as any).arguments || {}),
+          },
+        });
+      }
+      // Reasoning items are handled on completion for better readability
+    },
+    "item.updated": (event) => {
+      const item = event.item;
+      if (item.type === "command_execution") {
+        if (item.status === "in_progress" && item.aggregated_output) {
+          // Command is still running, could show progress if needed
         }
-        log.endGroup();
-        commandExecutionIds.delete(item.id);
       }
-    } else if (item.type === "mcp_tool_call") {
-      thinkingTimer.markToolResult();
-      if (item.status === "failed" && item.error) {
-        log.info(`MCP tool call failed: ${item.error.message}`);
-      } else if ((item as any).output) {
-        // log successful MCP tool call output so it appears in captured output
-        const output = (item as any).output;
-        const outputStr = typeof output === "string" ? output : JSON.stringify(output);
-        log.debug(`tool output: ${outputStr}`);
+    },
+    "item.completed": (event, commandExecutionIds, thinkingTimer) => {
+      const item = event.item;
+      if (item.type === "agent_message") {
+        log.box(item.text.trim(), { title: "Codex" });
+      } else if (item.type === "command_execution") {
+        const isTracked = commandExecutionIds.has(item.id);
+        if (isTracked) {
+          thinkingTimer.markToolResult();
+          log.startGroup(`bash output`);
+          if (item.status === "failed" || (item.exit_code !== undefined && item.exit_code !== 0)) {
+            log.info(item.aggregated_output || "Command failed");
+          } else {
+            log.info(item.aggregated_output || "");
+          }
+          log.endGroup();
+          commandExecutionIds.delete(item.id);
+        }
+      } else if (item.type === "mcp_tool_call") {
+        thinkingTimer.markToolResult();
+        if (item.status === "failed" && item.error) {
+          log.info(`MCP tool call failed: ${item.error.message}`);
+        } else if ((item as any).output) {
+          // log successful MCP tool call output so it appears in captured output
+          const output = (item as any).output;
+          const outputStr = typeof output === "string" ? output : JSON.stringify(output);
+          log.debug(`tool output: ${outputStr}`);
+        }
+      } else if (item.type === "reasoning") {
+        // Display reasoning in a human-readable format
+        const reasoningText = item.text.trim();
+        // Remove markdown bold markers if present for cleaner output
+        const cleanText = reasoningText.replace(/\*\*/g, "");
+        log.box(cleanText, { title: "Codex" });
       }
-    } else if (item.type === "reasoning") {
-      // Display reasoning in a human-readable format
-      const reasoningText = item.text.trim();
-      // Remove markdown bold markers if present for cleaner output
-      const cleanText = reasoningText.replace(/\*\*/g, "");
-      log.box(cleanText, { title: "Codex" });
-    }
-  },
-  error: (event) => {
-    log.info(`Error: ${event.message}`);
-  },
-};
+    },
+    error: (event) => {
+      log.info(`Error: ${event.message}`);
+    },
+  };
+}

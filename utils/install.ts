@@ -80,7 +80,9 @@ export async function installFromNpmTarball(params: InstallFromNpmTarballParams)
 
   log.debug(`» installing ${params.packageName}@${resolvedVersion}...`);
 
-  const tempDir = process.env.PULLFROG_TEMP_DIR!;
+  const tempDir = process.env.PULLFROG_TEMP_DIR;
+  if (!tempDir) throw new Error("PULLFROG_TEMP_DIR is not set");
+
   const tarballPath = join(tempDir, "package.tgz");
 
   // Download tarball from npm
@@ -302,7 +304,9 @@ export async function installFromGithubTarball(
 
   log.debug(`» downloading asset from ${assetUrl}...`);
 
-  const tempDir = process.env.PULLFROG_TEMP_DIR!;
+  const tempDir = process.env.PULLFROG_TEMP_DIR;
+  if (!tempDir) throw new Error("PULLFROG_TEMP_DIR is not set");
+
   const tarballPath = join(tempDir, assetName);
 
   // download the asset
@@ -349,13 +353,12 @@ export async function installFromDirectTarball(
 ): Promise<string> {
   log.info(`» downloading tarball from ${params.url}...`);
 
-  const tempDir = process.env.PULLFROG_TEMP_DIR!;
+  const tempDir = process.env.PULLFROG_TEMP_DIR;
+  if (!tempDir) throw new Error("PULLFROG_TEMP_DIR is not set");
+
   const tarballPath = join(tempDir, "direct-package.tgz");
 
-  const response = await fetch(params.url);
-  if (!response.ok) {
-    throw new Error(`failed to download tarball: ${response.status} ${response.statusText}`);
-  }
+  const response = await fetchWithRetry(params.url, {}, "failed to download tarball");
   if (!response.body) throw new Error("response body is null");
 
   const fileStream = createWriteStream(tarballPath);
@@ -367,8 +370,8 @@ export async function installFromDirectTarball(
   mkdirSync(extractDir, { recursive: true });
 
   const tarArgs = ["-xzf", tarballPath, "-C", extractDir];
-  if (params.stripComponents) {
-    tarArgs.push(`--strip-components=${params.stripComponents}`);
+  if (params.stripComponents !== undefined && params.stripComponents > 0) {
+    tarArgs.push(`--strip-components=${Math.floor(params.stripComponents)}`);
   }
 
   log.debug(`» extracting tarball...`);
@@ -401,7 +404,9 @@ export async function installFromDirectTarball(
 export async function installFromCurl(params: InstallFromCurlParams): Promise<string> {
   log.info(`» installing ${params.executableName}...`);
 
-  const tempDir = process.env.PULLFROG_TEMP_DIR!;
+  const tempDir = process.env.PULLFROG_TEMP_DIR;
+  if (!tempDir) throw new Error("PULLFROG_TEMP_DIR is not set");
+
   const installScriptPath = join(tempDir, "install.sh");
 
   // Download the install script

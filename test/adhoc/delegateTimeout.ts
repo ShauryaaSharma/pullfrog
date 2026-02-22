@@ -12,8 +12,8 @@ import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts"
 
 const fixture = defineFixture(
   {
-    prompt: `Delegate to the Plan mode with auto effort. Pass these instructions to the subagent:
-"Carefully analyze the following engineering question and provide a thorough response, then call set_output with the value 'DELEGATE_TIMEOUT_PASSED'.
+    prompt: `Select the Plan mode via select_mode, then delegate with auto effort. Your subagent instructions should be:
+"Carefully analyze the following engineering question. Think through each point thoroughly before finishing.
 
 Question: Design a comprehensive error handling strategy for a distributed microservices architecture. Consider:
 1. Circuit breaker patterns — when to open, half-open, close. What thresholds to use.
@@ -22,7 +22,9 @@ Question: Design a comprehensive error handling strategy for a distributed micro
 4. Health check endpoints — liveness vs readiness probes, dependency health checks.
 5. Graceful degradation — fallback responses, feature flags, bulkhead pattern.
 
-Provide a detailed analysis covering ALL 5 points with concrete examples before calling set_output."`,
+After you have finished your analysis, call gh_pullfrog/set_output with EXACTLY the string 'DELEGATE_TIMEOUT_PASSED' — not your analysis, just that exact string."
+
+After the delegation completes, call set_output yourself with the subagent's result (forward it verbatim).`,
     effort: "auto",
     timeout: "8m",
   },
@@ -35,8 +37,7 @@ function validator(result: AgentResult): ValidationCheck[] {
 
   const setOutputCalled = output !== null;
   const correctValue = setOutputCalled && /DELEGATE_TIMEOUT_PASSED/i.test(output);
-  const delegationOccurred = /» delegating to \w+ mode/i.test(agentOutput);
-  // the critical check: no activity timeout occurred
+  const delegationOccurred = /» delegating subagent=/i.test(agentOutput);
   const noActivityTimeout = !/activity timeout/i.test(agentOutput);
 
   return [

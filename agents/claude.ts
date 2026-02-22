@@ -12,7 +12,7 @@ import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
-import { type AgentRunContext, agent } from "./shared.ts";
+import { type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 // model selection based on effort level
 // these are aliases that always resolve to the latest version
@@ -40,10 +40,11 @@ function buildDisallowedTools(ctx: AgentRunContext): string[] {
   // both "disabled" and "restricted" block native bash
   // "restricted" means use MCP bash tool instead
   const bash = ctx.payload.bash;
-  if (bash !== "enabled") disallowed.push("Bash", "Task(Bash)");
+  if (bash !== "enabled") disallowed.push("Bash");
   // always block native file tools (use MCP file_read/file_write instead)
   disallowed.push("Read", "Write", "Edit", "MultiEdit");
-  disallowed.push("Task(Read)", "Task(Write)", "Task(Edit)", "Task(MultiEdit)");
+  // block built-in subagent spawning — delegation is handled by gh_pullfrog/delegate
+  disallowed.push("Task");
   return disallowed;
 }
 
@@ -128,6 +129,7 @@ export const claude = agent({
 
     let stdoutBuffer = "";
     let finalOutput = "";
+    const usageContainer: UsageContainer = { value: null };
 
     // Track bash tool IDs to identify when bash tool results come back
     const bashToolIds = new Set<string>();
@@ -139,7 +141,7 @@ export const claude = agent({
       cwd: process.cwd(),
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
-      activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
+      activityTimeout: 0, // process-level activity timeout (5min) is the single authority
       onStdout: async (chunk) => {
         finalOutput += chunk;
         markActivity(); // reset activity timeout on any CLI output
@@ -162,7 +164,7 @@ export const claude = agent({
 
             const handler = messageHandlers[message.type];
             if (handler) {
-              await handler(message as never, bashToolIds, thinkingTimer);
+              await handler(message as never, bashToolIds, thinkingTimer, usageContainer);
             }
           } catch {
             // ignore parse errors - might be non-JSON output
@@ -190,6 +192,7 @@ export const claude = agent({
         success: false,
         error: errorMessage,
         output: finalOutput || result.stdout || "",
+        usage: usageContainer.value ?? undefined,
       };
     }
 
@@ -198,16 +201,21 @@ export const claude = agent({
     return {
       success: true,
       output: finalOutput || result.stdout || "",
+      usage: usageContainer.value ?? undefined,
     };
   },
 });
+
+// run-local usage container — passed to handlers via closure for parallel-safe runs
+type UsageContainer = { value: AgentUsage | null };
 
 type SDKMessageType = SDKMessage["type"];
 
 type SDKMessageHandler<type extends SDKMessageType = SDKMessageType> = (
   data: Extract<SDKMessage, { type: type }>,
   bashToolIds: Set<string>,
-  thinkingTimer: ThinkingTimer
+  thinkingTimer: ThinkingTimer,
+  usageContainer: UsageContainer
 ) => void | Promise<void>;
 
 type SDKMessageHandlers = {
@@ -215,7 +223,7 @@ type SDKMessageHandlers = {
 };
 
 const messageHandlers: SDKMessageHandlers = {
-  assistant: (data, bashToolIds, thinkingTimer) => {
+  assistant: (data, bashToolIds, thinkingTimer, _usageContainer) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (content.type === "text" && content.text?.trim()) {
@@ -235,7 +243,7 @@ const messageHandlers: SDKMessageHandlers = {
       }
     }
   },
-  user: (data, bashToolIds, thinkingTimer) => {
+  user: (data, bashToolIds, thinkingTimer, _usageContainer) => {
     if (data.message?.content) {
       for (const content of data.message.content) {
         if (typeof content === "string") {
@@ -283,7 +291,7 @@ const messageHandlers: SDKMessageHandlers = {
       }
     }
   },
-  result: async (data) => {
+  result: async (data, _bashToolIds, _thinkingTimer, usageContainer) => {
     if (data.subtype === "success") {
       const usage = data.usage;
       const inputTokens = usage?.input_tokens || 0;
@@ -291,6 +299,15 @@ const messageHandlers: SDKMessageHandlers = {
       const cacheWrite = usage?.cache_creation_input_tokens || 0;
       const outputTokens = usage?.output_tokens || 0;
       const totalInput = inputTokens + cacheRead + cacheWrite;
+
+      usageContainer.value = {
+        agent: "claude",
+        inputTokens: totalInput,
+        outputTokens,
+        cacheReadTokens: cacheRead,
+        cacheWriteTokens: cacheWrite,
+        costUsd: data.total_cost_usd ?? undefined,
+      };
 
       log.table([
         [
@@ -316,9 +333,9 @@ const messageHandlers: SDKMessageHandlers = {
       log.info(`Failed: ${JSON.stringify(data)}`);
     }
   },
-  system: () => {},
-  stream_event: () => {},
-  tool_progress: () => {},
-  tool_use_summary: () => {},
-  auth_status: () => {},
+  system: (_data, _bashToolIds, _thinkingTimer, _usageContainer) => {},
+  stream_event: (_data, _bashToolIds, _thinkingTimer, _usageContainer) => {},
+  tool_progress: (_data, _bashToolIds, _thinkingTimer, _usageContainer) => {},
+  tool_use_summary: (_data, _bashToolIds, _thinkingTimer, _usageContainer) => {},
+  auth_status: (_data, _bashToolIds, _thinkingTimer, _usageContainer) => {},
 };

@@ -10,7 +10,7 @@ import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
-import { type AgentRunContext, agent } from "./shared.ts";
+import { type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 // pinned CLI version — no 1-1 package.json dependency for the CLI package
 // (package.json has @opencode-ai/sdk which is the SDK, not the CLI)
@@ -104,6 +104,13 @@ export const opencode = agent({
     let eventCount = 0;
     const thinkingTimer = new ThinkingTimer();
 
+    // reset module-level state before each run (same pattern as claude/codex/gemini).
+    // without this, a failed subprocess that never emits an init event would
+    // carry stale token counts or output from a prior delegation run.
+    finalOutput = "";
+    accumulatedTokens = { input: 0, output: 0 };
+    tokensLogged = false;
+
     // track recent stderr lines for provider error diagnosis.
     // when OpenCode goes silent on stdout, these are the only clue.
     const recentStderr: string[] = [];
@@ -119,8 +126,7 @@ export const opencode = agent({
         args,
         cwd: repoDir,
         env,
-        timeout: 600000, // 10 minutes timeout to prevent infinite hangs
-        activityTimeout: 0, // disabled: process-level timeout in main.ts handles this (subprocess timeout would kill orchestrator during delegation)
+        activityTimeout: 0, // process-level activity timeout (5min) is the single authority
         stdio: ["ignore", "pipe", "pipe"],
         onStdout: async (chunk) => {
           const text = chunk.toString();
@@ -226,6 +232,8 @@ export const opencode = agent({
         ]);
       }
 
+      const usage = buildOpenCodeUsage();
+
       // return result
       if (result.exitCode !== 0) {
         const errorContext = lastProviderError ? ` (${lastProviderError})` : "";
@@ -242,12 +250,14 @@ export const opencode = agent({
           success: false,
           output: finalOutput || output,
           error: errorMessage,
+          usage,
         };
       }
 
       return {
         success: true,
         output: finalOutput || output,
+        usage,
       };
     } catch (error) {
       // activity timeout or process timeout - surface the real cause
@@ -277,6 +287,7 @@ export const opencode = agent({
         success: false,
         output: finalOutput || output,
         error: `${errorMessage} [${diagnosis}]`,
+        usage: buildOpenCodeUsage(),
       };
     }
   },
@@ -474,6 +485,17 @@ type OpenCodeEvent =
 let finalOutput = "";
 let accumulatedTokens: { input: number; output: number } = { input: 0, output: 0 };
 let tokensLogged = false;
+
+function buildOpenCodeUsage(): AgentUsage | undefined {
+  return accumulatedTokens.input > 0 || accumulatedTokens.output > 0
+    ? {
+        agent: "opencode",
+        inputTokens: accumulatedTokens.input,
+        outputTokens: accumulatedTokens.output,
+      }
+    : undefined;
+}
+
 const toolCallTimings = new Map<string, number>();
 let currentStepId: string | null = null;
 let currentStepType: string | null = null;

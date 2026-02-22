@@ -41283,6 +41283,7 @@ var package_default = {
     turndown: "^7.2.0"
   },
   devDependencies: {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/node": "^24.7.2",
     "@types/semver": "^7.7.1",
     "@types/turndown": "^5.0.5",
@@ -41414,20 +41415,20 @@ The workflow encountered an error before any progress could be reported. Please 
   });
   return `${errorMessage}${footer}`;
 }
-async function validateStuckProgressComment(promptInput, octokit, owner, repo) {
-  if (!promptInput?.progressCommentId) {
+async function validateStuckProgressComment(params) {
+  if (!params.promptInput?.progressCommentId) {
     log.info("[post] no progressCommentId in prompt input, skipping cleanup");
     return null;
   }
-  const commentId = parseInt(promptInput.progressCommentId, 10);
+  const commentId = parseInt(params.promptInput.progressCommentId, 10);
   log.info(`[post] validating progressCommentId from prompt input: ${commentId}`);
   try {
-    const { data: comment } = await octokit.rest.issues.getComment({
-      owner,
-      repo,
+    const commentResult = await params.octokit.rest.issues.getComment({
+      owner: params.owner,
+      repo: params.repo,
       comment_id: commentId
     });
-    if (comment.body?.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
+    if (commentResult.data.body?.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
       log.info(`[post] comment ${commentId} is stuck on "Leaping into action"`);
       return commentId;
     }
@@ -41442,13 +41443,15 @@ async function validateStuckProgressComment(promptInput, octokit, owner, repo) {
 async function getIsCancelled(params) {
   if (!params.runIdStr) return false;
   try {
-    const { data: jobs } = await params.octokit.rest.actions.listJobsForWorkflowRun({
+    const jobsResult = await params.octokit.rest.actions.listJobsForWorkflowRun({
       owner: params.repoContext.owner,
       repo: params.repoContext.name,
       run_id: Number.parseInt(params.runIdStr, 10)
     });
     const currentJobName = process.env.GITHUB_JOB;
-    const currentJob = currentJobName ? jobs.jobs.find((j) => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`)) : jobs.jobs[0];
+    const currentJob = currentJobName ? jobsResult.data.jobs.find(
+      (j) => j.name === currentJobName || j.name.startsWith(`${currentJobName} (`)
+    ) : jobsResult.data.jobs[0];
     if (!currentJob) {
       log.warning("[post] could not find current job");
       return false;
@@ -41483,12 +41486,12 @@ async function runPostCleanup() {
   const token = getJobToken();
   const repoContext = parseRepoContext();
   const octokit = createOctokit(token);
-  const commentId = await validateStuckProgressComment(
+  const commentId = await validateStuckProgressComment({
     promptInput,
     octokit,
-    repoContext.owner,
-    repoContext.name
-  );
+    owner: repoContext.owner,
+    repo: repoContext.name
+  });
   if (!commentId) return log.info("\xBB [post] no stuck progress comment to update, skipping cleanup");
   log.info(`\xBB [post] validated stuck comment: ${commentId}, updating with error message`);
   try {

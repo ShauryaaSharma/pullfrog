@@ -107,6 +107,14 @@ describe("ci workflow consistency", () => {
       expect(JSON.parse(output)).toEqual(["claude"]);
     });
 
+    it("changed-agents.sh includes claude canary alongside changed agents", () => {
+      const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
+        input: JSON.stringify(["action/agents/gemini.ts", "action/mcp/server.ts"]),
+        encoding: "utf-8",
+      });
+      expect(JSON.parse(output)).toEqual(["claude", "gemini"]);
+    });
+
     it("action agent matrix matches agentsManifest", () => {
       expect([...actionJob.strategy!.matrix.agent].sort()).toEqual(expectedAgents);
     });
