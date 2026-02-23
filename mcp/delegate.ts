@@ -18,7 +18,7 @@ export function DelegateTool(ctx: ToolContext) {
   return tool({
     name: "delegate",
     description:
-      "Delegate a task to a subagent. The subagent receives ONLY the instructions you provide — no other context is added. Use select_mode first to get guidance on how to craft the instructions for a given mode.",
+      "Delegate a task to a subagent. The subagent receives ONLY the instructions you provide — no other context is added. Use select_mode first to get guidance on how to craft the instructions for a given mode. Subagents have access to file operations, local git, bash, commenting, and review tools. They do NOT have push_branch, create_pull_request, update_pull_request_body, delete_branch, push_tags, delegate, ask_question, or select_mode — remote-mutating operations are your responsibility as orchestrator.",
     parameters: DelegateParams,
     execute: execute(async (params) => {
       if (ctx.toolState.activeSubagentId) {

@@ -28,44 +28,44 @@ export function computeModes(): Mode[] {
       description:
         "Implement, build, create, or develop code changes; make specific changes to files or features; execute a plan; or handle tasks with specific implementation details",
       prompt: `Follow these steps exactly.
-1. Determine whether to work on the current branch or create a new one:
+
+1. **BRANCH** - Determine whether to work on the current branch or create a new one:
    - **PR event, modifying the existing PR**: The PR branch is probably already checked out. Continue on this branch.
    - **PR event, but user wants a NEW branch/PR**: Create a new branch with \`git checkout -b pullfrog/branch-name\` via the \`${ghPullfrogMcpName}/git\` tool.
    
    Branch names must be prefixed with "pullfrog/" and be specific enough to avoid collisions. Never commit directly to main/master/production.
 
-2. ${dependencyInstallationStep}
+2. **DEPENDENCIES** - ${dependencyInstallationStep}
 
-3. If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists. Skip this step if the prompt is trivial and self-contained.
+3. **CONTEXT** - If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists. Skip this step if the prompt is trivial and self-contained.
 
-4. Understand the requirements and any existing plan
+4. **REQUIREMENTS** - Understand the requirements and any existing plan.
 
-5. Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance.
+5. **IMPLEMENT** - Make the necessary code changes using file operations. You should change the minimum amount of code necessary to accomplish your task. Emphasize code quality and elegance.
 
-6. Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat this step until everything passes.
+6. **TEST** - Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat this step until everything passes.
 
-7. Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
+7. **COMMIT** - Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
 
-8. ${reportProgressInstruction}
+8. **PROGRESS** - ${reportProgressInstruction}
 
-9. Determine whether to create a PR (if not already on a PR branch):
+9. **PR** - Determine whether to create a PR (if not already on a PR branch):
    - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.
    - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-10. Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
-  - A summary of what was accomplished
-  - Links to any artifacts created (PRs, branches, issues)
-  - If you created a PR, ALWAYS include the PR link. e.g.: 
-    \`\`\`md
-    [View PR ➔](https://github.com/org/repo/pull/123)
-    \`\`\`
-  - If you created a branch without a PR, ALWAYS include a "Create PR" link and a link to the branch. e.g.:
-    
-    \`\`\`md
-    [\`pullfrog/branch-name\`](https://github.com/pullfrog/scratch/tree/pullfrog/branch-name) • [Create PR ➔](https://github.com/pullfrog/scratch/compare/main...pullfrog/branch-name?quick_pull=1&title=<informative_title>&body=<informative_body>)
-    \`\`\`
-  
-  **IMPORTANT**: Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task. Please review the PR." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.
+10. **FINAL REPORT** - Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
+   - A summary of what was accomplished
+   - Links to any artifacts created (PRs, branches, issues)
+   - If you created a PR, ALWAYS include the PR link. e.g.: 
+     \`\`\`md
+     [View PR ➔](https://github.com/org/repo/pull/123)
+     \`\`\`
+   - If you created a branch without a PR, ALWAYS include a "Create PR" link and a link to the branch. e.g.:
+     \`\`\`md
+     [\`pullfrog/branch-name\`](https://github.com/pullfrog/scratch/tree/pullfrog/branch-name) • [Create PR ➔](https://github.com/pullfrog/scratch/compare/main...pullfrog/branch-name?quick_pull=1&title=<informative_title>&body=<informative_body>)
+     \`\`\`
+
+   Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task. Please review the PR." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.
 `,
     },
     {
@@ -73,27 +73,28 @@ export function computeModes(): Mode[] {
       description:
         "Address PR review feedback; respond to reviewer comments; make requested changes to an existing PR",
       prompt: `Follow these steps. THINK HARDER.
-1. Checkout the PR using ${ghPullfrogMcpName}/checkout_pr with the PR number. This fetches the PR branch and configures push settings (including for fork PRs).
 
-2. ${dependencyInstallationStep}
+1. **CHECKOUT** - Checkout the PR using ${ghPullfrogMcpName}/checkout_pr with the PR number. This fetches the PR branch and configures push settings (including for fork PRs).
 
-3. Fetch review comments using ${ghPullfrogMcpName}/get_review_comments with \`pull_number\` and \`review_id\` from EVENT DATA. This returns \`commentsPath\` - read that file for full comment details with diff context. If EVENT DATA contains a \`triggerer\` field (indicating who requested fixes), you can pass \`approved_by\` to filter to only comments they approved with 👍.
+2. **DEPENDENCIES** - ${dependencyInstallationStep}
 
-4. Review the feedback provided. Understand each review comment and what changes are being requested.    
+3. **FETCH COMMENTS** - Fetch review comments using ${ghPullfrogMcpName}/get_review_comments with \`pull_number\` and \`review_id\` from EVENT DATA. This returns \`commentsPath\` - read that file for full comment details with diff context. If EVENT DATA contains a \`triggerer\` field (indicating who requested fixes), you can pass \`approved_by\` to filter to only comments they approved with 👍.
 
-5. If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists.
+4. **UNDERSTAND** - Review the feedback provided. Understand each review comment and what changes are being requested.
 
-6. Make the necessary code changes to address the feedback. Work through each review comment systematically.
+5. **CONTEXT** - If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists.
 
-7. **CRITICAL: Reply to EACH review comment individually.** After fixing each comment, use ${ghPullfrogMcpName}/reply_to_review_comment to reply directly to that comment thread. Keep replies extremely brief (1 sentence max, e.g., "Fixed by renaming to X" or "Added null check"). If suggesting a small, specific, self-contained code change, use GitHub's suggestion format with \`\`\`suggestion blocks. After addressing a comment and posting your reply, use ${ghPullfrogMcpName}/resolve_review_thread with the thread_id to mark it as resolved. Only resolve threads where you made code changes to address the feedback—don't resolve threads that are already resolved, threads where no action was taken, or threads where you disagree with the feedback.
+6. **IMPLEMENT** - Make the necessary code changes to address the feedback. Work through each review comment systematically.
 
-8. Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat until everything passes.
+7. **REPLY** - Reply to EACH review comment individually. After fixing each comment, use ${ghPullfrogMcpName}/reply_to_review_comment to reply directly to that comment thread. Keep replies extremely brief (1 sentence max, e.g., "Fixed by renaming to X" or "Added null check"). If suggesting a small, specific, self-contained code change, use GitHub's suggestion format with \`\`\`suggestion blocks. After addressing a comment and posting your reply, use ${ghPullfrogMcpName}/resolve_review_thread with the thread_id to mark it as resolved. Only resolve threads where you made code changes to address the feedback — don't resolve threads that are already resolved, threads where no action was taken, or threads where you disagree with the feedback.
 
-9. When done, commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. The push will automatically go to the correct remote (including fork repos). Do not create a new branch or PR - you are updating an existing one.
+8. **TEST** - Test your changes to ensure they work correctly. Run relevant tests, builds, or linters BEFORE committing. If tests fail, fix the issues and repeat until everything passes.
 
-10. ${reportProgressInstruction}
+9. **COMMIT** - Commit your changes with \`${ghPullfrogMcpName}/git\` (\`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. The push will automatically go to the correct remote (including fork repos). Do not create a new branch or PR - you are updating an existing one.
 
-**CRITICAL: Keep the progress comment extremely brief.** The summary should be 1-2 sentences max (e.g., "Fixed 3 review comments and pushed changes."). Almost all detail belongs in the individual reply_to_review_comment calls, NOT in the progress comment.`,
+10. **PROGRESS** - ${reportProgressInstruction}
+
+Keep the progress comment extremely brief. The summary should be 1-2 sentences max (e.g., "Fixed 3 review comments and pushed changes."). Almost all detail belongs in the individual reply_to_review_comment calls, NOT in the progress comment.`,
     },
     {
       name: "Review",
@@ -117,7 +118,7 @@ export function computeModes(): Mode[] {
    - **Check PR consistency**: Does the PR title/description match the actual code changes? Flag significant discrepancies.
    - Do NOT stop at "this looks reasonable." Dig until you either find a problem or have concrete evidence there isn't one.
 
-4. **DRAFT LINE-BY-LINE COMMENTS** - Every comment must be actionable: the author should need to change something in response. 2-3 sentences max. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`). If no issues found, skip to step 5. NO COMPLIMENTS. NO NITPICKING ABOUT CHANGES UNRELATED TO THE MAIN CHANGE. Non-actionable comments (praise, style preferences, minor optimizations, documentation nits) must not be drafted. If no comments survive and you have no significant concerns, **do not submit a review**. Use \`${ghPullfrogMcpName}/report_progress\` to note the PR was reviewed and no issues were found.
+4. **DRAFT LINE-BY-LINE COMMENTS** - Every comment must be actionable: the author should need to change something in response. 2-3 sentences max. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`). If no issues found, skip to step 5. NO COMPLIMENTS. NO NITPICKING ABOUT CHANGES UNRELATED TO THE MAIN CHANGE. Non-actionable comments (praise, style preferences, minor optimizatfixons, documentation nits) must not be drafted. If no comments survive and you have no significant concerns, **do not submit a review**. Use \`${ghPullfrogMcpName}/report_progress\` to note the PR was reviewed and no issues were found.
 
 5. **WRITE SUMMARY** - Draft a 1-3 sentence summary for the review body. Include urgency level and any concerns about code outside the diff.
 
@@ -133,15 +134,16 @@ ${permalinkTip}
       description:
         "Create plans, break down tasks, outline steps, analyze requirements, understand scope of work, or provide task breakdowns",
       prompt: `Follow these steps. THINK HARDER.
-1. If the request requires understanding the codebase structure or conventions, gather relevant context (read AGENTS.md if it exists). Skip this step if the prompt is trivial and self-contained.
 
-2. Analyze the request and break it down into clear, actionable tasks
+1. **CONTEXT** - If the request requires understanding the codebase structure or conventions, gather relevant context (read AGENTS.md if it exists). Skip this step if the prompt is trivial and self-contained.
 
-3. Consider dependencies, potential challenges, and implementation order
+2. **ANALYZE** - Analyze the request and break it down into clear, actionable tasks.
 
-4. Create a structured plan with clear milestones
+3. **DEPENDENCIES** - Consider dependencies, potential challenges, and implementation order.
 
-5. ${reportProgressInstruction}
+4. **PLAN** - Create a structured plan with clear milestones.
+
+5. **PROGRESS** - ${reportProgressInstruction}
 
 ${permalinkTip}`,
     },
@@ -185,7 +187,7 @@ ${permalinkTip}`,
    - Note the EXACT command (e.g., \`pnpm -r test --filter=action\`, not just \`pnpm test\`)
    - Check for any CI-specific environment variables or setup steps
 
-4. ${dependencyInstallationStep}
+4. **DEPENDENCIES** - ${dependencyInstallationStep}
 
 5. **REPRODUCE LOCALLY** - Run the EXACT same command that CI runs:
    - Do NOT simplify (e.g., don't run \`pnpm test\` if CI runs \`pnpm -r test --filter=action\`)
@@ -207,22 +209,23 @@ ${permalinkTip}`,
 
 9. **COMMIT AND PUSH** - Use \`${ghPullfrogMcpName}/git\` for add/commit, then \`${ghPullfrogMcpName}/push_branch\` to push
 
-10. ${reportProgressInstruction}
+10. **PROGRESS** - ${reportProgressInstruction}
 
-**REMEMBER**: Your job is to fix issues THIS PR introduced, not to fix all CI failures. If in doubt about causation, abort and explain rather than making speculative changes.`,
+Your job is to fix issues THIS PR introduced, not to fix all CI failures. If in doubt about causation, abort and explain rather than making speculative changes.`,
     },
     {
       name: "Prompt",
       description:
         "General-purpose tasks that don't fit other modes: answering questions, adding comments, labeling, running ad-hoc commands, or any direct request",
       prompt: `Follow these steps. THINK HARDER.
-1. Read the request carefully. Only take action if you have high confidence that you understand what is being asked. Take stock of the tools at your disposal.
 
-2. If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists. Skip this step if the prompt is trivial and self-contained.
+1. **UNDERSTAND** - Read the request carefully. Only take action if you have high confidence that you understand what is being asked. Take stock of the tools at your disposal.
 
-3. Perform the requested task.
+2. **CONTEXT** - If the request requires understanding the codebase structure or conventions, gather relevant context. Read AGENTS.md if it exists. Skip this step if the prompt is trivial and self-contained.
 
-4. If the task involves making code changes:
+3. **EXECUTE** - Perform the requested task.
+
+4. **CODE CHANGES** - If the task involves making code changes:
    - Create a branch using \`${ghPullfrogMcpName}/git\` (\`git checkout -b pullfrog/branch-name\`). Branch names should be prefixed with "pullfrog/" and reflect the exact changes you are making. Never commit directly to main, master, or production.
    - ${dependencyInstallationStep}
    - Use file operations to create/modify files with your changes.
@@ -232,9 +235,9 @@ ${permalinkTip}`,
      - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.
      - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-5. ${reportProgressInstruction}
+5. **PROGRESS** - ${reportProgressInstruction}
 
-**IMPORTANT**: Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.`,
+Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.`,
     },
   ];
 }
