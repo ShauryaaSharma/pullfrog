@@ -104,9 +104,8 @@ export function DelegateTool(ctx: ToolContext) {
         const outcome = settled[i];
         const error = outcome.status === "rejected" ? String(outcome.reason) : outcome.value.error;
         const result = buildTaskResult(entry.task.label, entry.effort, entry.subagent, error);
-        log.info(
-          `» task "${entry.task.label}" ${result.success ? "succeeded" : "failed"}:\n${result.summary}`
-        );
+        const status = result.success ? "succeeded" : "failed";
+        log.box(result.summary, { title: `task "${entry.task.label}" ${status}` });
         return result;
       });
 

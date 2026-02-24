@@ -107,24 +107,6 @@ export interface ToolContext {
   tmpdir: string;
 }
 
-/**
- * tool names that are only available to the orchestrator.
- * subagent MCP servers are started with these tools excluded.
- *
- * - delegation tools: only the orchestrator can spawn/manage subagents
- * - remote-mutating tools: subagents work locally; the orchestrator pushes and creates PRs
- */
-export const ORCHESTRATOR_ONLY_TOOLS = [
-  "select_mode",
-  "delegate",
-  "ask_question",
-  "push_branch",
-  "push_tags",
-  "delete_branch",
-  "create_pull_request",
-  "update_pull_request_body",
-] as const;
-
 import { log } from "../utils/cli.ts";
 import type { RunContextData } from "../utils/runContextData.ts";
 import { AskQuestionTool } from "./askQuestion.ts";
@@ -236,7 +218,6 @@ function buildCommonTools(ctx: ToolContext): Tool<any, any>[] {
     FileEditTool(ctx),
     FileDeleteTool(ctx),
     ListDirectoryTool(ctx),
-    ReportProgressTool(ctx),
   ];
 
   // only add ShellTool when shell is "restricted"
@@ -255,6 +236,7 @@ function buildCommonTools(ctx: ToolContext): Tool<any, any>[] {
 function buildOrchestratorTools(ctx: ToolContext): Tool<any, any>[] {
   return [
     ...buildCommonTools(ctx),
+    ReportProgressTool(ctx),
     SelectModeTool(ctx),
     DelegateTool(ctx),
     AskQuestionTool(ctx),
