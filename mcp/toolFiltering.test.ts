@@ -82,7 +82,7 @@ describe("per-server tool isolation - integration", () => {
     orchestratorServer.addTool(mockTool("push_branch", "push branch"));
     orchestratorServer.addTool(mockTool("create_pull_request", "create PR"));
 
-    // subagent gets ONLY file ops, bash, read-only GitHub, upload, set_output
+    // subagent gets ONLY file ops, shell, read-only GitHub, upload, set_output
     subagentServer = new FastMCP({ name: "subagent", version: "0.0.1" });
     subagentServer.addTool(mockTool("file_read", "read a file"));
     subagentServer.addTool(mockTool("set_output", "set output"));

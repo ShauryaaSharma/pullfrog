@@ -188,7 +188,7 @@ function isAddressInUse(error: unknown): boolean {
   return message.includes("eaddrinuse") || message.includes("address already in use");
 }
 
-// subagent tools: file ops, bash, read-only GitHub, upload, set_output.
+// subagent tools: file ops, shell, read-only GitHub, upload, set_output.
 // no git/checkout (mutates shared state), no dependencies (shared state),
 // no GitHub-write (user-facing side effects), no delegation/remote-mutating.
 function buildSubagentTools(ctx: ToolContext): Tool<any, any>[] {
@@ -210,15 +210,15 @@ function buildSubagentTools(ctx: ToolContext): Tool<any, any>[] {
     ListDirectoryTool(ctx),
   ];
 
-  if (ctx.payload.bash === "restricted") {
-    tools.push(BashTool(ctx));
+  if (ctx.payload.shell === "restricted") {
+    tools.push(ShellTool(ctx));
     tools.push(KillBackgroundTool(ctx));
   }
 
   return tools;
 }
 
-// orchestrator gets everything: file ops, bash, git, GitHub, delegation, remote-mutating
+// orchestrator gets everything: file ops, shell, git, GitHub, delegation, remote-mutating
 function buildOrchestratorTools(ctx: ToolContext): Tool<any, any>[] {
   const tools: Tool<any, any>[] = [
     StartDependencyInstallationTool(ctx),

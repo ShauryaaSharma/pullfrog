@@ -57,7 +57,7 @@ export function DelegateTool(ctx: ToolContext) {
   return tool({
     name: "delegate",
     description:
-      "Delegate research, local coding tasks, and codebase investigations to subagents. Accepts an array of tasks that run in parallel — use this to fan out work (e.g. reviewing different areas of a PR simultaneously). Each subagent receives ONLY the instructions you provide (plus a system preamble enforcing set_output). Use select_mode first to get guidance on how to craft instructions. Subagents have file operations, bash, read-only GitHub tools (PR/issue info, review comments, check suite logs), and upload_file. They have NO git/checkout tools (would conflict between parallel subagents), NO dependency tools, and NO GitHub-write tools (commenting, reviews, labels, issues). All state-mutating and user-facing operations are your responsibility as orchestrator.",
+      "Delegate research, local coding tasks, and codebase investigations to subagents. Accepts an array of tasks that run in parallel — use this to fan out work (e.g. reviewing different areas of a PR simultaneously). Each subagent receives ONLY the instructions you provide (plus a system preamble enforcing set_output). Use select_mode first to get guidance on how to craft instructions. Subagents have file operations, shell, read-only GitHub tools (PR/issue info, review comments, check suite logs), and upload_file. They have NO git/checkout tools (would conflict between parallel subagents), NO dependency tools, and NO GitHub-write tools (commenting, reviews, labels, issues). All state-mutating and user-facing operations are your responsibility as orchestrator.",
     parameters: DelegateParams,
     execute: execute(async (params) => {
       if (ctx.toolState.selfSubagentId) {

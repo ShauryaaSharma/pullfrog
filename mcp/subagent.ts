@@ -71,7 +71,7 @@ const subagentSystemPreamble = `You are a focused subagent. Complete the task au
 
 Your tools are limited to:
 - **File operations**: \`${ghPullfrogMcpName}/file_read\`, \`file_write\`, \`file_edit\`, \`file_delete\`, \`list_directory\`. Native file tools (Read, Write, StrReplace, etc.) are disabled — use the MCP versions.
-- **Shell**: \`${ghPullfrogMcpName}/bash\` (if available). Use this for local git operations (\`git add\`, \`git commit\`, \`git diff\`, \`git log\`, \`git status\`), running tests, builds, and linters.
+- **Shell**: \`${ghPullfrogMcpName}/shell\` (if available). Use this for local git operations (\`git add\`, \`git commit\`, \`git diff\`, \`git log\`, \`git status\`), running tests, builds, and linters.
 - **Read-only GitHub**: \`get_pull_request\`, \`get_issue\`, \`get_issue_comments\`, \`get_issue_events\`, \`get_review_comments\`, \`list_pull_request_reviews\`, \`get_check_suite_logs\`, \`get_commit_info\`.
 - **Output**: \`${ghPullfrogMcpName}/upload_file\`, \`${ghPullfrogMcpName}/set_output\`.
 

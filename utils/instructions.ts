@@ -388,13 +388,13 @@ When all delegations are complete, call \`${ghPullfrogMcpName}/set_output\` with
 
 ### Subagent capabilities
 
-Subagents have: file operations, bash (for local git, tests, builds), read-only GitHub queries, and upload_file. They do NOT have: \`git\`, \`checkout_pr\`, \`push_branch\`, \`create_pull_request\`, \`create_pull_request_review\`, \`report_progress\`, \`create_issue_comment\`, \`reply_to_review_comment\`, \`resolve_review_thread\`, \`delegate\`, \`ask_question\`, or any dependency/remote-mutating tools. All GitHub-write and state-mutating operations are your responsibility.
+Subagents have: file operations, shell (for local git, tests, builds), read-only GitHub queries, and upload_file. They do NOT have: \`git\`, \`checkout_pr\`, \`push_branch\`, \`create_pull_request\`, \`create_pull_request_review\`, \`report_progress\`, \`create_issue_comment\`, \`reply_to_review_comment\`, \`resolve_review_thread\`, \`delegate\`, \`ask_question\`, or any dependency/remote-mutating tools. All GitHub-write and state-mutating operations are your responsibility.
 
 ### Prompt-crafting rules
 
 - Subagents have NO context beyond what you write. No repo instructions, no event data, no user prompt.
 - Specify exactly what information the subagent should return. The subagent's \`set_output\` call is your only way to get results back — be precise about what you need.
-- Instruct subagents to use bash for local git (\`git add\`, \`git commit\`, \`git diff\`, \`git status\`).
+- Instruct subagents to use shell for local git (\`git add\`, \`git commit\`, \`git diff\`, \`git status\`).
 - Never instruct a subagent to push, create PRs, submit reviews, or post comments.
 - For multi-phase flows, pass results from earlier phases into the next delegate call's prompts.
 - You do NOT need to instruct subagents to call \`set_output\` — the system preamble handles this.
