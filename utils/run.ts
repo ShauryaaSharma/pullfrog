@@ -1,13 +1,37 @@
 import type { AgentResult } from "../agents/shared.ts";
 import type { MainResult } from "../main.ts";
+import type { ToolState } from "../mcp/server.ts";
 import { log } from "./cli.ts";
+import { reportErrorToComment } from "./errorReport.ts";
 
-export function handleAgentResult(result: AgentResult): MainResult {
-  if (!result.success) {
+export interface HandleAgentResultParams {
+  result: AgentResult;
+  toolState: ToolState;
+  silent: boolean | undefined;
+}
+
+export async function handleAgentResult(ctx: HandleAgentResultParams): Promise<MainResult> {
+  if (!ctx.result.success) {
     return {
       success: false,
-      error: result.error || "Agent execution failed",
-      output: result.output!,
+      error: ctx.result.error || "Agent execution failed",
+      output: ctx.result.output!,
+    };
+  }
+
+  if (!ctx.toolState.wasUpdated && ctx.toolState.progressCommentId && !ctx.silent) {
+    const error = ctx.result.error || "agent completed without reporting progress";
+    try {
+      await reportErrorToComment({
+        toolState: ctx.toolState,
+        error,
+        title: "Error",
+      });
+    } catch {}
+    return {
+      success: false,
+      error,
+      output: ctx.result.output || "",
     };
   }
 
@@ -15,6 +39,6 @@ export function handleAgentResult(result: AgentResult): MainResult {
 
   return {
     success: true,
-    output: result.output || "",
+    output: ctx.result.output || "",
   };
 }

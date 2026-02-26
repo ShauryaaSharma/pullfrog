@@ -235,8 +235,14 @@ export async function main(): Promise<MainResult> {
       log.info(`::pullfrog-output::${Buffer.from(toolState.output).toString("base64")}`);
     }
 
+    const mainResult = await handleAgentResult({
+      result,
+      toolState,
+      silent: payload.event.silent ?? false,
+    });
+
     return {
-      ...handleAgentResult(result),
+      ...mainResult,
       result: toolState.output,
     };
   } catch (error) {

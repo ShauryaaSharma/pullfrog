@@ -437,6 +437,15 @@ export const opencode = agent({
         };
       }
 
+      if (eventCount === 0 && lastProviderError) {
+        return {
+          success: false,
+          output: finalOutput || output,
+          error: `provider error: ${lastProviderError}`,
+          usage,
+        };
+      }
+
       return {
         success: true,
         output: finalOutput || output,
