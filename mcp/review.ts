@@ -15,6 +15,11 @@ export const CreatePullRequestReview = type({
       "1-2 sentence high-level summary with urgency level, critical callouts, and feedback about code outside the diff. Specific feedback on diff lines goes in 'comments' array."
     )
     .optional(),
+  approved: type.boolean
+    .describe(
+      "Set to true to submit as an approval. ONLY when the review contains no actionable feedback — neither inline comments nor actionable content in the body. Defaults to false (comment-only review). Rejections are not supported."
+    )
+    .optional(),
   commit_id: type.string
     .describe("Optional SHA of the commit being reviewed. Defaults to latest.")
     .optional(),
@@ -64,7 +69,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       " Commenting on files or lines outside the diff will cause GitHub API errors." +
       " Put feedback about code outside the diff in 'body' instead.",
     parameters: CreatePullRequestReview,
-    execute: execute(async ({ pull_number, body, commit_id, comments = [] }) => {
+    execute: execute(async ({ pull_number, body, approved, commit_id, comments = [] }) => {
       // set issue context (PRs are issues)
       ctx.toolState.issueNumber = pull_number;
 
@@ -73,7 +78,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
         pull_number,
-        event: "COMMENT",
+        event: approved ? "APPROVE" : "COMMENT",
       };
       if (body) params.body = body;
       if (commit_id) {
@@ -120,11 +125,17 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       // build quick links footer and update the review body
       // only include "Fix all" and "Fix 👍s" links if there are actual review comments
       const customParts: string[] = [];
-      if (comments.length > 0) {
-        const apiUrl = getApiUrl();
-        const fixAllUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${pull_number}?action=fix&review_id=${reviewId}`;
-        const fixApprovedUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${pull_number}?action=fix-approved&review_id=${reviewId}`;
-        customParts.push(`[Fix all ➔](${fixAllUrl})`, `[Fix 👍s ➔](${fixApprovedUrl})`);
+      if (!approved) {
+        if (comments.length > 0) {
+          const apiUrl = getApiUrl();
+          const fixAllUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${pull_number}?action=fix&review_id=${reviewId}`;
+          const fixApprovedUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${pull_number}?action=fix-approved&review_id=${reviewId}`;
+          customParts.push(`[Fix all ➔](${fixAllUrl})`, `[Fix 👍s ➔](${fixApprovedUrl})`);
+        } else if (body) {
+          const apiUrl = getApiUrl();
+          const fixUrl = `${apiUrl}/trigger/${ctx.repo.owner}/${ctx.repo.name}/${pull_number}?action=fix&review_id=${reviewId}`;
+          customParts.push(`[Fix it ➔](${fixUrl})`);
+        }
       }
 
       const footer = buildPullfrogFooter({

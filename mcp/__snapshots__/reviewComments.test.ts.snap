@@ -1,11 +1,40 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`formatReviewThreads > formats thread blocks with TOC and correct line numbers > content 1`] = `
-"# Review Threads (1) for PR #49 - Review 3485940013 by cursor
+exports[`getFormattedReviewThreads > formats body-only review > content 1`] = `
+"# Review Threads (0) for PR #64 - Review 3531000326 by pullfrog[bot]
+
+## Review Body
+
+This PR looks great. The retry logic is well-implemented and the tests are comprehensive.
+
+---
+"
+`;
+
+exports[`getFormattedReviewThreads > formats body-only review > toc 1`] = `""`;
+
+exports[`getFormattedReviewThreads > formats thread blocks with TOC and correct line numbers > content 1`] = `
+"# Review Threads (1) for PR #49 - Review 3485940013 by cursor[bot]
 
 ## TOC
 
-- .github/workflows/test.yml:7 → lines 9-36
+- .github/workflows/test.yml:7 → lines 25-52
+
+## Review Body
+
+### This is the final PR Bugbot will review for you during this billing cycle
+
+Your free Bugbot reviews will reset on November 30
+
+<details>
+<summary>Details</summary>
+
+Your team is on the Bugbot Free tier. On this plan, Bugbot will review limited PRs each billing cycle for each member of your team.
+
+To receive Bugbot reviews on all of your PRs, visit the [Cursor dashboard](https://www.cursor.com/dashboard?tab=bugbot) to activate Pro and start your 14-day free trial.
+</details>
+
+
 
 ---
 
@@ -39,4 +68,4 @@ LOCATIONS END -->
 "
 `;
 
-exports[`formatReviewThreads > formats thread blocks with TOC and correct line numbers > toc 1`] = `"- .github/workflows/test.yml:7 → lines 9-36"`;
+exports[`getFormattedReviewThreads > formats thread blocks with TOC and correct line numbers > toc 1`] = `"- .github/workflows/test.yml:7 → lines 25-52"`;

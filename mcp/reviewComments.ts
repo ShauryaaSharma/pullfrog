@@ -1,6 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Octokit } from "@octokit/rest";
 import { type } from "arktype";
+import { stripExistingFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/log.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
@@ -93,6 +95,16 @@ export type ReviewThreadsQueryResponse = {
     } | null;
   } | null;
 };
+
+export function countLines(str: string): number {
+  let count = 1;
+  let index = -1;
+  // biome-ignore lint/suspicious/noAssignInExpressions: assignment in while condition is intentional for indexOf loop pattern
+  while ((index = str.indexOf("\n", index + 1)) !== -1) {
+    count++;
+  }
+  return count;
+}
 
 // extract exactly the commented line range from diffHunk, plus context
 const CONTEXT_PADDING = 3;
@@ -290,8 +302,8 @@ function hasThumbsUpFrom(comment: ReviewThreadComment, username: string): boolea
   if (!comment.reactionGroups) return false;
   const thumbsUp = comment.reactionGroups.find((g) => g.content === "THUMBS_UP");
   if (!thumbsUp?.reactors?.nodes) return false;
-  const usernameNeedle = username.toLowerCase();
-  return thumbsUp.reactors.nodes.some((r) => r?.login?.toLowerCase() === usernameNeedle);
+  const needle = username.toLowerCase();
+  return thumbsUp.reactors.nodes.some((r) => r?.login?.toLowerCase() === needle);
 }
 
 function threadHasThumbsUpFrom(thread: ReviewThread, username: string): boolean {
@@ -305,19 +317,26 @@ function threadHasThumbsUpFrom(thread: ReviewThread, username: string): boolean 
  */
 export function formatReviewThreads(
   threadBlocks: Array<{ path: string; lineRange: string; content: string[] }>,
-  header: { pullNumber: number; reviewId: number; reviewer: string }
+  header: { pullNumber: number; reviewId: number; reviewer: string; reviewBody?: string }
 ) {
   // header section takes: title (1) + blank (1) + "## TOC" (1) + blank (1) + N TOC entries + blank (1) + "---" (1) + blank (1)
   const tocHeaderLines = 4;
   const tocFooterLines = 3;
   let currentLine = tocHeaderLines + threadBlocks.length + tocFooterLines + 1;
 
+  // account for review body section if present
+  const reviewBodyLines: string[] = [];
+  if (header.reviewBody) {
+    reviewBodyLines.push("## Review Body", "", header.reviewBody, "");
+    currentLine += reviewBodyLines.reduce((sum, line) => sum + countLines(line), 0);
+  }
+
   const tocEntries: string[] = [];
   const threadLines: string[] = [];
 
   for (const block of threadBlocks) {
     const startLine = currentLine;
-    const actualLineCount = block.content.reduce((sum, line) => sum + line.split("\n").length, 0);
+    const actualLineCount = block.content.reduce((sum, line) => sum + countLines(line), 0);
     const endLine = currentLine + actualLineCount - 1;
     tocEntries.push(`- ${block.path}:${block.lineRange} → lines ${startLine}-${endLine}`);
     threadLines.push(...block.content);
@@ -329,10 +348,13 @@ export function formatReviewThreads(
     `# Review Threads (${threadBlocks.length}) for PR #${header.pullNumber} - Review ${header.reviewId} by ${header.reviewer}`
   );
   lines.push("");
-  lines.push("## TOC");
-  lines.push("");
-  lines.push(...tocEntries);
-  lines.push("");
+  if (threadBlocks.length > 0) {
+    lines.push("## TOC");
+    lines.push("");
+    lines.push(...tocEntries);
+    lines.push("");
+  }
+  lines.push(...reviewBodyLines);
   lines.push("---");
   lines.push("");
   lines.push(...threadLines);
@@ -352,12 +374,6 @@ export function buildThreadBlocks(
   filePatchMap: Map<string, ParsedHunk[]>,
   reviewId: number
 ) {
-  // get reviewer from first matching comment
-  const firstMatchingComment = threads[0]?.comments?.nodes?.find(
-    (c) => c?.pullRequestReview?.databaseId === reviewId
-  );
-  const reviewer = firstMatchingComment?.pullRequestReview?.author?.login ?? "unknown";
-
   // sort threads by file path, then by line number
   threads.sort((a, b) => {
     const pathCmp = a.path.localeCompare(b.path);
@@ -439,7 +455,89 @@ export function buildThreadBlocks(
     threadBlocks.push({ path: thread.path, lineRange, content: block });
   }
 
-  return { threadBlocks, reviewer };
+  return threadBlocks;
+}
+
+async function getReviewThreads(input: GetReviewDataInput) {
+  const response = await input.octokit.graphql<ReviewThreadsQueryResponse>(REVIEW_THREADS_QUERY, {
+    owner: input.owner,
+    name: input.name,
+    prNumber: input.pullNumber,
+  });
+
+  const allThreads = response.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+
+  const threadsForReview = allThreads.filter((thread): thread is ReviewThread => {
+    if (!thread?.comments?.nodes) return false;
+    return thread.comments.nodes.some((c) => c?.pullRequestReview?.databaseId === input.reviewId);
+  });
+
+  if (!input.approvedBy) {
+    return threadsForReview;
+  }
+
+  const username = input.approvedBy;
+  return threadsForReview.filter((thread) => threadHasThumbsUpFrom(thread, username));
+}
+
+interface GetReviewDataInput {
+  octokit: Octokit;
+  owner: string;
+  name: string;
+  pullNumber: number;
+  reviewId: number;
+  approvedBy?: string | undefined;
+}
+
+export async function getReviewData(input: GetReviewDataInput): Promise<
+  | {
+      threadBlocks: Array<{ path: string; lineRange: string; content: string[] }>;
+      reviewer: string;
+      formatted: { toc: string; content: string };
+    }
+  | undefined
+> {
+  const [review, threads] = await Promise.all([
+    input.octokit.rest.pulls.getReview({
+      owner: input.owner,
+      repo: input.name,
+      pull_number: input.pullNumber,
+      review_id: input.reviewId,
+    }),
+    getReviewThreads(input),
+  ]);
+
+  const rawReviewBody = review.data.body;
+  const reviewBody = rawReviewBody ? stripExistingFooter(rawReviewBody) : "";
+  const reviewer = review.data.user?.login ?? "unknown";
+
+  if (threads.length === 0 && !reviewBody) return undefined;
+
+  let threadBlocks: Array<{ path: string; lineRange: string; content: string[] }> = [];
+
+  if (threads.length > 0) {
+    const prFilesResponse = await input.octokit.rest.pulls.listFiles({
+      owner: input.owner,
+      repo: input.name,
+      pull_number: input.pullNumber,
+    });
+    const filePatchMap = new Map<string, ParsedHunk[]>();
+    for (const file of prFilesResponse.data) {
+      if (file.patch) {
+        filePatchMap.set(file.filename, parseFilePatches(file.patch));
+      }
+    }
+    threadBlocks = buildThreadBlocks(threads, filePatchMap, input.reviewId);
+  }
+
+  const formatted = formatReviewThreads(threadBlocks, {
+    pullNumber: input.pullNumber,
+    reviewId: input.reviewId,
+    reviewer,
+    reviewBody,
+  });
+
+  return { threadBlocks, reviewer, formatted };
 }
 
 export function GetReviewCommentsTool(ctx: ToolContext) {
@@ -451,31 +549,16 @@ export function GetReviewCommentsTool(ctx: ToolContext) {
       "Returns a TOC and commentsPath pointing to a markdown file with full comment details.",
     parameters: GetReviewComments,
     execute: execute(async (params) => {
-      // fetch all review threads for the PR via GraphQL
-      const response = await ctx.octokit.graphql<ReviewThreadsQueryResponse>(REVIEW_THREADS_QUERY, {
+      const result = await getReviewData({
+        octokit: ctx.octokit,
         owner: ctx.repo.owner,
         name: ctx.repo.name,
-        prNumber: params.pull_number,
+        pullNumber: params.pull_number,
+        reviewId: params.review_id,
+        approvedBy: params.approved_by,
       });
 
-      const allThreads = response.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-
-      // filter to threads where at least one comment belongs to the target review
-      let threadsForReview = allThreads.filter((thread): thread is ReviewThread => {
-        if (!thread?.comments?.nodes) return false;
-        return thread.comments.nodes.some(
-          (c) => c?.pullRequestReview?.databaseId === params.review_id
-        );
-      });
-
-      // filter by approved_by if specified
-      if (params.approved_by) {
-        threadsForReview = threadsForReview.filter((thread) =>
-          threadHasThumbsUpFrom(thread, params.approved_by as string)
-        );
-      }
-
-      if (threadsForReview.length === 0) {
+      if (!result) {
         return {
           review_id: params.review_id,
           pull_number: params.pull_number,
@@ -489,34 +572,8 @@ export function GetReviewCommentsTool(ctx: ToolContext) {
         };
       }
 
-      // fetch full file patches for better multi-hunk context
-      const prFilesResponse = await ctx.octokit.rest.pulls.listFiles({
-        owner: ctx.repo.owner,
-        repo: ctx.repo.name,
-        pull_number: params.pull_number,
-      });
-      const filePatchMap = new Map<string, ParsedHunk[]>();
-      for (const file of prFilesResponse.data) {
-        if (file.patch) {
-          filePatchMap.set(file.filename, parseFilePatches(file.patch));
-        }
-      }
+      const { threadBlocks, reviewer, formatted } = result;
 
-      // build thread blocks
-      const { threadBlocks, reviewer } = buildThreadBlocks(
-        threadsForReview,
-        filePatchMap,
-        params.review_id
-      );
-
-      // format thread blocks into markdown with TOC
-      const formatted = formatReviewThreads(threadBlocks, {
-        pullNumber: params.pull_number,
-        reviewId: params.review_id,
-        reviewer,
-      });
-
-      // write to temp file
       const tempDir = process.env.PULLFROG_TEMP_DIR;
       if (!tempDir) {
         throw new Error("PULLFROG_TEMP_DIR not set");

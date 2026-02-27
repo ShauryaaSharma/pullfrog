@@ -32,7 +32,7 @@ export function computeModes(): Mode[] {
 1. **CHECKOUT** - Determine whether to checkout the existing PR branch or create a new one:
    - **PR event, modifying the existing PR**: Call \`${ghPullfrogMcpName}/checkout_pr\` with the PR number to checkout the PR branch.
    - **PR event, but user wants a NEW branch/PR**: Create a new branch with \`git checkout -b pullfrog/branch-name\` via the \`${ghPullfrogMcpName}/git\` tool.
-   
+
    Branch names must be prefixed with "pullfrog/" and be specific enough to avoid collisions. Never commit directly to main/master/production.
 
 2. **DEPENDENCIES** - ${dependencyInstallationStep}
@@ -57,7 +57,7 @@ export function computeModes(): Mode[] {
 10. **FINAL REPORT** - Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
    - A summary of what was accomplished
    - Links to any artifacts created (PRs, branches, issues)
-   - If you created a PR, ALWAYS include the PR link. e.g.: 
+   - If you created a PR, ALWAYS include the PR link. e.g.:
      \`\`\`md
      [View PR ➔](https://github.com/org/repo/pull/123)
      \`\`\`
@@ -126,6 +126,7 @@ Keep the progress comment extremely brief. The summary should be 1-2 sentences m
 6. **SUBMIT** — Use ${ghPullfrogMcpName}/create_pull_request_review:
    - \`body\`: The summary from step 5
    - \`comments\`: The inline comments from step 4
+   - \`approved\`: Set to \`true\` ONLY if the review contains no actionable feedback — neither inline comments nor actionable content in the body. An approval signals "no changes needed."
 
 ${permalinkTip}
 `,
@@ -163,23 +164,23 @@ ${permalinkTip}`,
    - \`failed_steps\`: which CI steps failed (e.g., "Step 6: Run tests")
 
 2. **CHECKOUT AND ASSESS CAUSATION** - Use ${ghPullfrogMcpName}/checkout_pr to get the PR diff. BEFORE attempting any fix, you MUST determine if this PR caused the failure:
-   
+
    **Ask yourself**: "Could the changes in this PR have caused this failure?"
-   
+
    - Read the PR diff carefully - what files were modified?
    - What is failing? (test file, module, assertion)
    - Is there a PLAUSIBLE CONNECTION between the PR changes and the failure?
-   
+
    **ABORT immediately if any of these are true:**
    - The failing test/file was NOT touched by this PR AND doesn't depend on changed code
    - The error is infrastructure-related (network timeout, runner OOM, service unavailable)
    - The error is a flaky test that passes/fails randomly
    - The error existed before this PR (pre-existing bug in main branch)
    - The error is in a dependency update not introduced by this PR
-   
+
    **When aborting**, use ${ghPullfrogMcpName}/report_progress to explain:
    "This CI failure appears unrelated to the PR's changes. [Describe the failure]. [Explain why it's not caused by the PR]. No changes made."
-   
+
    **Only proceed** if there's a clear, logical connection between the PR changes and the failure.
 
 3. **UNDERSTAND HOW CI RUNS** - Read the workflow file to understand exactly what commands CI runs:
