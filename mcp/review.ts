@@ -19,7 +19,9 @@ export const CreatePullRequestReview = type({
     .describe("Optional SHA of the commit being reviewed. Defaults to latest.")
     .optional(),
   comments: type({
-    path: type.string.describe("The file path to comment on (relative to repo root)"),
+    path: type.string.describe(
+      "The file path to comment on (relative to repo root). Must be a file that appears in the PR diff."
+    ),
     line: type.number.describe(
       "End line of the comment range. For single-line comments, set equal to 'start_line'. Use NEW column from diff format."
     ),
@@ -57,7 +59,10 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       "Only use 'body' for a 1-2 sentence summary with urgency and critical callouts. " +
       "Use 'suggestion' to propose replacement code - MUST preserve exact indentation of original code. " +
       "Example replacing lines 42-44 (3 lines) with 5 lines: " +
-      `{ path: 'src/api.ts', start_line: 42, line: 44, suggestion: '    const result = await fetch(url);\\n    if (!result.ok) {\\n      log.error(result.status);\\n      throw new Error("request failed");\\n    }' }`,
+      `{ path: 'src/api.ts', start_line: 42, line: 44, suggestion: '    const result = await fetch(url);\\n    if (!result.ok) {\\n      log.error(result.status);\\n      throw new Error("request failed");\\n    }' }` +
+      " CONSTRAINT: Inline comments can ONLY target files and lines that appear in the PR diff." +
+      " Commenting on files or lines outside the diff will cause GitHub API errors." +
+      " Put feedback about code outside the diff in 'body' instead.",
     parameters: CreatePullRequestReview,
     execute: execute(async ({ pull_number, body, commit_id, comments = [] }) => {
       // set issue context (PRs are issues)
