@@ -100,7 +100,7 @@ export interface ToolContext {
   modes: Mode[];
   postCheckoutScript: string | null;
   toolState: ToolState;
-  runId: string;
+  runId: number | undefined;
   jobId: string | undefined;
   // set after MCP server starts — used by delegate tool to pass URL to subagents
   mcpServerUrl: string;

@@ -6,7 +6,7 @@ interface ResolveRunParams {
 }
 
 export interface ResolveRunResult {
-  runId: string;
+  runId: number | undefined;
   jobId: string | undefined;
 }
 
@@ -15,7 +15,9 @@ export interface ResolveRunResult {
  * Uses GITHUB_REPOSITORY and GITHUB_RUN_ID env vars.
  */
 export async function resolveRun(params: ResolveRunParams): Promise<ResolveRunResult> {
-  const runId = process.env.GITHUB_RUN_ID || "";
+  const runId = process.env.GITHUB_RUN_ID
+    ? Number.parseInt(process.env.GITHUB_RUN_ID, 10)
+    : undefined;
   const githubRepo = process.env.GITHUB_REPOSITORY;
   if (!githubRepo || !githubRepo.includes("/")) {
     throw new Error(`GITHUB_REPOSITORY env var must be set to "owner/repo", got: ${githubRepo}`);
@@ -28,7 +30,7 @@ export async function resolveRun(params: ResolveRunParams): Promise<ResolveRunRe
     const jobs = await params.octokit.rest.actions.listJobsForWorkflowRun({
       owner,
       repo,
-      run_id: parseInt(runId, 10),
+      run_id: runId,
     });
     const matchingJob = jobs.data.jobs.find((job) => job.name === jobName);
     if (matchingJob) {

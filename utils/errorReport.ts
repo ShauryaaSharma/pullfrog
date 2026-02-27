@@ -1,4 +1,5 @@
 import type { ToolState } from "../mcp/server.ts";
+import { getApiUrl } from "./apiUrl.ts";
 import { buildPullfrogFooter } from "./buildPullfrogFooter.ts";
 import { createOctokit, parseRepoContext } from "./github.ts";
 import { getGitHubInstallationToken } from "./token.ts";
@@ -19,12 +20,22 @@ export async function reportErrorToComment(ctx: ReportErrorParams): Promise<void
 
   const repoContext = parseRepoContext();
   const octokit = createOctokit(getGitHubInstallationToken());
-  const runId = process.env.GITHUB_RUN_ID;
+  const runId = process.env.GITHUB_RUN_ID
+    ? Number.parseInt(process.env.GITHUB_RUN_ID, 10)
+    : undefined;
 
-  // build footer with workflow run link
+  const customParts: string[] = [];
+  if (runId) {
+    const apiUrl = getApiUrl();
+    customParts.push(
+      `[Rerun failed job ➔](${apiUrl}/trigger/${repoContext.owner}/${repoContext.name}/${runId}?action=rerun)`
+    );
+  }
+
   const footer = buildPullfrogFooter({
     triggeredBy: true,
     workflowRun: runId ? { owner: repoContext.owner, repo: repoContext.name, runId } : undefined,
+    customParts,
   });
 
   await octokit.rest.issues.updateComment({

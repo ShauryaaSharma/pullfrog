@@ -10,7 +10,7 @@ export interface AgentInfo {
 export interface WorkflowRunFooterInfo {
   owner: string;
   repo: string;
-  runId: string;
+  runId: number;
   /** optional job ID - if provided, will append /job/{jobId} to the workflow run URL */
   jobId?: string | undefined;
 }

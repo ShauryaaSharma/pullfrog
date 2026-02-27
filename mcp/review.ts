@@ -139,12 +139,14 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       }
 
       const footer = buildPullfrogFooter({
-        workflowRun: {
-          owner: ctx.repo.owner,
-          repo: ctx.repo.name,
-          runId: ctx.runId,
-          jobId: ctx.jobId,
-        },
+        workflowRun: ctx.runId
+          ? {
+              owner: ctx.repo.owner,
+              repo: ctx.repo.name,
+              runId: ctx.runId,
+              jobId: ctx.jobId,
+            }
+          : undefined,
         customParts,
       });
 

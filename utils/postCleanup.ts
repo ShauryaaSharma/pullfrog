@@ -1,4 +1,5 @@
 import { LEAPING_INTO_ACTION_PREFIX } from "../mcp/comment.ts";
+import { getApiUrl } from "./apiUrl.ts";
 import { buildPullfrogFooter } from "./buildPullfrogFooter.ts";
 import { log } from "./cli.ts";
 import { createOctokit, parseRepoContext } from "./github.ts";
@@ -15,22 +16,32 @@ const SHOULD_CHECK_REASON = true;
 type BuildErrorCommentBodyParams = {
   owner: string;
   repo: string;
-  runId: string | undefined;
+  runId: number | undefined;
   isCancellation: boolean;
 };
 
 function buildErrorCommentBody(params: BuildErrorCommentBodyParams): string {
-  const workflowRunLink = params.runId
-    ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})`
-    : "workflow run logs";
-  const errorMessage = params.isCancellation
-    ? `This run was cancelled 🛑\n\nThe workflow was cancelled before completion. Please check the ${workflowRunLink} for details.`
-    : `This run croaked 😵\n\nThe workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
+  let errorMessage = params.isCancellation
+    ? `This run was cancelled 🛑\n\nThe workflow was cancelled before completion.`
+    : `This run croaked 😵\n\nThe workflow encountered an error before any progress could be reported.`;
+
+  if (params.runId) {
+    errorMessage += " Please check the link below for details.";
+  }
+
+  const customParts: string[] = [];
+  if (!params.isCancellation && params.runId) {
+    const apiUrl = getApiUrl();
+    customParts.push(
+      `[Rerun failed job ➔](${apiUrl}/trigger/${params.owner}/${params.repo}/${params.runId}?action=rerun)`
+    );
+  }
   const footer = buildPullfrogFooter({
     triggeredBy: true,
     workflowRun: params.runId
       ? { owner: params.owner, repo: params.repo, runId: params.runId }
       : undefined,
+    customParts,
   });
   return `${errorMessage}${footer}`;
 }
@@ -76,16 +87,16 @@ async function validateStuckProgressComment(
 type GetIsCancelledParams = {
   repoContext: ReturnType<typeof parseRepoContext>;
   octokit: ReturnType<typeof createOctokit>;
-  runIdStr: string | undefined;
+  runId: number | undefined;
 };
 
 async function getIsCancelled(params: GetIsCancelledParams): Promise<boolean> {
-  if (!params.runIdStr) return false; // can't check without a run ID — assume failure
+  if (!params.runId) return false; // can't check without a run ID — assume failure
   try {
     const jobsResult = await params.octokit.rest.actions.listJobsForWorkflowRun({
       owner: params.repoContext.owner,
       repo: params.repoContext.name,
-      run_id: Number.parseInt(params.runIdStr, 10),
+      run_id: params.runId,
     });
 
     // find current job by matching GITHUB_JOB env var.
@@ -125,7 +136,9 @@ async function getIsCancelled(params: GetIsCancelledParams): Promise<boolean> {
 export async function runPostCleanup(): Promise<void> {
   log.info("» [post] starting post cleanup");
 
-  const runIdStr = process.env.GITHUB_RUN_ID;
+  const runId = process.env.GITHUB_RUN_ID
+    ? Number.parseInt(process.env.GITHUB_RUN_ID, 10)
+    : undefined;
 
   // resolve prompt input once and use it for both issue number and comment ID extraction
   // only use the object form (JSON payload), not plain string prompts
@@ -159,9 +172,9 @@ export async function runPostCleanup(): Promise<void> {
     const body = buildErrorCommentBody({
       owner: repoContext.owner,
       repo: repoContext.name,
-      runId: runIdStr,
+      runId,
       isCancellation: SHOULD_CHECK_REASON
-        ? await getIsCancelled({ octokit, repoContext, runIdStr })
+        ? await getIsCancelled({ octokit, repoContext, runId })
         : false,
     });
 

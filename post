@@ -37493,6 +37493,22 @@ var schema = ark.schema;
 var define2 = ark.define;
 var declare = ark.declare;
 
+// utils/apiUrl.ts
+function isLocalUrl(url2) {
+  return url2.hostname === "localhost" || url2.hostname === "127.0.0.1";
+}
+function getApiUrl() {
+  const raw = process.env.API_URL || "https://pullfrog.com";
+  const parsed2 = new URL(raw);
+  if (parsed2.protocol !== "https:" && !isLocalUrl(parsed2)) {
+    throw new Error(
+      `API_URL must use https:// (got ${parsed2.protocol}). only localhost is exempt.`
+    );
+  }
+  log.debug(`resolved API_URL: ${raw}`);
+  return raw;
+}
+
 // utils/buildPullfrogFooter.ts
 var PULLFROG_DIVIDER = "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->";
 var FROG_LOGO = `<a href="https://pullfrog.com"><picture><source media="(prefers-color-scheme: dark)" srcset="https://pullfrog.com/logos/frog-white-full-18px.png"><img src="https://pullfrog.com/logos/frog-green-full-18px.png" width="9px" height="9px" style="vertical-align: middle; " alt="Pullfrog"></picture></a>`;
@@ -41419,15 +41435,25 @@ function getJobToken() {
 // utils/postCleanup.ts
 var SHOULD_CHECK_REASON = true;
 function buildErrorCommentBody(params) {
-  const workflowRunLink = params.runId ? `[workflow run logs](https://github.com/${params.owner}/${params.repo}/actions/runs/${params.runId})` : "workflow run logs";
-  const errorMessage = params.isCancellation ? `This run was cancelled \u{1F6D1}
+  let errorMessage = params.isCancellation ? `This run was cancelled \u{1F6D1}
 
-The workflow was cancelled before completion. Please check the ${workflowRunLink} for details.` : `This run croaked \u{1F635}
+The workflow was cancelled before completion.` : `This run croaked \u{1F635}
 
-The workflow encountered an error before any progress could be reported. Please check the ${workflowRunLink} for details.`;
+The workflow encountered an error before any progress could be reported.`;
+  if (params.runId) {
+    errorMessage += " Please check the link below for details.";
+  }
+  const customParts = [];
+  if (!params.isCancellation && params.runId) {
+    const apiUrl = getApiUrl();
+    customParts.push(
+      `[Rerun failed job \u2794](${apiUrl}/trigger/${params.owner}/${params.repo}/${params.runId}?action=rerun)`
+    );
+  }
   const footer = buildPullfrogFooter({
     triggeredBy: true,
-    workflowRun: params.runId ? { owner: params.owner, repo: params.repo, runId: params.runId } : void 0
+    workflowRun: params.runId ? { owner: params.owner, repo: params.repo, runId: params.runId } : void 0,
+    customParts
   });
   return `${errorMessage}${footer}`;
 }
@@ -41457,12 +41483,12 @@ async function validateStuckProgressComment(params) {
   }
 }
 async function getIsCancelled(params) {
-  if (!params.runIdStr) return false;
+  if (!params.runId) return false;
   try {
     const jobsResult = await params.octokit.rest.actions.listJobsForWorkflowRun({
       owner: params.repoContext.owner,
       repo: params.repoContext.name,
-      run_id: Number.parseInt(params.runIdStr, 10)
+      run_id: params.runId
     });
     const currentJobName = process.env.GITHUB_JOB;
     const currentJob = currentJobName ? jobsResult.data.jobs.find(
@@ -41489,7 +41515,7 @@ async function getIsCancelled(params) {
 }
 async function runPostCleanup() {
   log.info("\xBB [post] starting post cleanup");
-  const runIdStr = process.env.GITHUB_RUN_ID;
+  const runId = process.env.GITHUB_RUN_ID ? Number.parseInt(process.env.GITHUB_RUN_ID, 10) : void 0;
   let promptInput = null;
   try {
     const resolved = resolvePromptInput();
@@ -41514,8 +41540,8 @@ async function runPostCleanup() {
     const body = buildErrorCommentBody({
       owner: repoContext.owner,
       repo: repoContext.name,
-      runId: runIdStr,
-      isCancellation: SHOULD_CHECK_REASON ? await getIsCancelled({ octokit, repoContext, runIdStr }) : false
+      runId,
+      isCancellation: SHOULD_CHECK_REASON ? await getIsCancelled({ octokit, repoContext, runId }) : false
     });
     await octokit.rest.issues.updateComment({
       owner: repoContext.owner,

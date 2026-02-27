@@ -25,7 +25,9 @@ async function buildCommentFooter({
   customParts,
 }: BuildCommentFooterParams): Promise<string> {
   const repoContext = parseRepoContext();
-  const runId = process.env.GITHUB_RUN_ID;
+  const runId = process.env.GITHUB_RUN_ID
+    ? Number.parseInt(process.env.GITHUB_RUN_ID, 10)
+    : undefined;
 
   let jobId: string | undefined;
   if (runId && octokit) {
@@ -34,7 +36,7 @@ async function buildCommentFooter({
       const { data: jobs } = await octokit.rest.actions.listJobsForWorkflowRun({
         owner: repoContext.owner,
         repo: repoContext.name,
-        run_id: parseInt(runId, 10),
+        run_id: runId,
       });
       // use the first job's ID available
       jobId = jobs.jobs[0]?.id.toString();
