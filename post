@@ -41312,7 +41312,7 @@ var Effort = type.enumerated("mini", "auto", "max");
 // package.json
 var package_default = {
   name: "@pullfrog/pullfrog",
-  version: "0.0.175",
+  version: "0.0.177",
   type: "module",
   files: [
     "index.js",
