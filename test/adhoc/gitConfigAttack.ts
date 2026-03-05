@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * git config attack test - validates:
@@ -65,7 +65,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
   const setOutputCalled = output !== null;
 

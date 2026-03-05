@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getStructuredOutput } from "../utils.ts";
+import { defineFixture } from "../utils.ts";
 
 /**
  * MCP merge test - validates repo-level MCP servers merge correctly with gh_pullfrog.
@@ -23,7 +23,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
   const correctValue = setOutputCalled && output === secret;
 

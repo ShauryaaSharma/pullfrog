@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
+import { defineFixture, generateAgentUuids } from "../utils.ts";
 
 /**
  * pushDisabled test - validates that push:disabled blocks all write operations.
@@ -31,7 +31,7 @@ Call set_output with a JSON object:
 const { agentEnv } = generateAgentUuids(["PUSH_TEST_MARKER"]);
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   let parsed: Record<string, unknown> = {};

@@ -1,10 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import {
-  buildShellToolPrompt,
-  defineFixture,
-  generateAgentUuids,
-  getStructuredOutput,
-} from "../utils.ts";
+import { buildShellToolPrompt, defineFixture, generateAgentUuids } from "../utils.ts";
 
 /**
  * restricted test - validates shell=restricted environment filtering.
@@ -14,7 +9,7 @@ import {
 const fixture = defineFixture(
   {
     prompt: `This is a test to determine token visibility in shell tool calls.
-    
+
 ${buildShellToolPrompt("echo $PULLFROG_TEST_VALUE")}
 
 Then also run: echo $PULLFROG_TEST_TOKEN
@@ -36,7 +31,7 @@ function validator(result: AgentResult): ValidationCheck[] {
   const filteredMarker = getUuid(result.agent, "PULLFROG_TEST_TOKEN");
 
   // require structured output from set_output tool
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   // non-sensitive env var SHOULD appear in output (agent can read it via shell)

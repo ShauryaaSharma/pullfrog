@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * delegate-file-read — orchestrator delegates a subagent to read a real file
@@ -33,7 +33,7 @@ IMPORTANT: Your subagent prompt must include the exact MCP tool names (gh_pullfr
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
 
   const setOutputCalled = output !== null;

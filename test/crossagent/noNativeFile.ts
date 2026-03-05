@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
+import { defineFixture, generateAgentUuids } from "../utils.ts";
 
 /**
  * noNativeFile test - validates native file read/write tools are disabled.
@@ -32,7 +32,7 @@ const fixture = defineFixture(
 const { agentEnv } = generateAgentUuids(["PULLFROG_NOFILE_TEST"]);
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const fullOutput = result.output;
   const setOutputCalled = output !== null;
 

@@ -1,10 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import {
-  defineFixture,
-  generateTestMarker,
-  getAgentOutput,
-  getStructuredOutput,
-} from "../utils.ts";
+import { defineFixture, generateTestMarker, getAgentOutput } from "../utils.ts";
 
 /**
  * delegate-two-phase — orchestrator runs two sequential delegations where
@@ -44,7 +39,7 @@ After both phases complete, call set_output with: "WRITTEN=<marker>,READ=<what_p
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
   const secret = marker.value;
 

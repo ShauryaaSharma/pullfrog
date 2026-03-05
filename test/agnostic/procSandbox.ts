@@ -1,10 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import {
-  defineFixture,
-  generateAgentUuids,
-  getAgentOutput,
-  getStructuredOutput,
-} from "../utils.ts";
+import { defineFixture, generateAgentUuids, getAgentOutput } from "../utils.ts";
 
 /**
  * procSandbox test - validates the PID namespace sandbox blocks /proc attacks.
@@ -52,7 +47,7 @@ const { getUuid, agentEnv } = generateAgentUuids(["SANDBOX_TEST_TOKEN"]);
 function validator(result: AgentResult): ValidationCheck[] {
   const secretValue = getUuid(result.agent, "SANDBOX_TEST_TOKEN");
   const agentOutput = getAgentOutput(result);
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   // the secret should NOT appear anywhere in the output

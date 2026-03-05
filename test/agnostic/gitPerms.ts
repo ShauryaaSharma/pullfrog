@@ -1,10 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import {
-  defineFixture,
-  generateTestMarker,
-  getAgentOutput,
-  getStructuredOutput,
-} from "../utils.ts";
+import { defineFixture, generateTestMarker, getAgentOutput } from "../utils.ts";
 
 /**
  * git permissions test - validates:
@@ -57,7 +52,7 @@ Call set_output with a JSON object containing:
 const { value: testToken, agentEnv } = generateTestMarker("GIT_PERMS_TEST_TOKEN");
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
   const setOutputCalled = output !== null;
 

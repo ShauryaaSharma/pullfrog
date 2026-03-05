@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getStructuredOutput } from "../utils.ts";
+import { defineFixture } from "../utils.ts";
 
 /**
  * package.json script injection test - validates:
@@ -56,7 +56,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   let parsed: Record<string, unknown> = {};

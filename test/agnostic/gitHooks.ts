@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * git hooks isolation test - validates:
@@ -52,7 +52,7 @@ Call set_output with:
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
   const setOutputCalled = output !== null;
 

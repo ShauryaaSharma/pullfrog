@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentsManifest } from "../external.ts";
@@ -112,6 +112,7 @@ export interface AgentResult {
   agent: string;
   success: boolean;
   output: string;
+  structuredOutput: string | null;
 }
 
 // get agent output with GitHub Actions masking commands filtered out
@@ -123,12 +124,19 @@ export function getAgentOutput(result: AgentResult): string {
     .join("\n");
 }
 
-// get structured output from set_output tool (via ::pullfrog-output:: marker)
-// returns null if no structured output was set by the agent
-export function getStructuredOutput(result: AgentResult): string | null {
-  const match = result.output.match(/::pullfrog-output::([A-Za-z0-9+/=]+)/);
+// parse GITHUB_OUTPUT file format to extract a key's value.
+// format: key<<ghadelimiter_<uuid>\n<value>\nghadelimiter_<uuid>
+function parseGitHubOutputFile(filePath: string, key: string): string | null {
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+  const pattern = new RegExp(`${key}<<(ghadelimiter_[\\w-]+)\\n([\\s\\S]*?)\\n\\1`);
+  const match = content.match(pattern);
   if (!match) return null;
-  return Buffer.from(match[1], "base64").toString();
+  return match[2];
 }
 
 export interface ValidationCheck {
@@ -184,6 +192,9 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
     const testHome = `/tmp/home-${mcpPort}-${Date.now()}`;
     mkdirSync(testHome, { recursive: true });
 
+    const githubOutputFile = join(testHome, "github-output");
+    writeFileSync(githubOutputFile, "");
+
     // write file-based env vars for MCP servers that don't inherit parent env vars
     // (e.g., Cursor CLI doesn't pass env vars to repo-level MCP servers).
     // only explicitly opted-in vars go here -- never secrets.
@@ -203,6 +214,7 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
         AGENT_OVERRIDE: options.agent,
         ...options.env,
         HOME: testHome,
+        GITHUB_OUTPUT: githubOutputFile,
       },
       stdio: "pipe",
       detached: true,
@@ -217,6 +229,7 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
         agent: options.agent,
         success: false,
         output: `spawn error: ${err.message}`,
+        structuredOutput: null,
       });
     });
 
@@ -253,6 +266,7 @@ export async function runAgentStreaming(options: RunStreamingOptions): Promise<A
         agent: options.agent,
         success: code === 0,
         output: Buffer.concat(chunks).toString(),
+        structuredOutput: parseGitHubOutputFile(githubOutputFile, "result"),
       });
     });
   });

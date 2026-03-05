@@ -1,4 +1,5 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
+
 import * as core from "@actions/core";
 import { initToolState, startMcpHttpServer, type ToolState } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
@@ -266,21 +267,15 @@ export async function main(): Promise<MainResult> {
 
     await writeJobSummary(toolState);
 
-    // emit structured output marker for test validation
     if (toolState.output) {
-      log.info(`::pullfrog-output::${Buffer.from(toolState.output).toString("base64")}`);
+      core.setOutput("result", toolState.output);
     }
 
-    const mainResult = await handleAgentResult({
+    return await handleAgentResult({
       result,
       toolState,
       silent: payload.event.silent ?? false,
     });
-
-    return {
-      ...mainResult,
-      result: toolState.output,
-    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "unknown error occurred";
     killTrackedChildren();

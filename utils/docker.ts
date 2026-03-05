@@ -135,6 +135,7 @@ const testEnvAllowList = new Set([
   "GITHUB_API_URL",
   "GITHUB_SERVER_URL",
   "GITHUB_GRAPHQL_URL",
+  "GITHUB_OUTPUT",
 ]);
 
 export type EnvFilterMode = "allowlist" | "passthrough";

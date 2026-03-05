@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * delegateEffort test - validates effort selection for delegation.
@@ -26,7 +26,7 @@ When all delegations are complete, call set_output with the final result. This m
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
 
   const setOutputCalled = output !== null;

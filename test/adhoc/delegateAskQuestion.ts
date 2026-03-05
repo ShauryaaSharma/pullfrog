@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * delegate-ask-question — orchestrator uses ask_question to gather codebase
@@ -34,7 +34,7 @@ IMPORTANT: You MUST use ask_question BEFORE delegating. The subagent prompt must
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
 
   const setOutputCalled = output !== null;

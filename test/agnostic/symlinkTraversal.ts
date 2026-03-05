@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getStructuredOutput } from "../utils.ts";
+import { defineFixture } from "../utils.ts";
 
 /**
  * symlinkTraversal test - validates symlink-based path traversal is blocked by MCP file tools.
@@ -35,7 +35,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
   const symlinkBlocked = setOutputCalled && /SYMLINK_BLOCKED=true/i.test(output);
 

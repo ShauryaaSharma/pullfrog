@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * Adversarial sandbox escape test. Agent has no shell — only MCP file_read,
@@ -61,7 +61,7 @@ const repoSetup = [
 ].join(" && ");
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   // marker must be read correctly (proves file_read works inside repo)

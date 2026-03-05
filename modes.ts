@@ -252,6 +252,38 @@ ${permalinkTip}`,
 Your job is to fix issues THIS PR introduced, not to fix all CI failures. If in doubt about causation, abort and explain rather than making speculative changes.`,
     },
     {
+      name: "ResolveConflicts",
+      description: "Resolve merge conflicts in a PR branch against the base branch",
+      prompt: `Follow these steps to resolve merge conflicts.
+
+1. **CHECKOUT** - Call ${ghPullfrogMcpName}/checkout_pr with the PR number. This fetches the PR branch.
+
+2. **FETCH BASE** - Identify the base branch (usually main or master) and fetch it using ${ghPullfrogMcpName}/git_fetch (e.g., ref: "main").
+
+3. **ATTEMPT MERGE** - Use ${ghPullfrogMcpName}/shell to run \`git merge origin/<base_branch>\`.
+   - If the merge succeeds (exit code 0), the branch is up to date. Push it and you're done.
+   - If the merge fails, you have conflicts to resolve.
+
+4. **IDENTIFY CONFLICTS** - Run \`git status\` to see which files are conflicting (modified by both).
+
+5. **RESOLVE** - For each conflicting file:
+   - Read the file to see the conflict markers (\`<<<<<<<\`, \`=======\`, \`>>>>>>>\`).
+   - Determine the correct content. You may need to keep changes from both sides, or choose one.
+   - Edit the file to apply the resolution and remove the markers.
+
+6. **VERIFY** - ${dependencyInstallationStep}
+   - Run tests/builds to ensure the resolution is correct.
+
+7. **COMMIT** - Once all conflicts are resolved:
+   - \`git add .\`
+   - \`git commit -m "Merge branch <base_branch> into <pr_branch>"\` (or similar).
+
+8. **PUSH** - Call ${ghPullfrogMcpName}/push_branch.
+
+9. **PROGRESS** - ${reportProgressInstruction}
+`,
+    },
+    {
       name: "Task",
       description:
         "General-purpose tasks that don't fit other modes: answering questions, adding comments, labeling, running ad-hoc commands, or any direct request",

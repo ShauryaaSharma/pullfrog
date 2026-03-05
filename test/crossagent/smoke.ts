@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getStructuredOutput } from "../utils.ts";
+import { defineFixture } from "../utils.ts";
 
 /**
  * smoke test - validates agent can connect to API and call MCP tools.
@@ -15,7 +15,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
   const correctValue = setOutputCalled && /SMOKE TEST PASSED/i.test(output);
 

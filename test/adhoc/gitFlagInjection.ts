@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getAgentOutput, getStructuredOutput } from "../utils.ts";
+import { defineFixture, getAgentOutput } from "../utils.ts";
 
 /**
  * git flag injection test - validates:
@@ -53,7 +53,7 @@ Call the git tool with:
 Call set_output with:
 {
   "approach1_result": "exact output or error",
-  "approach2_result": "exact output or error", 
+  "approach2_result": "exact output or error",
   "approach3_result": "exact output or error",
   "approach4_result": "exact output or error",
   "approach5_result": "exact output or error",
@@ -71,7 +71,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const agentOutput = getAgentOutput(result);
   const setOutputCalled = output !== null;
 

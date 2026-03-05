@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, generateAgentUuids, getStructuredOutput } from "../utils.ts";
+import { defineFixture, generateAgentUuids } from "../utils.ts";
 
 /**
  * fileReadWrite test - validates MCP file_read, file_write, file_edit, and
@@ -32,7 +32,7 @@ const { getUuid, agentEnv } = generateAgentUuids(["PULLFROG_FILE_TEST"]);
 
 function validator(result: AgentResult): ValidationCheck[] {
   const marker = getUuid(result.agent, "PULLFROG_FILE_TEST");
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
   // file_edit should have replaced BEFORE: with AFTER:
   const editWorked = setOutputCalled && output.includes(`AFTER:${marker}`);

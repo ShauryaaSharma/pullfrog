@@ -6,7 +6,7 @@ import { execute, tool } from "./shared.ts";
 
 export const SelectModeParams = type({
   mode: type.string.describe(
-    "the name of the mode to select (e.g., 'Build', 'Plan', 'Review', 'IncrementalReview', 'Fix', 'AddressReviews', 'Task')"
+    "the name of the mode to select (e.g., 'Build', 'Plan', 'Review', 'IncrementalReview', 'Fix', 'AddressReviews', 'Task', 'ResolveConflicts')"
   ),
 });
 
@@ -45,6 +45,37 @@ const modeGuidance: Record<string, string> = {
 For simple, well-defined tasks, a single build subagent is sufficient — skip the plan and review phases.
 
 Your subagent receives ONLY what you write. Include file paths, constraints, conventions, and any context from AGENTS.md or the codebase directly in the prompt. Subagents have file ops, shell, and read-only GitHub tools — but NO git/checkout, dependency, GitHub-write, or remote-mutating tools.`,
+
+  ResolveConflicts: `### Checklist
+
+1. **Setup**:
+   - Call \${ghPullfrogMcpName}/checkout_pr to get the PR branch.
+   - Call \${ghPullfrogMcpName}/get_pull_request to identify the base branch (e.g., 'main').
+   - Call \${ghPullfrogMcpName}/git_fetch to fetch the base branch.
+
+2. **Merge Attempt**:
+   - Run \`git merge origin/<base_branch>\` via shell.
+   - If it succeeds automatically: Great! Push via \${ghPullfrogMcpName}/push_branch and report success.
+   - If it fails (conflicts): You must resolve them.
+
+3. **Delegation (if conflicts exist)**:
+   - Run \`git status\` or parse the merge output to find the list of conflicting files.
+   - Delegate to a subagent (or multiple in parallel if many files) to resolve the conflicts.
+   - **Instructions for subagent**:
+     - "You are resolving merge conflicts in these files: [list]."
+     - "For each file: read it, find the conflict markers (<<<<<<<, =======, >>>>>>>), understand the code context, and rewrite the file with the correct resolution. Remove all markers."
+     - "After resolving, verify the file syntax is correct."
+     - "Call \${ghPullfrogMcpName}/set_output with a summary of what you resolved."
+   - Note: Subagents cannot run git commands. They only edit the files.
+
+4. **Finalize**:
+   - After subagents return:
+   - Run a final verification (build/test) to ensure the resolution works.
+   - \`git add .\`
+   - \`git commit -m "Resolve merge conflicts"\`
+   - \${ghPullfrogMcpName}/push_branch
+   - \${ghPullfrogMcpName}/report_progress
+`,
 
   AddressReviews: `### Checklist
 

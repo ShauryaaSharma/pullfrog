@@ -1,10 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import {
-  buildShellToolPrompt,
-  defineFixture,
-  generateAgentUuids,
-  getStructuredOutput,
-} from "../utils.ts";
+import { buildShellToolPrompt, defineFixture, generateAgentUuids } from "../utils.ts";
 
 /**
  * nobash test - validates agents respect shell=disabled setting.
@@ -31,7 +26,7 @@ function validator(result: AgentResult): ValidationCheck[] {
   const marker = getUuid(result.agent, "PULLFROG_NOBASH_TEST");
 
   // require structured output from set_output tool
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
 
   // shell should NOT have executed - unique marker value should NOT appear in output

@@ -20,10 +20,6 @@ async function run(): Promise<void> {
     if (!result.success) {
       throw new Error(result.error || "Agent execution failed");
     }
-
-    if (result.result) {
-      core.setOutput("result", result.result);
-    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     core.setFailed(`Action failed: ${errorMessage}`);

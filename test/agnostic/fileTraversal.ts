@@ -1,5 +1,5 @@
 import type { AgentResult, TestRunnerOptions, ValidationCheck } from "../utils.ts";
-import { defineFixture, getStructuredOutput } from "../utils.ts";
+import { defineFixture } from "../utils.ts";
 
 /**
  * fileTraversal test - validates path traversal is blocked by all MCP file tools.
@@ -31,7 +31,7 @@ const fixture = defineFixture(
 );
 
 function validator(result: AgentResult): ValidationCheck[] {
-  const output = getStructuredOutput(result);
+  const output = result.structuredOutput;
   const setOutputCalled = output !== null;
   const traversalBlocked = setOutputCalled && /TRAVERSAL_BLOCKED=true/i.test(output);
   // extra safety: structured output should not be exactly a hostname (leaked from /etc/hostname)
