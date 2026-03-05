@@ -189,8 +189,10 @@ function isAddressInUse(error: unknown): boolean {
   return message.includes("eaddrinuse") || message.includes("address already in use");
 }
 
+type JsonSchema = Record<string, unknown>;
+
 // tools shared by both orchestrator and subagent servers
-function buildCommonTools(ctx: ToolContext): Tool<any, any>[] {
+function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any, any>[] {
   const tools: Tool<any, any>[] = [
     StartDependencyInstallationTool(ctx),
     AwaitDependencyInstallationTool(ctx),
@@ -213,7 +215,7 @@ function buildCommonTools(ctx: ToolContext): Tool<any, any>[] {
     GitTool(ctx),
     GitFetchTool(ctx),
     UploadFileTool(ctx),
-    SetOutputTool(ctx),
+    SetOutputTool(ctx, outputSchema),
     FileReadTool(ctx),
     FileWriteTool(ctx),
     FileEditTool(ctx),
@@ -234,9 +236,9 @@ function buildCommonTools(ctx: ToolContext): Tool<any, any>[] {
 }
 
 // orchestrator gets common tools + delegation + remote-mutating tools
-function buildOrchestratorTools(ctx: ToolContext): Tool<any, any>[] {
+function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any, any>[] {
   return [
-    ...buildCommonTools(ctx),
+    ...buildCommonTools(ctx, outputSchema),
     ReportProgressTool(ctx),
     SelectModeTool(ctx),
     DelegateTool(ctx),
@@ -353,13 +355,18 @@ async function killBackgroundProcesses(toolState: ToolState): Promise<void> {
   backgroundProcesses.clear();
 }
 
+type McpHttpServerOptions = {
+  outputSchema?: JsonSchema | undefined;
+};
+
 /**
  * Start the orchestrator MCP HTTP server (has all tools including push/PR/delegation).
  */
 export async function startMcpHttpServer(
-  ctx: ToolContext
+  ctx: ToolContext,
+  options?: McpHttpServerOptions
 ): Promise<{ url: string; [Symbol.asyncDispose]: () => Promise<void> }> {
-  const tools = buildOrchestratorTools(ctx);
+  const tools = buildOrchestratorTools(ctx, options?.outputSchema);
   const startResult = await selectMcpPort(ctx, tools);
 
   return {

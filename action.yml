@@ -30,6 +30,9 @@ inputs:
   shell:
     description: "Shell permission: disabled, restricted (filters secrets from env vars), or enabled. Public repos default to restricted for security; private repos default to enabled."
     required: false
+  output_schema:
+    description: "JSON Schema (draft-07) for structured output validation. When provided, the action output becomes required and must conform to this schema."
+    required: false
   token:
     description: "GitHub-provided token with job-scoped permissions. Do not set this unless you know what you are doing."
     required: false
@@ -37,7 +40,7 @@ inputs:
 
 outputs:
   result:
-    description: "It's set when the prompt explicitly requests it. It can be used to capture an actionable output for the next step in the workflow."
+    description: "It's set when the prompt explicitly requests it and is required when output_schema is provided; use it to capture actionable output for the next workflow step."
 
 runs:
   using: "node24"

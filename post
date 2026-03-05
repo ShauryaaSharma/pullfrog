@@ -41348,6 +41348,7 @@ var package_default = {
     "@opencode-ai/sdk": "^1.0.143",
     "@standard-schema/spec": "1.0.0",
     "@toon-format/toon": "^1.0.0",
+    ajv: "^8.18.0",
     arkregex: "0.0.5",
     arktype: "2.1.29",
     dotenv: "^17.2.3",
@@ -41445,7 +41446,8 @@ var Inputs = type({
   "search?": ToolPermissionInput.or("undefined"),
   "push?": PushPermissionInput.or("undefined"),
   "shell?": ShellPermissionInput.or("undefined"),
-  "cwd?": type.string.or("undefined")
+  "cwd?": type.string.or("undefined"),
+  "output_schema?": type.string.or("undefined")
 });
 function resolvePromptInput() {
   const prompt = core3.getInput("prompt", { required: true });

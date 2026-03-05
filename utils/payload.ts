@@ -54,6 +54,7 @@ export const Inputs = type({
   "push?": PushPermissionInput.or("undefined"),
   "shell?": ShellPermissionInput.or("undefined"),
   "cwd?": type.string.or("undefined"),
+  "output_schema?": type.string.or("undefined"),
 });
 
 export type Inputs = typeof Inputs.infer;

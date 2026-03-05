@@ -10,6 +10,7 @@ interface InstructionsContext {
   payload: ResolvedPayload;
   repo: RunContextData["repo"];
   modes: Mode[];
+  outputSchema?: Record<string, unknown> | undefined;
 }
 
 function buildRuntimeContext(ctx: InstructionsContext): string {
@@ -118,13 +119,21 @@ Use the \`${ghPullfrogMcpName}\` MCP file tools for all file operations. Do NOT 
 All file tools enforce repository-scoped access and prevent modifications to .git/.`;
 }
 
-function getStandaloneModeInstructions(trigger: string): string {
+function getStandaloneModeInstructions(
+  trigger: string,
+  outputSchema?: Record<string, unknown> | undefined
+): string {
   if (trigger !== "unknown") {
     return "";
   }
+
+  const outputRequirement = outputSchema
+    ? `**REQUIRED structured output:** You MUST call \`${ghPullfrogMcpName}/set_output\` before finishing. The tool expects a structured object matching a JSON Schema — inspect its parameter schema to see the exact shape. Omitting this call or providing non-conforming output will fail the action.`
+    : `When you complete your task, call \`${ghPullfrogMcpName}/set_output\` with the main result of your work (generated content, summary of changes, analysis results, etc.). This makes it available as a GitHub Action output named \`result\` for subsequent workflow steps to consume. When in doubt, prefer calling \`set_output\`—unused outputs are harmless, but missing outputs may break downstream steps.`;
+
   return `### Standalone mode
 
-You are running as a step in a user-defined CI workflow. When you complete your task, call \`${ghPullfrogMcpName}/set_output\` with the main result of your work (generated content, summary of changes, analysis results, etc.). This makes it available as a GitHub Action output named \`result\` for subsequent workflow steps to consume.`;
+You are running as a step in a user-defined CI workflow. ${outputRequirement}`;
 }
 
 // shared system prompt body used by both orchestrator and subagent instructions.
@@ -134,6 +143,7 @@ interface SystemPromptContext {
   trigger: string;
   priorityOrder: string;
   taskSection: string;
+  outputSchema?: Record<string, unknown> | undefined;
 }
 
 function buildSystemPrompt(ctx: SystemPromptContext): string {
@@ -192,7 +202,7 @@ ${getShellInstructions(ctx.shell)}
 
 ${getFileInstructions()}
 
-${getStandaloneModeInstructions(ctx.trigger)}
+${getStandaloneModeInstructions(ctx.trigger, ctx.outputSchema)}
 
 ## Workflow
 
@@ -406,6 +416,7 @@ If the task clearly requires no work, skip delegation. Call \`${ghPullfrogMcpNam
     trigger: ctx.payload.event.trigger,
     priorityOrder: orchestratorPriorityOrder,
     taskSection: orchestratorTaskSection,
+    outputSchema: ctx.outputSchema,
   });
 
   const contextSections = buildContextSections({

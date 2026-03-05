@@ -1,4 +1,5 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
+import * as core from "@actions/core";
 import { initToolState, startMcpHttpServer, type ToolState } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
 import {
@@ -35,6 +36,23 @@ export interface MainResult {
   output?: string | undefined;
   error?: string | undefined;
   result?: string | undefined;
+}
+
+function resolveOutputSchema(): Record<string, unknown> | undefined {
+  const raw = core.getInput("output_schema");
+  if (!raw) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`invalid output_schema: not valid JSON`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`invalid output_schema: must be a JSON object`);
+  }
+  log.info("» structured output schema provided — output will be required");
+  return parsed as Record<string, unknown>;
 }
 
 async function writeJobSummary(toolState: ToolState): Promise<void> {
@@ -151,6 +169,8 @@ export async function main(): Promise<MainResult> {
 
     const modes = [...computeModes(), ...runContext.repoSettings.modes];
 
+    const outputSchema = resolveOutputSchema();
+
     // mcpServerUrl and tmpdir are set after server starts — delegate tool reads them at call time
     const toolContext = {
       repo: runContext.repo,
@@ -169,7 +189,7 @@ export async function main(): Promise<MainResult> {
       mcpServerUrl: "",
       tmpdir,
     };
-    await using mcpHttpServer = await startMcpHttpServer(toolContext);
+    await using mcpHttpServer = await startMcpHttpServer(toolContext, { outputSchema });
     toolContext.mcpServerUrl = mcpHttpServer.url;
     log.info(`» MCP server started at ${mcpHttpServer.url}`);
     timer.checkpoint("mcpServer");
@@ -178,6 +198,7 @@ export async function main(): Promise<MainResult> {
       payload,
       repo: runContext.repo,
       modes,
+      outputSchema,
     });
     // log instructions as soon as they are fully resolved
     const logParts = [
@@ -234,6 +255,13 @@ export async function main(): Promise<MainResult> {
     // accumulate top-level agent usage
     if (result.usage) {
       toolState.usageEntries.push(result.usage);
+    }
+
+    // validate this before writing job summary to avoid masking the error
+    if (outputSchema && !toolState.output) {
+      throw new Error(
+        "output_schema was provided but agent did not call set_output — structured output is required"
+      );
     }
 
     await writeJobSummary(toolState);
