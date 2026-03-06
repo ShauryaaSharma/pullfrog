@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import { encode as toonEncode } from "@toon-format/toon";
 import type { FastMCP, Tool } from "fastmcp";
 import { formatJsonValue, log } from "../utils/cli.ts";
@@ -141,27 +141,34 @@ function sanitizeSchema(schema: any): any {
 }
 
 /**
- * Wrap a StandardSchemaV1 to intercept toJsonSchema() calls and sanitize the output
+ * Wrap a schema to sanitize its JSON Schema output for Gemini/OpenCode compatibility.
+ * xsschema calls ~standard.jsonSchema.input() for schemas that implement StandardJSONSchemaV1
+ * (i.e. have ~standard.jsonSchema), which includes arktype and our AJV-backed JSON schema wrapper.
+ * Schemas without ~standard.jsonSchema are returned unchanged (sanitization skipped).
  */
-function wrapSchema(schema: StandardSchemaV1<any>): StandardSchemaV1<any> {
-  const originalToJsonSchema = (schema as any).toJsonSchema?.bind(schema);
+function wrapSchema(
+  schema: StandardSchemaV1<any> & {
+    "~standard": Partial<StandardJSONSchemaV1<any>["~standard"]>;
+  }
+): StandardSchemaV1<any> {
+  const standardProps = schema["~standard"];
 
-  if (!originalToJsonSchema) {
+  if (!("jsonSchema" in standardProps)) {
     return schema;
   }
 
-  // create a proxy that intercepts toJsonSchema calls
-  return new Proxy(schema, {
-    get(target, prop) {
-      if (prop === "toJsonSchema") {
-        return () => {
-          const originalSchema = originalToJsonSchema();
-          return sanitizeSchema(originalSchema);
-        };
-      }
-      return (target as any)[prop];
+  const jsonSchema = standardProps.jsonSchema;
+  const wrapped: StandardSchemaV1<any> & StandardJSONSchemaV1<any> = {
+    ...schema,
+    "~standard": {
+      ...standardProps,
+      jsonSchema: {
+        input: (options) => sanitizeSchema(jsonSchema.input(options)),
+        output: (options) => sanitizeSchema(jsonSchema.output(options)),
+      },
     },
-  }) as StandardSchemaV1<any>;
+  };
+  return wrapped;
 }
 
 /**
@@ -172,7 +179,6 @@ function sanitizeTool<T extends Tool<any, any>>(tool: T): T {
     return tool;
   }
 
-  // wrap the schema object to intercept toJsonSchema() calls
   const wrappedSchema = wrapSchema(tool.parameters);
 
   // create a new tool with wrapped schema

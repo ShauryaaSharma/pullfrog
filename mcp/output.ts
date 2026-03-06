@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import { Ajv } from "ajv";
 import { type } from "arktype";
 import { log } from "../utils/cli.ts";
@@ -14,16 +14,18 @@ type JsonSchema = Record<string, unknown>;
 function jsonSchemaToStandardSchema({
   $schema: _,
   ...jsonSchema
-}: JsonSchema): StandardSchemaV1<any> & { toJsonSchema(): JsonSchema } {
+}: JsonSchema): StandardJSONSchemaV1<any> & StandardSchemaV1<any> {
   const ajv = new Ajv();
   const validate = ajv.compile(jsonSchema);
 
   return {
     "~standard": {
       version: 1,
-      // xsschema (used by fastmcp) hardcodes supported vendors instead of duck-typing toJsonSchema().
-      // "arktype" works because its converter is just `(schema) => schema.toJsonSchema()`.
-      vendor: "arktype",
+      vendor: "json-schema",
+      jsonSchema: {
+        input: () => jsonSchema,
+        output: () => jsonSchema,
+      },
       validate(input: unknown) {
         if (validate(input)) {
           return { value: input };
@@ -35,9 +37,6 @@ function jsonSchemaToStandardSchema({
           })),
         };
       },
-    },
-    toJsonSchema() {
-      return jsonSchema;
     },
   };
 }
