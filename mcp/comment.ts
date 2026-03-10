@@ -1,10 +1,42 @@
 import { type } from "arktype";
 import type { Agent } from "../agents/index.ts";
+import { apiFetch } from "../utils/apiFetch.ts";
 import { getApiUrl } from "../utils/apiUrl.ts";
 import { buildPullfrogFooter, stripExistingFooter } from "../utils/buildPullfrogFooter.ts";
+import { log } from "../utils/cli.ts";
 import { type OctokitWithPlugins, parseRepoContext } from "../utils/github.ts";
+import { retry } from "../utils/retry.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
+
+/** PATCH workflow-run with plan comment node_id so plan revisions can update that comment in place. */
+async function updatePlanCommentId(ctx: ToolContext, planCommentNodeId: string): Promise<void> {
+  if (ctx.runId === undefined || !ctx.apiToken) return;
+  try {
+    await retry(
+      async () => {
+        const response = await apiFetch({
+          path: `/api/workflow-run/${ctx.runId}`,
+          method: "PATCH",
+          headers: {
+            authorization: `Bearer ${ctx.apiToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ planCommentNodeId }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) throw new Error(`PATCH workflow-run: ${response.status}`);
+      },
+      {
+        maxAttempts: 3,
+        delayMs: 2000,
+        label: "updatePlanCommentId",
+      }
+    );
+  } catch (error) {
+    log.warning(`updatePlanCommentId exhausted retries: ${error}`);
+  }
+}
 
 /**
  * The prefix text for the initial "leaping into action" comment.
@@ -86,15 +118,21 @@ export async function addFooter(ctx: AddFooterCtx, body: string): Promise<string
 export const Comment = type({
   issueNumber: type.number.describe("the issue number to comment on"),
   body: type.string.describe("the comment body content"),
+  type: type
+    .enumerated("Plan", "Comment")
+    .describe(
+      "Plan: record this comment as the plan for this run (use report_progress for progress/plan updates on the current run). Comment: regular comment (default)."
+    )
+    .optional(),
 });
 
 export function CreateCommentTool(ctx: ToolContext) {
   return tool({
     name: "create_issue_comment",
     description:
-      "Create a comment on a GitHub issue. NOTE: Do NOT use this for progress updates or status summaries - use report_progress instead, which updates the existing progress comment.",
+      "Create a comment on a GitHub issue. For progress/plan updates on the current run use report_progress instead. Use type: 'Plan' only when creating a standalone plan comment to record as this run's plan.",
     parameters: Comment,
-    execute: execute(async ({ issueNumber, body }) => {
+    execute: execute(async ({ issueNumber, body, type: commentType }) => {
       const bodyWithFooter = await addFooter(ctx, body);
 
       const result = await ctx.octokit.rest.issues.createComment({
@@ -103,6 +141,10 @@ export function CreateCommentTool(ctx: ToolContext) {
         issue_number: issueNumber,
         body: bodyWithFooter,
       });
+
+      if (commentType === "Plan" && result.data.node_id) {
+        await updatePlanCommentId(ctx, result.data.node_id);
+      }
 
       return {
         success: true,
@@ -147,6 +189,9 @@ export function EditCommentTool(ctx: ToolContext) {
 
 export const ReportProgress = type({
   body: type.string.describe("the progress update content to share"),
+  "target_plan_comment?": type("boolean").describe(
+    "when true, update the existing plan comment (from select_mode lookup) instead of the progress comment; use when editing an existing plan"
+  ),
 });
 
 /**
@@ -161,13 +206,14 @@ export const ReportProgress = type({
  */
 export async function reportProgress(
   ctx: ToolContext,
-  { body }: { body: string }
+  params: { body: string; target_plan_comment?: boolean }
 ): Promise<{
   commentId?: number;
   url?: string;
   body: string;
   action: "created" | "updated" | "skipped";
 }> {
+  const { body, target_plan_comment } = params;
   // always track the body for job summary
   ctx.toolState.lastProgressBody = body;
 
@@ -177,13 +223,49 @@ export async function reportProgress(
     return { body, action: "skipped" };
   }
 
-  const existingCommentId = ctx.toolState.progressCommentId;
-  // Explicit issue_number from the payload wins here
-  // This is especially important for manually triggered workflows from trigger links.
-  // Without this, the created "Implement plan" would be created for the wrong issue
-  // if the run happens to research other issues (and thus overwrite the toolState.issueNumber).
   const issueNumber = ctx.payload.event.issue_number ?? ctx.toolState.issueNumber;
   const isPlanMode = ctx.toolState.selectedMode === "Plan";
+
+  // when editing existing plan: update the plan comment from tool state (set by select_mode)
+  if (target_plan_comment === true && ctx.toolState.existingPlanCommentId === undefined) {
+    log.warning("target_plan_comment requested but no existingPlanCommentId in tool state");
+  }
+  if (target_plan_comment === true && ctx.toolState.existingPlanCommentId !== undefined) {
+    const commentId = ctx.toolState.existingPlanCommentId;
+    const customParts =
+      isPlanMode && issueNumber !== undefined
+        ? [buildImplementPlanLink(ctx.repo.owner, ctx.repo.name, issueNumber, commentId)]
+        : undefined;
+    const bodyWithoutFooter = stripExistingFooter(body);
+    const footer = await buildCommentFooter({
+      agent: ctx.agent,
+      octokit: ctx.octokit,
+      customParts,
+    });
+    const bodyWithFooter = `${bodyWithoutFooter}${footer}`;
+
+    const result = await ctx.octokit.rest.issues.updateComment({
+      owner: ctx.repo.owner,
+      repo: ctx.repo.name,
+      comment_id: commentId,
+      body: bodyWithFooter,
+    });
+
+    ctx.toolState.wasUpdated = true;
+
+    if (isPlanMode && result.data.node_id) {
+      await updatePlanCommentId(ctx, result.data.node_id);
+    }
+
+    return {
+      commentId: result.data.id,
+      url: result.data.html_url,
+      body: result.data.body || "",
+      action: "updated",
+    };
+  }
+
+  const existingCommentId = ctx.toolState.progressCommentId;
 
   // if we already have a progress comment, update it
   if (existingCommentId) {
@@ -208,6 +290,10 @@ export async function reportProgress(
     });
 
     ctx.toolState.wasUpdated = true;
+
+    if (isPlanMode && result.data.node_id) {
+      await updatePlanCommentId(ctx, result.data.node_id);
+    }
 
     return {
       commentId: result.data.id,
@@ -264,6 +350,10 @@ export async function reportProgress(
       body: bodyWithPlanLink,
     });
 
+    if (updateResult.data.node_id) {
+      await updatePlanCommentId(ctx, updateResult.data.node_id);
+    }
+
     return {
       commentId: updateResult.data.id,
       url: updateResult.data.html_url,
@@ -286,8 +376,12 @@ export function ReportProgressTool(ctx: ToolContext) {
     description:
       "Share progress on the associated GitHub issue/PR. Call this to post updates as you work. The first call creates a comment, subsequent calls update it. Use this throughout your work to keep stakeholders informed.",
     parameters: ReportProgress,
-    execute: execute(async ({ body }) => {
-      const result = await reportProgress(ctx, { body });
+    execute: execute(async (params) => {
+      const reportParams: { body: string; target_plan_comment?: boolean } = { body: params.body };
+      if (params.target_plan_comment !== undefined) {
+        reportParams.target_plan_comment = params.target_plan_comment;
+      }
+      const result = await reportProgress(ctx, reportParams);
 
       if (result.action === "skipped") {
         // no-op: no comment target, but progress is still tracked for job summary

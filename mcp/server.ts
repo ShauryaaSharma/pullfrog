@@ -64,6 +64,9 @@ export interface ToolState {
   progressCommentId: number | null | undefined;
   lastProgressBody?: string;
   wasUpdated?: boolean;
+  // set by select_mode when Plan + issue_number and plan-comment API returns existing plan (for report_progress target_plan_comment)
+  existingPlanCommentId?: number;
+  previousPlanBody?: string;
   output?: string;
   usageEntries: AgentUsage[];
 }

@@ -41258,14 +41258,20 @@ function createOctokit(token) {
 var LEAPING_INTO_ACTION_PREFIX = "Leaping into action";
 var Comment = type({
   issueNumber: type.number.describe("the issue number to comment on"),
-  body: type.string.describe("the comment body content")
+  body: type.string.describe("the comment body content"),
+  type: type.enumerated("Plan", "Comment").describe(
+    "Plan: record this comment as the plan for this run (use report_progress for progress/plan updates on the current run). Comment: regular comment (default)."
+  ).optional()
 });
 var EditComment = type({
   commentId: type.number.describe("the ID of the comment to edit"),
   body: type.string.describe("the new comment body content")
 });
 var ReportProgress = type({
-  body: type.string.describe("the progress update content to share")
+  body: type.string.describe("the progress update content to share"),
+  "target_plan_comment?": type("boolean").describe(
+    "when true, update the existing plan comment (from select_mode lookup) instead of the progress comment; use when editing an existing plan"
+  )
 });
 var ReplyToReviewComment = type({
   pull_number: type.number.describe("the pull request number"),
@@ -41312,7 +41318,7 @@ var Effort = type.enumerated("mini", "auto", "max");
 // package.json
 var package_default = {
   name: "@pullfrog/pullfrog",
-  version: "0.0.177",
+  version: "0.0.178",
   type: "module",
   files: [
     "index.js",

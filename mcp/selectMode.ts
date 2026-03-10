@@ -1,12 +1,16 @@
 import { type } from "arktype";
 import { ghPullfrogMcpName } from "../external.ts";
 import type { Mode } from "../modes.ts";
+import { apiFetch } from "../utils/apiFetch.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 export const SelectModeParams = type({
   mode: type.string.describe(
     "the name of the mode to select (e.g., 'Build', 'Plan', 'Review', 'IncrementalReview', 'Fix', 'AddressReviews', 'Task', 'ResolveConflicts')"
+  ),
+  "issue_number?": type("number").describe(
+    "optional issue number; when provided with Plan mode, used to look up an existing plan comment for this issue (edit vs create)"
   ),
 });
 
@@ -168,6 +172,22 @@ Use max effort for thorough reviews.`,
 
 Use mini or auto effort.`,
 
+  PlanEdit: `### Checklist (editing existing plan)
+
+An existing plan comment was found for this issue. Update that comment with the revised plan — do not create a new plan comment.
+
+1. Use \`previousPlanBody\` from this response as the plan to revise; do not call \`get_issue\` or \`get_issue_comments\`.
+2. When delegating, the subagent prompt must contain:
+   - the current plan (\`previousPlanBody\`) and the user's revision request
+   - relevant codebase context (file paths, architecture notes from AGENTS.md)
+   - instructions to produce a structured plan with clear milestones and to return the full plan via \`${ghPullfrogMcpName}/set_output\` as markdown (do not create plan files or save to disk)
+3. After the subagent completes, call \`${ghPullfrogMcpName}/report_progress\` with the full plan text and \`{ target_plan_comment: true }\` so the revised plan updates the existing plan comment (not the progress comment).
+4. Then post a short note to the progress comment (e.g. "Plan has been updated in the comment above.") via \`${ghPullfrogMcpName}/report_progress\` so it is not left as "Leaping...".
+
+### Effort
+
+Use mini or auto effort.`,
+
   Fix: `### Checklist
 
 1. Before delegating, checkout the PR branch yourself via \`${ghPullfrogMcpName}/checkout_pr\` — subagents have no git/checkout tools.
@@ -214,13 +234,35 @@ type OrchestratorGuidance = {
   orchestratorGuidance: string;
 };
 
-function buildOrchestratorGuidance(mode: Mode): OrchestratorGuidance {
-  const guidance = modeGuidance[mode.name] ?? "";
+function buildOrchestratorGuidance(mode: Mode, overrideGuidance?: string): OrchestratorGuidance {
+  const guidance = overrideGuidance ?? modeGuidance[mode.name] ?? "";
   return {
     modeName: mode.name,
     description: mode.description,
     orchestratorGuidance: guidance,
   };
+}
+
+// matches the API response for /repo/[owner]/[repo]/issue/[issueNumber]/plan-comment
+export type PlanCommentResponsePayload = { error: string } | { commentId: number; body: string };
+
+async function fetchExistingPlanComment(
+  ctx: ToolContext,
+  issueNumber: number
+): Promise<Extract<PlanCommentResponsePayload, { commentId: number }> | null> {
+  if (!ctx.apiToken) return null;
+  try {
+    const response = await apiFetch({
+      path: `/api/repo/${ctx.repo.owner}/${ctx.repo.name}/issue/${issueNumber}/plan-comment`,
+      method: "GET",
+      headers: { authorization: `Bearer ${ctx.apiToken}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = (await response.json()) as PlanCommentResponsePayload;
+    return response.ok && "commentId" in data ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 export function SelectModeTool(ctx: ToolContext) {
@@ -236,12 +278,14 @@ export function SelectModeTool(ctx: ToolContext) {
         };
       }
 
-      const selectedMode = resolveMode(ctx.modes, params.mode);
+      const modeName = params.mode;
+
+      const selectedMode = resolveMode(ctx.modes, modeName);
 
       if (!selectedMode) {
         const availableModes = ctx.modes.map((m) => m.name).join(", ");
         return {
-          error: `mode "${params.mode}" not found. available modes: ${availableModes}`,
+          error: `mode "${modeName}" not found. available modes: ${availableModes}`,
           availableModes: ctx.modes.map((m) => ({
             name: m.name,
             description: m.description,
@@ -250,6 +294,22 @@ export function SelectModeTool(ctx: ToolContext) {
       }
 
       ctx.toolState.selectedMode = selectedMode.name;
+
+      if (selectedMode.name === "Plan") {
+        const issueNumber = params.issue_number ?? ctx.payload.event.issue_number;
+        if (issueNumber !== undefined) {
+          const existing = await fetchExistingPlanComment(ctx, issueNumber);
+          if (existing !== null) {
+            ctx.toolState.existingPlanCommentId = existing.commentId;
+            ctx.toolState.previousPlanBody = existing.body;
+            return {
+              ...buildOrchestratorGuidance(selectedMode, modeGuidance.PlanEdit),
+              previousPlanBody: existing.body,
+            };
+          }
+        }
+      }
+
       return buildOrchestratorGuidance(selectedMode);
     }),
   });
