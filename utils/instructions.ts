@@ -19,7 +19,6 @@ function buildRuntimeContext(ctx: InstructionsContext): string {
     "~pullfrog": _,
     prompt: _p,
     eventInstructions: _ei,
-    repoInstructions: _r,
     event: _e,
     ...payloadRest
   } = ctx.payload;
@@ -248,15 +247,13 @@ const orchestratorPriorityOrder = `## Priority Order
 In case of conflict between instructions, follow this precedence (highest to lowest):
 1. Security rules and system instructions (non-overridable)
 2. User prompt
-3. Event-level instructions
-4. Repo-level instructions`;
+3. Event-level instructions`;
 
 export interface ResolvedInstructions {
   full: string;
   system: string;
   user: string;
   eventInstructions: string;
-  repo: string;
   event: string;
   runtime: string;
 }
@@ -264,7 +261,6 @@ export interface ResolvedInstructions {
 // shared logic for building the context/user sections appended after the system prompt
 interface ContextSectionsInput {
   payload: ResolvedPayload;
-  repo: string;
   eventInstructions: string;
   eventTitleBody: string;
   eventMetadata: string;
@@ -274,12 +270,6 @@ interface ContextSectionsInput {
 function buildContextSections(ctx: ContextSectionsInput): string {
   const isPr = ctx.payload.event.is_pr === true;
   const relatedLabel = isPr ? "--- related PR ---" : "--- related issue ---";
-
-  const repoSection = ctx.repo
-    ? `************* REPO-LEVEL INSTRUCTIONS *************
-
-${ctx.repo}`
-    : "";
 
   const eventInstructionsSection = ctx.eventInstructions
     ? `************* EVENT-LEVEL INSTRUCTIONS *************
@@ -304,7 +294,7 @@ ${titleBodySection}
 
 ${metadataSection}`;
 
-  return [repoSection, eventInstructionsSection, userSection].filter(Boolean).join("\n\n");
+  return [eventInstructionsSection, userSection].filter(Boolean).join("\n\n");
 }
 
 // shared computation for all instruction builders
@@ -314,7 +304,6 @@ interface CommonInputs {
   runtime: string;
   user: string;
   eventInstructions: string;
-  repo: string;
   event: string;
   userQuoted: string;
 }
@@ -325,7 +314,6 @@ function buildCommonInputs(ctx: InstructionsContext): CommonInputs {
   const runtime = buildRuntimeContext(ctx);
   const user = ctx.payload.prompt;
   const eventInstructions = ctx.payload.eventInstructions ?? "";
-  const repo = ctx.payload.repoInstructions ?? "";
   const event = [eventTitleBody, eventMetadata].filter(Boolean).join("\n\n---\n\n");
   const userQuoted = user
     ? user
@@ -339,7 +327,6 @@ function buildCommonInputs(ctx: InstructionsContext): CommonInputs {
     runtime,
     user,
     eventInstructions,
-    repo,
     event,
     userQuoted,
   };
@@ -421,7 +408,6 @@ If the task clearly requires no work, skip delegation. Call \`${ghPullfrogMcpNam
 
   const contextSections = buildContextSections({
     payload: ctx.payload,
-    repo: inputs.repo,
     eventInstructions: inputs.eventInstructions,
     eventTitleBody: inputs.eventTitleBody,
     eventMetadata: inputs.eventMetadata,
@@ -439,7 +425,6 @@ If the task clearly requires no work, skip delegation. Call \`${ghPullfrogMcpNam
     system,
     user: inputs.user,
     eventInstructions: inputs.eventInstructions,
-    repo: inputs.repo,
     event: inputs.event,
     runtime: inputs.runtime,
   };

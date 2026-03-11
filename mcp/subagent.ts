@@ -114,7 +114,6 @@ export function buildSubagentInstructions(
     system: subagentSystemPreamble,
     user: params.instructions,
     eventInstructions: "",
-    repo: "",
     event: "",
     runtime: "",
   };
@@ -169,6 +168,10 @@ export async function runSubagent(params: RunSubagentParams): Promise<RunSubagen
       completeSubagent({ ctx: params.ctx, subagent: params.subagent, success: false });
       return { success: false, error: errorMessage };
     } finally {
+      // propagate review metadata to orchestrator (even on failure — the review is on GitHub)
+      if (mcpServer.toolState.review) {
+        params.ctx.toolState.review = mcpServer.toolState.review;
+      }
       await mcpServer.stop();
     }
   });

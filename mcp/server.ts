@@ -44,6 +44,8 @@ export interface ToolState {
   pushDest?: StoredPushDest;
   // issue or PR number (same number space in GitHub)
   issueNumber?: number;
+  // PR HEAD sha at checkout time — used to detect new commits pushed during a review
+  checkoutSha?: string;
   selectedMode?: string;
   // per-subagent lifecycle tracking (keyed by subagent uuid)
   subagents: Map<string, SubagentState>;
@@ -54,6 +56,7 @@ export interface ToolState {
   review?: {
     id: number;
     nodeId: string;
+    reviewedSha: string | undefined;
   };
   dependencyInstallation?: {
     status: "not_started" | "in_progress" | "completed" | "failed";
@@ -103,6 +106,7 @@ export interface ToolContext {
   modes: Mode[];
   postCheckoutScript: string | null;
   prApproveEnabled: boolean;
+  modeInstructions: Record<string, string>;
   toolState: ToolState;
   runId: number | undefined;
   jobId: string | undefined;
@@ -384,6 +388,7 @@ export async function startMcpHttpServer(
 export type ManagedMcpServer = {
   url: string;
   stop: () => Promise<void>;
+  toolState: ToolState;
 };
 
 type StartSubagentMcpServerParams = {
@@ -412,5 +417,9 @@ export async function startSubagentMcpServer(
   const subagentCtx: ToolContext = { ...params.ctx, toolState: subagentToolState };
   const tools = buildSubagentTools(subagentCtx);
   const startResult = await selectMcpPort(subagentCtx, tools);
-  return { url: startResult.url, stop: () => startResult.server.stop() };
+  return {
+    url: startResult.url,
+    stop: () => startResult.server.stop(),
+    toolState: subagentToolState,
+  };
 }

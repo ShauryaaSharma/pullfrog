@@ -153,9 +153,9 @@ Each task in the \`tasks\` array should include:
 
 After all tasks complete, consolidate into a **single** review:
 - merge the \`comments\` arrays from all subagent outputs
-- if subagents found actionable issues: submit one \`${ghPullfrogMcpName}/create_pull_request_review\` with \`approved: false\`, the merged comments, and a unified summary body
-- if no subagent found actionable issues: submit with \`approved: true\` and a brief positive summary (no inline comments)
-- call \`${ghPullfrogMcpName}/report_progress\` with the summary
+- if subagents found actionable issues: submit one \`${ghPullfrogMcpName}/create_pull_request_review\` with \`approved: false\`, the merged comments, and an **empty body** (do NOT include a summary — inline comments speak for themselves and a top-level comment clutters the PR conversation on every re-review)
+- if no subagent found actionable issues: submit with \`approved: true\` and an **empty body** (no inline comments, no summary)
+- do NOT call \`${ghPullfrogMcpName}/report_progress\` — incremental reviews should be silent
 
 Use max effort for thorough reviews.`,
 
@@ -234,8 +234,21 @@ type OrchestratorGuidance = {
   orchestratorGuidance: string;
 };
 
-function buildOrchestratorGuidance(mode: Mode, overrideGuidance?: string): OrchestratorGuidance {
-  const guidance = overrideGuidance ?? modeGuidance[mode.name] ?? "";
+const modeInstructionParent: Record<string, string> = {
+  IncrementalReview: "Review",
+  Fix: "Build",
+};
+
+type BuildGuidanceOpts = {
+  modeInstructions?: Record<string, string>;
+  overrideGuidance?: string;
+};
+
+function buildOrchestratorGuidance(mode: Mode, opts: BuildGuidanceOpts = {}): OrchestratorGuidance {
+  const hardcoded = opts.overrideGuidance ?? modeGuidance[mode.name] ?? mode.prompt ?? "";
+  const lookupKey = modeInstructionParent[mode.name] ?? mode.name;
+  const userInstructions = opts.modeInstructions?.[lookupKey] ?? "";
+  const guidance = [hardcoded, userInstructions].filter(Boolean).join("\n\n");
   return {
     modeName: mode.name,
     description: mode.description,
@@ -295,6 +308,8 @@ export function SelectModeTool(ctx: ToolContext) {
 
       ctx.toolState.selectedMode = selectedMode.name;
 
+      const guidanceOpts: BuildGuidanceOpts = { modeInstructions: ctx.modeInstructions };
+
       if (selectedMode.name === "Plan") {
         const issueNumber = params.issue_number ?? ctx.payload.event.issue_number;
         if (issueNumber !== undefined) {
@@ -303,14 +318,17 @@ export function SelectModeTool(ctx: ToolContext) {
             ctx.toolState.existingPlanCommentId = existing.commentId;
             ctx.toolState.previousPlanBody = existing.body;
             return {
-              ...buildOrchestratorGuidance(selectedMode, modeGuidance.PlanEdit),
+              ...buildOrchestratorGuidance(selectedMode, {
+                ...guidanceOpts,
+                overrideGuidance: modeGuidance.PlanEdit,
+              }),
               previousPlanBody: existing.body,
             };
           }
         }
       }
 
-      return buildOrchestratorGuidance(selectedMode);
+      return buildOrchestratorGuidance(selectedMode, guidanceOpts);
     }),
   });
 }

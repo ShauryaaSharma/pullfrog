@@ -14,12 +14,12 @@ export interface RepoSettings {
   modes: Mode[];
   setupScript: string | null;
   postCheckoutScript: string | null;
-  repoInstructions: string;
   web: ToolPermission;
   search: ToolPermission;
   push: PushPermission;
   shell: ShellPermission;
   prApproveEnabled: boolean;
+  modeInstructions: Record<string, string>;
 }
 
 export interface RunContext {
@@ -32,12 +32,12 @@ const defaultSettings: RepoSettings = {
   modes: [],
   setupScript: null,
   postCheckoutScript: null,
-  repoInstructions: "",
   web: "enabled",
   search: "enabled",
   push: "restricted",
   shell: "restricted",
   prApproveEnabled: false,
+  modeInstructions: {},
 };
 
 const defaultRunContext: RunContext = {

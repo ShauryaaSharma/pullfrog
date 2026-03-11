@@ -288,8 +288,6 @@ export interface WriteablePayload {
   triggerer?: string | undefined;
   /** event-level instructions for this trigger type (flag-expanded server-side) */
   eventInstructions?: string | undefined;
-  /** repo-level instructions (flag-expanded server-side) */
-  repoInstructions?: string | undefined;
   /** event data from webhook payload - discriminated union based on trigger field */
   event: PayloadEvent;
   /** effort level for model selection (mini, auto, max) - defaults to "auto" */

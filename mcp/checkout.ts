@@ -355,7 +355,6 @@ export function CheckoutPrTool(ctx: ToolContext) {
         postCheckoutScript: ctx.postCheckoutScript,
       });
 
-      // fetch PR metadata to return result
       const pr = await ctx.octokit.rest.pulls.get({
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
@@ -366,6 +365,8 @@ export function CheckoutPrTool(ctx: ToolContext) {
       if (!headRepo) {
         throw new Error(`PR #${pull_number} source repository was deleted`);
       }
+
+      ctx.toolState.checkoutSha = pr.data.head.sha;
 
       // fetch PR files and format with line numbers
       const formatResult = await fetchAndFormatPrDiff({

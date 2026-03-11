@@ -4,7 +4,6 @@ import { apiFetch } from "../utils/apiFetch.ts";
 import { getApiUrl } from "../utils/apiUrl.ts";
 import { buildPullfrogFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/cli.ts";
-import { deleteProgressComment } from "./comment.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -81,7 +80,6 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
         event = "COMMENT";
       }
 
-      // compose the request
       const params: RestEndpointMethodTypes["pulls"]["createReview"]["parameters"] = {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
@@ -91,7 +89,6 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       if (commit_id) {
         params.commit_id = commit_id;
       } else {
-        // get the PR to determine the head commit if commit_id not provided
         const pr = await ctx.octokit.rest.pulls.get({
           owner: ctx.repo.owner,
           repo: ctx.repo.name,
@@ -101,9 +98,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       }
       if (comments.length > 0) {
         type ReviewComment = (typeof params.comments & {})[number];
-        // convert comments to the format expected by GitHub API
         params.comments = comments.map((comment) => {
-          // build comment body with suggestion block if provided
           let commentBody = comment.body || "";
           if (comment.suggestion !== undefined) {
             const suggestionBlock = "```suggestion\n" + comment.suggestion + "\n```";
@@ -139,12 +134,49 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       const reviewId = result.data.id;
       const reviewNodeId = result.data.node_id;
 
-      // report review node ID to server so the in-flight dedup check
-      // in the synchronize webhook handler sees this run as "review submitted."
-      // awaited (not fire-and-forget) to guarantee the signal lands before
-      // any subsequent push's webhook checks for in-flight runs.
-      await reportReviewNodeId(ctx, reviewNodeId);
-      await deleteProgressComment(ctx);
+      // reviewedSha = what the agent actually reviewed (checkout SHA), not the
+      // submission anchor (current HEAD). this ensures postReviewCleanup dispatches
+      // a follow-up if the agent doesn't handle new commits inline.
+      const actuallyReviewedSha = ctx.toolState.checkoutSha ?? params.commit_id;
+      ctx.toolState.review = {
+        id: reviewId,
+        nodeId: reviewNodeId,
+        reviewedSha: actuallyReviewedSha,
+      };
+
+      // detect commits pushed since checkout and guide the agent to review them
+      // inline instead of dispatching a separate workflow run
+      const headMovedDuringReview =
+        ctx.toolState.checkoutSha && params.commit_id !== ctx.toolState.checkoutSha;
+
+      if (headMovedDuringReview) {
+        const fromSha = ctx.toolState.checkoutSha!;
+        const toSha = params.commit_id!;
+        // advance checkoutSha so the next review submission tracks correctly
+        ctx.toolState.checkoutSha = toSha;
+
+        log.info(
+          `new commits detected during review: ${fromSha.slice(0, 7)}..${toSha.slice(0, 7)}`
+        );
+
+        return {
+          success: true,
+          reviewId,
+          html_url: result.data.html_url,
+          state: result.data.state,
+          user: result.data.user?.login,
+          submitted_at: result.data.submitted_at,
+          newCommits: {
+            from: fromSha,
+            to: toSha,
+            instructions:
+              `New commits were pushed while you were reviewing. ` +
+              `Run \`git pull\` to fetch them, then review the incremental diff ` +
+              `with \`git diff ${fromSha}...HEAD\`. Submit another review covering ` +
+              `only the new changes. Do not repeat feedback from your previous review.`,
+          },
+        };
+      }
 
       return {
         success: true,
@@ -202,7 +234,11 @@ async function createAndSubmitWithFooter(
   });
 }
 
-async function reportReviewNodeId(ctx: ToolContext, reviewNodeId: string): Promise<void> {
+/**
+ * report the review node ID to the server so the WorkflowRun is marked as "review submitted".
+ * exported for use in main.ts post-agent cleanup.
+ */
+export async function reportReviewNodeId(ctx: ToolContext, reviewNodeId: string): Promise<void> {
   for (let remaining = 2; remaining >= 0; remaining--) {
     try {
       const response = await apiFetch({

@@ -1,7 +1,12 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
 
 import * as core from "@actions/core";
-import { initToolState, startMcpHttpServer, type ToolState } from "./mcp/server.ts";
+import {
+  initToolState,
+  startMcpHttpServer,
+  type ToolContext,
+  type ToolState,
+} from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
 import {
   type ActivityTimeout,
@@ -21,6 +26,7 @@ import { resolveInstructions } from "./utils/instructions.ts";
 import { executeLifecycleHook } from "./utils/lifecycle.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
 import { resolvePayload, resolvePromptInput } from "./utils/payload.ts";
+import { postReviewCleanup } from "./utils/reviewCleanup.ts";
 import { handleAgentResult } from "./utils/run.ts";
 import { resolveRunContextData } from "./utils/runContextData.ts";
 import { createTempDirectory, setupGit } from "./utils/setup.ts";
@@ -112,6 +118,7 @@ export async function main(): Promise<MainResult> {
   const octokit = createOctokit(tokenRef.mcpToken);
 
   const runInfo = await resolveRun({ octokit });
+  let toolContext: ToolContext | undefined;
 
   try {
     // enable debug logging if --debug flag was used
@@ -173,7 +180,7 @@ export async function main(): Promise<MainResult> {
     const outputSchema = resolveOutputSchema();
 
     // mcpServerUrl and tmpdir are set after server starts — delegate tool reads them at call time
-    const toolContext = {
+    toolContext = {
       repo: runContext.repo,
       payload,
       octokit,
@@ -184,6 +191,7 @@ export async function main(): Promise<MainResult> {
       modes,
       postCheckoutScript: runContext.repoSettings.postCheckoutScript,
       prApproveEnabled: runContext.repoSettings.prApproveEnabled,
+      modeInstructions: runContext.repoSettings.modeInstructions,
       toolState,
       runId: runInfo.runId,
       jobId: runInfo.jobId,
@@ -265,9 +273,20 @@ export async function main(): Promise<MainResult> {
       );
     }
 
+    // post-agent review cleanup: reportReviewNodeId → follow-up dispatch → delete progress comment.
+    // runs after the agent exits so ordering is architecturally guaranteed (no LLM involvement).
+    // best-effort: cleanup failures must not turn a successful agent run into a failure.
+    if (toolContext) {
+      await postReviewCleanup(toolContext).catch((error) => {
+        log.debug(`post-review cleanup failed: ${error}`);
+      });
+    }
+
     await writeJobSummary(toolState);
 
+    // emit structured output marker for test validation
     if (toolState.output) {
+      log.info(`::pullfrog-output::${Buffer.from(toolState.output).toString("base64")}`);
       core.setOutput("result", toolState.output);
     }
 
@@ -291,6 +310,14 @@ export async function main(): Promise<MainResult> {
     } catch {
       // error reporting failed, but don't let it mask the original error
     }
+
+    // best-effort review cleanup (e.g., agent timed out after submitting a review)
+    if (toolContext) {
+      await postReviewCleanup(toolContext).catch((error) => {
+        log.debug(`post-review cleanup failed: ${error}`);
+      });
+    }
+
     return {
       success: false,
       error: errorMessage,

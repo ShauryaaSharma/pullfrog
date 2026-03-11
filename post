@@ -41436,7 +41436,6 @@ var JsonPayload = type({
   prompt: "string",
   "triggerer?": "string | undefined",
   "eventInstructions?": "string",
-  "repoInstructions?": "string",
   "event?": "object",
   "effort?": Effort.or("undefined"),
   "timeout?": "string | undefined",
