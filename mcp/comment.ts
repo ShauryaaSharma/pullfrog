@@ -9,8 +9,14 @@ import { retry } from "../utils/retry.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
-/** PATCH workflow-run with plan comment node_id so plan revisions can update that comment in place. */
-async function updatePlanCommentId(ctx: ToolContext, planCommentNodeId: string): Promise<void> {
+type CommentNodeIdField = "planCommentNodeId" | "summaryCommentNodeId";
+
+/** PATCH workflow-run with a comment node_id so future runs can update that comment in place. */
+export async function updateCommentNodeId(
+  ctx: ToolContext,
+  field: CommentNodeIdField,
+  nodeId: string
+): Promise<void> {
   if (ctx.runId === undefined || !ctx.apiToken) return;
   try {
     await retry(
@@ -22,7 +28,7 @@ async function updatePlanCommentId(ctx: ToolContext, planCommentNodeId: string):
             authorization: `Bearer ${ctx.apiToken}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ planCommentNodeId }),
+          body: JSON.stringify({ [field]: nodeId }),
           signal: AbortSignal.timeout(10_000),
         });
         if (!response.ok) throw new Error(`PATCH workflow-run: ${response.status}`);
@@ -30,11 +36,11 @@ async function updatePlanCommentId(ctx: ToolContext, planCommentNodeId: string):
       {
         maxAttempts: 3,
         delayMs: 2000,
-        label: "updatePlanCommentId",
+        label: `updateCommentNodeId(${field})`,
       }
     );
   } catch (error) {
-    log.warning(`updatePlanCommentId exhausted retries: ${error}`);
+    log.warning(`updateCommentNodeId(${field}) exhausted retries: ${error}`);
   }
 }
 
@@ -107,9 +113,9 @@ export const Comment = type({
   issueNumber: type.number.describe("the issue number to comment on"),
   body: type.string.describe("the comment body content"),
   type: type
-    .enumerated("Plan", "Comment")
+    .enumerated("Plan", "Summary", "Comment")
     .describe(
-      "Plan: record this comment as the plan for this run (use report_progress for progress/plan updates on the current run). Comment: regular comment (default)."
+      "Plan: record as the plan for this run. Summary: record as the PR summary comment (one per PR, updated in place). Comment: regular comment (default)."
     )
     .optional(),
 });
@@ -118,7 +124,7 @@ export function CreateCommentTool(ctx: ToolContext) {
   return tool({
     name: "create_issue_comment",
     description:
-      "Create a comment on a GitHub issue. For progress/plan updates on the current run use report_progress instead. Use type: 'Plan' only when creating a standalone plan comment to record as this run's plan.",
+      "Create a comment on a GitHub issue or PR. For progress/plan updates on the current run use report_progress instead. Use type: 'Plan' for plan comments, type: 'Summary' for PR summary comments.",
     parameters: Comment,
     execute: execute(async ({ issueNumber, body, type: commentType }) => {
       const bodyWithFooter = await addFooter(ctx, body);
@@ -131,7 +137,10 @@ export function CreateCommentTool(ctx: ToolContext) {
       });
 
       if (commentType === "Plan" && result.data.node_id) {
-        await updatePlanCommentId(ctx, result.data.node_id);
+        await updateCommentNodeId(ctx, "planCommentNodeId", result.data.node_id);
+      }
+      if (commentType === "Summary" && result.data.node_id) {
+        await updateCommentNodeId(ctx, "summaryCommentNodeId", result.data.node_id);
       }
 
       return {
@@ -241,7 +250,7 @@ export async function reportProgress(
     ctx.toolState.wasUpdated = true;
 
     if (isPlanMode && result.data.node_id) {
-      await updatePlanCommentId(ctx, result.data.node_id);
+      await updateCommentNodeId(ctx, "planCommentNodeId", result.data.node_id);
     }
 
     return {
@@ -278,7 +287,7 @@ export async function reportProgress(
     ctx.toolState.wasUpdated = true;
 
     if (isPlanMode && result.data.node_id) {
-      await updatePlanCommentId(ctx, result.data.node_id);
+      await updateCommentNodeId(ctx, "planCommentNodeId", result.data.node_id);
     }
 
     return {
@@ -336,7 +345,7 @@ export async function reportProgress(
     });
 
     if (updateResult.data.node_id) {
-      await updatePlanCommentId(ctx, updateResult.data.node_id);
+      await updateCommentNodeId(ctx, "planCommentNodeId", updateResult.data.node_id);
     }
 
     return {

@@ -312,6 +312,22 @@ Your job is to fix issues THIS PR introduced, not to fix all CI failures. If in 
 
 Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.`,
     },
+    {
+      name: "Summarize",
+      description:
+        "Summarize a PR with a structured comment that is updated in place on subsequent pushes",
+      prompt: `Follow these steps.
+
+1. **CHECKOUT** - Call ${ghPullfrogMcpName}/checkout_pr with the PR number to get PR metadata and diffPath.
+
+2. **ANALYZE** - Read the diff file. Use the TOC to selectively read relevant sections — do not read the entire file unless the PR is small.
+
+3. **SUMMARIZE** - Write a structured summary following the format from EVENT INSTRUCTIONS. If no format instructions are provided, produce a concise summary with a TL;DR, key changes list, and per-change sections with before/after framing.
+
+4. **POST** - Call ${ghPullfrogMcpName}/create_issue_comment with type: 'Summary' and the summary body.
+
+${permalinkTip}`,
+    },
   ];
 }
 

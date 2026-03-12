@@ -41256,8 +41256,8 @@ var LEAPING_INTO_ACTION_PREFIX = "Leaping into action";
 var Comment = type({
   issueNumber: type.number.describe("the issue number to comment on"),
   body: type.string.describe("the comment body content"),
-  type: type.enumerated("Plan", "Comment").describe(
-    "Plan: record this comment as the plan for this run (use report_progress for progress/plan updates on the current run). Comment: regular comment (default)."
+  type: type.enumerated("Plan", "Summary", "Comment").describe(
+    "Plan: record as the plan for this run. Summary: record as the PR summary comment (one per PR, updated in place). Comment: regular comment (default)."
   ).optional()
 });
 var EditComment = type({

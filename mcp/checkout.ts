@@ -334,6 +334,44 @@ export async function checkoutPrBranch(
   };
 }
 
+type DeepenForBeforeShaParams = {
+  gitToken: string;
+  beforeSha: string;
+};
+
+function deepenForBeforeSha(params: DeepenForBeforeShaParams): void {
+  const isShallow =
+    $("git", ["rev-parse", "--is-shallow-repository"], { log: false }).trim() === "true";
+  if (!isShallow) return;
+
+  const maxIterations = 10;
+  for (let i = 0; i < maxIterations; i++) {
+    try {
+      $("git", ["cat-file", "-t", params.beforeSha], { log: false });
+      log.debug(`» before_sha ${params.beforeSha.slice(0, 7)} is now reachable`);
+      return;
+    } catch {
+      // not reachable yet, deepen
+    }
+
+    log.debug(
+      `» deepening by 50 to reach before_sha ${params.beforeSha.slice(0, 7)} (attempt ${i + 1}/${maxIterations})`
+    );
+    try {
+      $git("fetch", ["--deepen=50", "--no-tags", "origin"], {
+        token: params.gitToken,
+      });
+    } catch {
+      log.debug(`» deepen for before_sha failed (force-push may have rewritten history)`);
+      return;
+    }
+  }
+
+  log.debug(
+    `» before_sha ${params.beforeSha.slice(0, 7)} not reachable after ${maxIterations * 50} commits`
+  );
+}
+
 export function CheckoutPrTool(ctx: ToolContext) {
   return tool({
     name: "checkout_pr",
@@ -351,6 +389,16 @@ export function CheckoutPrTool(ctx: ToolContext) {
         shell: ctx.payload.shell,
         postCheckoutScript: ctx.postCheckoutScript,
       });
+
+      // for incremental review/rereview: deepen the clone to include before_sha
+      // so `git diff before_sha...HEAD` works without the agent needing to fetch manually
+      const event = ctx.payload.event;
+      if ("before_sha" in event && event.before_sha) {
+        deepenForBeforeSha({
+          gitToken: ctx.gitToken,
+          beforeSha: event.before_sha,
+        });
+      }
 
       const pr = await ctx.octokit.rest.pulls.get({
         owner: ctx.repo.owner,

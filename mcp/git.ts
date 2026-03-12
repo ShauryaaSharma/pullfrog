@@ -218,6 +218,8 @@ const NOSHELL_BLOCKED_SUBCOMMANDS: Record<string, string> = {
 // (avoids false positives like --exclude matching --exec)
 const NOSHELL_BLOCKED_ARGS = ["--exec", "--extcmd", "--upload-pack", "--receive-pack"];
 
+const COLLAPSE_THRESHOLD = 200;
+
 // SECURITY: subcommand must match [a-z][a-z0-9-]* to reject flags passed as the subcommand.
 // this blocks injection of global git options like -c, -C, --exec-path, --config-env, etc.
 //
@@ -269,6 +271,15 @@ export function GitTool(ctx: ToolContext) {
       }
 
       const output = $("git", [subcommand, ...args], { log: false });
+      const lineCount = output.split("\n").length;
+      if (lineCount > COLLAPSE_THRESHOLD) {
+        log.group(`git ${subcommand} output (${lineCount} lines)`, () => {
+          log.info(output);
+        });
+      } else if (output) {
+        log.info(output);
+      }
+
       return { success: true, output };
     }),
   });

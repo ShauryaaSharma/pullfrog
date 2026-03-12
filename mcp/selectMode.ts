@@ -7,7 +7,7 @@ import { execute, tool } from "./shared.ts";
 
 export const SelectModeParams = type({
   mode: type.string.describe(
-    "the name of the mode to select (e.g., 'Build', 'Plan', 'Review', 'IncrementalReview', 'Fix', 'AddressReviews', 'Task', 'ResolveConflicts')"
+    "the name of the mode to select (e.g., 'Build', 'Plan', 'Review', 'IncrementalReview', 'Fix', 'AddressReviews', 'Task', 'ResolveConflicts', 'Summarize')"
   ),
   "issue_number?": type("number").describe(
     "optional issue number; when provided with Plan mode, used to look up an existing plan comment for this issue (edit vs create)"
@@ -185,6 +185,38 @@ An existing plan comment was found for this issue. Update that comment with the 
    - call \`${ghPullfrogMcpName}/report_progress\` with results
    - if the task involved code changes, push via \`${ghPullfrogMcpName}/push_branch\` and create a PR via \`${ghPullfrogMcpName}/create_pull_request\`
    - if the task involved labeling, commenting, or other GitHub operations, perform those directly`,
+
+  Summarize: `### Checklist
+
+1. Checkout the PR via \`${ghPullfrogMcpName}/checkout_pr\` — this returns PR metadata and a \`diffPath\`.
+2. Delegate a subagent to analyze the diff and produce a structured summary. Include in its prompt:
+   - the diff file path
+   - PR metadata (title, file count, commit count, base/head branches)
+   - format instructions from EVENT INSTRUCTIONS (if any); otherwise use default format: TL;DR, key changes list, per-change sections with before/after framing
+   - instruct it to use the TOC to selectively read relevant diff sections, not the entire file
+   - instruct it to return the full summary markdown via \`${ghPullfrogMcpName}/set_output\`
+3. After the subagent completes, call \`${ghPullfrogMcpName}/create_issue_comment\` with \`type: "Summary"\` and the summary body.
+
+### Effort
+
+Use mini or auto effort.`,
+
+  SummaryUpdate: `### Checklist (updating existing summary)
+
+An existing summary comment was found for this PR. Update it rather than creating a new one.
+
+1. Use \`previousSummaryBody\` from this response as the current summary to revise.
+2. Checkout the PR via \`${ghPullfrogMcpName}/checkout_pr\` — this returns PR metadata and a \`diffPath\`.
+3. Delegate a subagent with:
+   - the diff file path and PR metadata
+   - the existing summary body (\`previousSummaryBody\`) so it can update rather than rewrite from scratch
+   - format instructions from EVENT INSTRUCTIONS (if any)
+   - instruct it to produce an updated summary reflecting the current state of the PR and return via \`${ghPullfrogMcpName}/set_output\`
+4. After the subagent completes, call \`${ghPullfrogMcpName}/edit_issue_comment\` with \`commentId: existingSummaryCommentId\` (from this response) and the updated summary body.
+
+### Effort
+
+Use mini or auto effort.`,
 };
 
 type OrchestratorGuidance = {
@@ -218,6 +250,9 @@ function buildOrchestratorGuidance(mode: Mode, opts: BuildGuidanceOpts = {}): Or
 // matches the API response for /repo/[owner]/[repo]/issue/[issueNumber]/plan-comment
 export type PlanCommentResponsePayload = { error: string } | { commentId: number; body: string };
 
+// matches the API response for /repo/[owner]/[repo]/pr/[prNumber]/summary-comment
+export type SummaryCommentResponsePayload = { error: string } | { commentId: number; body: string };
+
 async function fetchExistingPlanComment(
   ctx: ToolContext,
   issueNumber: number
@@ -231,6 +266,25 @@ async function fetchExistingPlanComment(
       signal: AbortSignal.timeout(10_000),
     });
     const data = (await response.json()) as PlanCommentResponsePayload;
+    return response.ok && "commentId" in data ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchExistingSummaryComment(
+  ctx: ToolContext,
+  prNumber: number
+): Promise<Extract<SummaryCommentResponsePayload, { commentId: number }> | null> {
+  if (!ctx.apiToken) return null;
+  try {
+    const response = await apiFetch({
+      path: `/api/repo/${ctx.repo.owner}/${ctx.repo.name}/pr/${prNumber}/summary-comment`,
+      method: "GET",
+      headers: { authorization: `Bearer ${ctx.apiToken}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = (await response.json()) as SummaryCommentResponsePayload;
     return response.ok && "commentId" in data ? data : null;
   } catch {
     return null;
@@ -282,6 +336,24 @@ export function SelectModeTool(ctx: ToolContext) {
                 overrideGuidance: modeGuidance.PlanEdit,
               }),
               previousPlanBody: existing.body,
+            };
+          }
+        }
+      }
+
+      if (selectedMode.name === "Summarize") {
+        const prNumber = ctx.payload.event.issue_number;
+        if (prNumber !== undefined) {
+          const existing = await fetchExistingSummaryComment(ctx, prNumber);
+          if (existing !== null) {
+            ctx.toolState.existingSummaryCommentId = existing.commentId;
+            return {
+              ...buildOrchestratorGuidance(selectedMode, {
+                ...guidanceOpts,
+                overrideGuidance: modeGuidance.SummaryUpdate,
+              }),
+              existingSummaryCommentId: existing.commentId,
+              previousSummaryBody: existing.body,
             };
           }
         }

@@ -85,6 +85,8 @@ export interface ToolState {
   // set by select_mode when Plan + issue_number and plan-comment API returns existing plan (for report_progress target_plan_comment)
   existingPlanCommentId?: number;
   previousPlanBody?: string;
+  // set by select_mode when Summarize mode and summary-comment API returns existing summary
+  existingSummaryCommentId?: number;
   output?: string;
   usageEntries: AgentUsage[];
 }
