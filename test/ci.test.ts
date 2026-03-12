@@ -63,6 +63,7 @@ const dynamicAgentsExpression = "$" + "{{ fromJSON(needs.changes.outputs.agents)
 const expectedAgentEnvVars = [
   "GITHUB_TOKEN",
   ...new Set(Object.values(providers).flatMap((p) => [...p.envVars])),
+  "PULLFROG_MODEL",
   "OPENCODE_MODEL",
 ].sort();
 

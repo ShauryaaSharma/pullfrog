@@ -117,6 +117,7 @@ const testEnvAllowList = new Set([
   "ANTHROPIC_API_KEY",
   "GEMINI_API_KEY",
   "GOOGLE_GENERATIVE_AI_API_KEY",
+  "PULLFROG_MODEL",
   "OPENCODE_MODEL",
   "LOG_LEVEL",
   "DEBUG",

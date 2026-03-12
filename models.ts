@@ -173,6 +173,7 @@ export const providers = {
         displayName: "GPT Codex Mini",
         resolve: "openrouter/openai/gpt-5.1-codex-mini",
       },
+      "o4-mini": { displayName: "O4 Mini", resolve: "openrouter/openai/o4-mini" },
       "gemini-pro": {
         displayName: "Gemini Pro",
         resolve: "openrouter/google/gemini-3.1-pro-preview",

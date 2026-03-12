@@ -75,7 +75,7 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
 // ── model resolution (see wiki/model-resolution.md) ─────────────────────────────
 //
 // priority:
-//   1. OPENCODE_MODEL env var (explicit override)
+//   1. PULLFROG_MODEL or OPENCODE_MODEL env var (explicit override)
 //   2. explicit slug from repo config / payload
 //   3. auto-select: `opencode models` → recommended aliases first, then secondary
 //   4. undefined → let OpenCode decide
@@ -106,10 +106,11 @@ function resolveOpenCodeModel(ctx: {
   cliPath: string;
   modelSlug?: string | undefined;
 }): string | undefined {
-  // 1. explicit env var override
-  const envModel = process.env.OPENCODE_MODEL?.trim();
+  // 1. explicit env var override (PULLFROG_MODEL takes precedence over OPENCODE_MODEL)
+  const envModel = process.env.PULLFROG_MODEL?.trim() || process.env.OPENCODE_MODEL?.trim();
   if (envModel) {
-    log.info(`» model: ${envModel} (override via OPENCODE_MODEL)`);
+    const source = process.env.PULLFROG_MODEL?.trim() ? "PULLFROG_MODEL" : "OPENCODE_MODEL";
+    log.info(`» model: ${envModel} (override via ${source})`);
     return envModel;
   }
 
