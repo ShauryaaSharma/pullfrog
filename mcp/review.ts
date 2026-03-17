@@ -84,6 +84,18 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       // set issue context (PRs are issues)
       ctx.toolState.issueNumber = pull_number;
 
+      // skip empty reviews (no body, no inline comments) — nothing to post
+      if (!body && comments.length === 0) {
+        log.info(
+          "review has no body and no inline comments — skipping submission (no issues found)"
+        );
+        return {
+          success: true,
+          skipped: true,
+          reason: "no issues found — nothing to post",
+        };
+      }
+
       // enforce prApproveEnabled: downgrade APPROVE to COMMENT if disabled
       let event: "APPROVE" | "COMMENT" = approved ? "APPROVE" : "COMMENT";
       if (event === "APPROVE" && !ctx.prApproveEnabled) {
