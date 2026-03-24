@@ -31,8 +31,8 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2026-03-18",
   },
   "xai": {
-    "modelId": "grok-4-1-fast-non-reasoning",
-    "releaseDate": "2025-11-19",
+    "modelId": "grok-4.20-multi-agent-0309",
+    "releaseDate": "2026-03-09",
   },
 }
 `;
