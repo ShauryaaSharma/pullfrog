@@ -16,8 +16,10 @@ export interface ModelAlias {
   displayName: string;
   /** concrete models.dev specifier, e.g. "anthropic/claude-opus-4-6" */
   resolve: string;
+  /** full models.dev specifier for the OpenRouter equivalent (undefined for free models) */
+  openRouterResolve: string | undefined;
   /** top-tier pick for this provider — preferred during auto-select */
-  recommended: boolean;
+  preferred: boolean;
   /** whether this alias is free and requires no API key */
   isFree: boolean;
 }
@@ -26,7 +28,9 @@ interface ModelDef {
   displayName: string;
   /** concrete models.dev specifier, e.g. "anthropic/claude-opus-4-6" */
   resolve: string;
-  recommended?: boolean;
+  /** full models.dev specifier for the OpenRouter equivalent, e.g. "openrouter/anthropic/claude-opus-4.6" */
+  openRouterResolve?: string;
+  preferred?: boolean;
   envVars?: readonly string[];
   isFree?: boolean;
 }
@@ -51,19 +55,40 @@ export const providers = {
       "claude-opus": {
         displayName: "Claude Opus",
         resolve: "anthropic/claude-opus-4-6",
-        recommended: true,
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.6",
+        preferred: true,
       },
-      "claude-sonnet": { displayName: "Claude Sonnet", resolve: "anthropic/claude-sonnet-4-6" },
-      "claude-haiku": { displayName: "Claude Haiku", resolve: "anthropic/claude-haiku-4-5" },
+      "claude-sonnet": {
+        displayName: "Claude Sonnet",
+        resolve: "anthropic/claude-sonnet-4-6",
+        openRouterResolve: "openrouter/anthropic/claude-sonnet-4.6",
+      },
+      "claude-haiku": {
+        displayName: "Claude Haiku",
+        resolve: "anthropic/claude-haiku-4-5",
+        openRouterResolve: "openrouter/anthropic/claude-haiku-4.5",
+      },
     },
   }),
   openai: provider({
     displayName: "OpenAI",
     envVars: ["OPENAI_API_KEY"],
     models: {
-      "gpt-codex": { displayName: "GPT Codex", resolve: "openai/gpt-5.3-codex", recommended: true },
-      "gpt-codex-mini": { displayName: "GPT Codex Mini", resolve: "openai/codex-mini-latest" },
-      o3: { displayName: "O3", resolve: "openai/o3" },
+      "gpt-codex": {
+        displayName: "GPT Codex",
+        resolve: "openai/gpt-5.3-codex",
+        openRouterResolve: "openrouter/openai/gpt-5.3-codex",
+        preferred: true,
+      },
+      "gpt-codex-mini": {
+        displayName: "GPT Codex Mini",
+        resolve: "openai/codex-mini-latest",
+        openRouterResolve: "openrouter/openai/gpt-5.1-codex-mini",
+      },
+      o3: {
+        displayName: "O3",
+        resolve: "openai/o3",
+      },
     },
   }),
   google: provider({
@@ -73,18 +98,36 @@ export const providers = {
       "gemini-pro": {
         displayName: "Gemini Pro",
         resolve: "google/gemini-3.1-pro-preview",
-        recommended: true,
+        openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
+        preferred: true,
       },
-      "gemini-flash": { displayName: "Gemini Flash", resolve: "google/gemini-3-flash-preview" },
+      "gemini-flash": {
+        displayName: "Gemini Flash",
+        resolve: "google/gemini-3-flash-preview",
+        openRouterResolve: "openrouter/google/gemini-3-flash-preview",
+      },
     },
   }),
   xai: provider({
     displayName: "xAI",
     envVars: ["XAI_API_KEY"],
     models: {
-      grok: { displayName: "Grok", resolve: "xai/grok-4", recommended: true },
-      "grok-fast": { displayName: "Grok Fast", resolve: "xai/grok-4-fast" },
-      "grok-code-fast": { displayName: "Grok Code Fast", resolve: "xai/grok-code-fast-1" },
+      grok: {
+        displayName: "Grok",
+        resolve: "xai/grok-4",
+        openRouterResolve: "openrouter/x-ai/grok-4",
+        preferred: true,
+      },
+      "grok-fast": {
+        displayName: "Grok Fast",
+        resolve: "xai/grok-4-fast",
+        openRouterResolve: "openrouter/x-ai/grok-4-fast",
+      },
+      "grok-code-fast": {
+        displayName: "Grok Code Fast",
+        resolve: "xai/grok-code-fast-1",
+        openRouterResolve: "openrouter/x-ai/grok-code-fast-1",
+      },
     },
   }),
   deepseek: provider({
@@ -94,16 +137,26 @@ export const providers = {
       "deepseek-reasoner": {
         displayName: "DeepSeek Reasoner",
         resolve: "deepseek/deepseek-reasoner",
-        recommended: true,
+        openRouterResolve: "openrouter/deepseek/deepseek-v3.2",
+        preferred: true,
       },
-      "deepseek-chat": { displayName: "DeepSeek Chat", resolve: "deepseek/deepseek-chat" },
+      "deepseek-chat": {
+        displayName: "DeepSeek Chat",
+        resolve: "deepseek/deepseek-chat",
+        openRouterResolve: "openrouter/deepseek/deepseek-v3.2",
+      },
     },
   }),
   moonshotai: provider({
     displayName: "Moonshot AI",
     envVars: ["MOONSHOT_API_KEY"],
     models: {
-      "kimi-k2": { displayName: "Kimi K2", resolve: "moonshotai/kimi-k2.5", recommended: true },
+      "kimi-k2": {
+        displayName: "Kimi K2",
+        resolve: "moonshotai/kimi-k2.5",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.5",
+        preferred: true,
+      },
     },
   }),
   opencode: provider({
@@ -113,18 +166,50 @@ export const providers = {
       "big-pickle": {
         displayName: "Big Pickle",
         resolve: "opencode/big-pickle",
-        recommended: true,
+        preferred: true,
         envVars: [],
         isFree: true,
       },
-      "claude-opus": { displayName: "Claude Opus", resolve: "opencode/claude-opus-4-6" },
-      "claude-sonnet": { displayName: "Claude Sonnet", resolve: "opencode/claude-sonnet-4-6" },
-      "claude-haiku": { displayName: "Claude Haiku", resolve: "opencode/claude-haiku-4-5" },
-      "gpt-codex": { displayName: "GPT Codex", resolve: "opencode/gpt-5.3-codex" },
-      "gpt-codex-mini": { displayName: "GPT Codex Mini", resolve: "opencode/gpt-5.1-codex-mini" },
-      "gemini-pro": { displayName: "Gemini Pro", resolve: "opencode/gemini-3.1-pro" },
-      "gemini-flash": { displayName: "Gemini Flash", resolve: "opencode/gemini-3-flash" },
-      "kimi-k2": { displayName: "Kimi K2", resolve: "opencode/kimi-k2.5" },
+      "claude-opus": {
+        displayName: "Claude Opus",
+        resolve: "opencode/claude-opus-4-6",
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.6",
+      },
+      "claude-sonnet": {
+        displayName: "Claude Sonnet",
+        resolve: "opencode/claude-sonnet-4-6",
+        openRouterResolve: "openrouter/anthropic/claude-sonnet-4.6",
+      },
+      "claude-haiku": {
+        displayName: "Claude Haiku",
+        resolve: "opencode/claude-haiku-4-5",
+        openRouterResolve: "openrouter/anthropic/claude-haiku-4.5",
+      },
+      "gpt-codex": {
+        displayName: "GPT Codex",
+        resolve: "opencode/gpt-5.3-codex",
+        openRouterResolve: "openrouter/openai/gpt-5.3-codex",
+      },
+      "gpt-codex-mini": {
+        displayName: "GPT Codex Mini",
+        resolve: "opencode/gpt-5.1-codex-mini",
+        openRouterResolve: "openrouter/openai/gpt-5.1-codex-mini",
+      },
+      "gemini-pro": {
+        displayName: "Gemini Pro",
+        resolve: "opencode/gemini-3.1-pro",
+        openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
+      },
+      "gemini-flash": {
+        displayName: "Gemini Flash",
+        resolve: "opencode/gemini-3-flash",
+        openRouterResolve: "openrouter/google/gemini-3-flash-preview",
+      },
+      "kimi-k2": {
+        displayName: "Kimi K2",
+        resolve: "opencode/kimi-k2.5",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.5",
+      },
       "gpt-5-nano": {
         displayName: "GPT Nano",
         resolve: "opencode/gpt-5-nano",
@@ -158,36 +243,59 @@ export const providers = {
       "claude-opus": {
         displayName: "Claude Opus",
         resolve: "openrouter/anthropic/claude-opus-4.6",
-        recommended: true,
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.6",
+        preferred: true,
       },
       "claude-sonnet": {
         displayName: "Claude Sonnet",
         resolve: "openrouter/anthropic/claude-sonnet-4.6",
+        openRouterResolve: "openrouter/anthropic/claude-sonnet-4.6",
       },
       "claude-haiku": {
         displayName: "Claude Haiku",
         resolve: "openrouter/anthropic/claude-haiku-4.5",
+        openRouterResolve: "openrouter/anthropic/claude-haiku-4.5",
       },
-      "gpt-codex": { displayName: "GPT Codex", resolve: "openrouter/openai/gpt-5.3-codex" },
+      "gpt-codex": {
+        displayName: "GPT Codex",
+        resolve: "openrouter/openai/gpt-5.3-codex",
+        openRouterResolve: "openrouter/openai/gpt-5.3-codex",
+      },
       "gpt-codex-mini": {
         displayName: "GPT Codex Mini",
         resolve: "openrouter/openai/gpt-5.1-codex-mini",
+        openRouterResolve: "openrouter/openai/gpt-5.1-codex-mini",
       },
-      "o4-mini": { displayName: "O4 Mini", resolve: "openrouter/openai/o4-mini" },
+      "o4-mini": {
+        displayName: "O4 Mini",
+        resolve: "openrouter/openai/o4-mini",
+        openRouterResolve: "openrouter/openai/o4-mini",
+      },
       "gemini-pro": {
         displayName: "Gemini Pro",
         resolve: "openrouter/google/gemini-3.1-pro-preview",
+        openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
       },
       "gemini-flash": {
         displayName: "Gemini Flash",
         resolve: "openrouter/google/gemini-3-flash-preview",
+        openRouterResolve: "openrouter/google/gemini-3-flash-preview",
       },
-      grok: { displayName: "Grok", resolve: "openrouter/x-ai/grok-4" },
+      grok: {
+        displayName: "Grok",
+        resolve: "openrouter/x-ai/grok-4",
+        openRouterResolve: "openrouter/x-ai/grok-4",
+      },
       "deepseek-chat": {
         displayName: "DeepSeek Chat",
-        resolve: "openrouter/deepseek/deepseek-chat-v3.1",
+        resolve: "openrouter/deepseek/deepseek-v3.2",
+        openRouterResolve: "openrouter/deepseek/deepseek-v3.2",
       },
-      "kimi-k2": { displayName: "Kimi K2", resolve: "openrouter/moonshotai/kimi-k2.5" },
+      "kimi-k2": {
+        displayName: "Kimi K2",
+        resolve: "openrouter/moonshotai/kimi-k2.5",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.5",
+      },
     },
   }),
 } satisfies Record<string, ProviderConfig>;
@@ -206,6 +314,11 @@ export function parseModel(slug: string): { provider: string; model: string } {
 
 export function getModelProvider(slug: string): string {
   return parseModel(slug).provider;
+}
+
+export function getProviderDisplayName(slug: string): string | undefined {
+  const parsed = parseModel(slug);
+  return (providers as Record<string, ProviderConfig>)[parsed.provider]?.displayName;
 }
 
 export function getModelEnvVars(slug: string): string[] {
@@ -232,7 +345,8 @@ export const modelAliases: ModelAlias[] = Object.entries(providers).flatMap(
       provider: providerKey,
       displayName: def.displayName,
       resolve: def.resolve,
-      recommended: def.recommended ?? false,
+      openRouterResolve: def.openRouterResolve,
+      preferred: def.preferred ?? false,
       isFree: def.isFree ?? false,
     }))
 );

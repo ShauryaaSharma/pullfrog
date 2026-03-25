@@ -46,6 +46,82 @@ describe("models.dev validity", async () => {
   }
 });
 
+// ── openRouterResolve coverage ─────────────────────────────────────────────────
+
+// models that have no OpenRouter equivalent and require BYOK.
+// add a model here ONLY when it genuinely doesn't exist on both models.dev and OpenRouter.
+const BYOK_ONLY_MODELS = new Set(["openai/o3"]);
+
+describe("openRouterResolve completeness", () => {
+  for (const alias of modelAliases) {
+    if (alias.isFree) continue;
+    if (BYOK_ONLY_MODELS.has(alias.slug)) continue;
+    it(`${alias.slug} has openRouterResolve`, () => {
+      expect(
+        alias.openRouterResolve,
+        `non-free model "${alias.slug}" is missing openRouterResolve — add it or add to BYOK_ONLY_MODELS`
+      ).toBeDefined();
+    });
+  }
+
+  for (const alias of modelAliases) {
+    if (!alias.isFree) continue;
+    it(`${alias.slug} (free) does not need openRouterResolve`, () => {
+      expect(alias.openRouterResolve).toBeUndefined();
+    });
+  }
+});
+
+describe("openRouterResolve models.dev validity", async () => {
+  const data = await api;
+  const seen = new Set<string>();
+
+  for (const alias of modelAliases) {
+    if (!alias.openRouterResolve) continue;
+    if (seen.has(alias.openRouterResolve)) continue;
+    seen.add(alias.openRouterResolve);
+
+    const parsed = parseResolve(alias.openRouterResolve);
+
+    it(`${alias.openRouterResolve} exists on models.dev`, () => {
+      const providerData = data[parsed.provider];
+      expect(providerData, `provider "${parsed.provider}" not found on models.dev`).toBeDefined();
+      const model = providerData.models[parsed.modelId];
+      expect(
+        model,
+        `model "${parsed.modelId}" not found under ${parsed.provider} on models.dev`
+      ).toBeDefined();
+    });
+  }
+});
+
+type OpenRouterModel = { id: string };
+type OpenRouterModelsResponse = { data: OpenRouterModel[] };
+
+const openRouterApi = fetch("https://openrouter.ai/api/v1/models").then(
+  (r) => r.json() as Promise<OpenRouterModelsResponse>
+);
+
+describe("openRouterResolve OpenRouter API validity", async () => {
+  const orData = await openRouterApi;
+  const orModelIds = new Set(orData.data.map((m) => m.id));
+  const seen = new Set<string>();
+
+  for (const alias of modelAliases) {
+    if (!alias.openRouterResolve) continue;
+    const orModelId = alias.openRouterResolve.slice("openrouter/".length);
+    if (seen.has(orModelId)) continue;
+    seen.add(orModelId);
+
+    it(`${orModelId} exists on OpenRouter`, () => {
+      expect(
+        orModelIds.has(orModelId),
+        `model "${orModelId}" not found in OpenRouter API (/api/v1/models)`
+      ).toBe(true);
+    });
+  }
+});
+
 describe("latest model per provider snapshot", async () => {
   const data = await api;
   const providerKeys = Object.keys(providers) as ModelProvider[];

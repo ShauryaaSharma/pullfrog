@@ -118,7 +118,6 @@ const testEnvAllowList = new Set([
   "GEMINI_API_KEY",
   "GOOGLE_GENERATIVE_AI_API_KEY",
   "PULLFROG_MODEL",
-  "OPENCODE_MODEL",
   "LOG_LEVEL",
   "DEBUG",
   "NODE_ENV",

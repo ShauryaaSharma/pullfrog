@@ -15,6 +15,7 @@ import {
   DEFAULT_ACTIVITY_TIMEOUT_MS,
 } from "./utils/activity.ts";
 import { resolveAgent } from "./utils/agent.ts";
+import { apiFetch } from "./utils/apiFetch.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
 import { formatUsageSummary, log, writeSummary } from "./utils/cli.ts";
@@ -63,6 +64,71 @@ function resolveOutputSchema(): Record<string, unknown> | undefined {
   return parsed as Record<string, unknown>;
 }
 
+import type { ResolvedPayload } from "./utils/payload.ts";
+
+interface OidcCredentials {
+  requestUrl: string;
+  requestToken: string;
+}
+
+async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<string | null> {
+  try {
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = ctx.oidcCredentials.requestUrl;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = ctx.oidcCredentials.requestToken;
+    const oidcToken = await core.getIDToken("pullfrog-api");
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+
+    const response = await apiFetch({
+      path: "/api/proxy-token",
+      method: "POST",
+      headers: { Authorization: `Bearer ${oidcToken}` },
+    });
+
+    if (!response.ok) {
+      log.warning(`proxy key mint failed (${response.status})`);
+      return null;
+    }
+
+    const data = (await response.json()) as { key: string };
+    return data.key;
+  } catch (error) {
+    log.warning(`proxy key mint error: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  } finally {
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  }
+}
+
+async function resolveProxyModel(ctx: {
+  payload: ResolvedPayload;
+  oss: boolean;
+  proxyModel?: string | undefined;
+  oidcCredentials: OidcCredentials | null;
+}): Promise<void> {
+  // env override = BYOK escape hatch, don't proxy
+  if (process.env.PULLFROG_MODEL?.trim()) return;
+
+  // OSS: server decided the model
+  if (ctx.oss && ctx.proxyModel) {
+    if (!ctx.oidcCredentials) {
+      log.warning("» oss repo but no OIDC credentials available — skipping proxy");
+      return;
+    }
+    const key = await mintProxyKey({ oidcCredentials: ctx.oidcCredentials });
+    if (!key) return;
+
+    process.env.OPENROUTER_API_KEY = key;
+    core.setSecret(key);
+    ctx.payload.proxyModel = ctx.proxyModel;
+    log.info(`» proxy: oss → ${ctx.proxyModel}`);
+    return;
+  }
+
+  // managed billing will add its path here later
+}
+
 async function writeJobSummary(toolState: ToolState): Promise<void> {
   const usageSummary = formatUsageSummary(toolState.usageEntries);
   const summaryParts = [toolState.lastProgressBody, usageSummary].filter(Boolean);
@@ -105,16 +171,32 @@ export async function main(): Promise<MainResult> {
   const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
   toolState.model = payload.model;
 
-  // resolve tokens:
-  // - gitToken: contents permission based on push setting (assumed exfiltratable)
-  // - mcpToken: full installation token (not exfiltratable via MCP tools)
+  // resolve tokens first — acquireNewToken needs OIDC env vars for token exchange
   await using tokenRef = await resolveTokens({ push: payload.push });
+
+  // stash OIDC credentials in memory before wiping from process.env
+  // the agent's shell commands can't access JS variables, so this is safe
+  const oidcCredentials: OidcCredentials | null =
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL && process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+      ? {
+          requestUrl: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+          requestToken: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+        }
+      : null;
 
   // clear OIDC env vars in restricted mode to prevent agent from minting tokens
   if (payload.shell !== "enabled") {
     delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
     delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   }
+
+  // proxy decision: mint an OpenRouter key for OSS repos (or later, managed billing)
+  await resolveProxyModel({
+    payload,
+    oss: runContext.oss,
+    proxyModel: runContext.proxyModel,
+    oidcCredentials,
+  });
 
   // create octokit with MCP token for GitHub API calls
   const octokit = createOctokit(tokenRef.mcpToken);
@@ -152,7 +234,7 @@ export async function main(): Promise<MainResult> {
 
     validateAgentApiKey({
       agent,
-      model: payload.model,
+      model: payload.proxyModel ?? payload.model,
       owner: runContext.repo.owner,
       name: runContext.repo.name,
     });

@@ -12,6 +12,7 @@ export type { ModelAlias, ModelProvider, ProviderConfig } from "./models.ts";
 export {
   getModelEnvVars,
   getModelProvider,
+  getProviderDisplayName,
   modelAliases,
   parseModel,
   providers,

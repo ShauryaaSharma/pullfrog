@@ -161,6 +161,9 @@ export function resolvePayload(
     // permissions: inputs > repoSettings > fallbacks
     push: inputs.push ?? repoSettings.push ?? "restricted",
     shell: resolvedShell,
+
+    // set by proxy logic in main.ts when routing through OpenRouter
+    proxyModel: undefined as string | undefined,
   };
 }
 

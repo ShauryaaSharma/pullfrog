@@ -75,9 +75,9 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
 // ── model resolution (see wiki/model-resolution.md) ─────────────────────────────
 //
 // priority:
-//   1. PULLFROG_MODEL or OPENCODE_MODEL env var (explicit override)
+//   1. PULLFROG_MODEL env var (explicit override)
 //   2. explicit slug from repo config / payload
-//   3. auto-select: `opencode models` → recommended aliases first, then secondary
+//   3. auto-select: `opencode models` → preferred aliases first, then secondary
 //   4. undefined → let OpenCode decide
 
 function getOpenCodeModels(cliPath: string): string[] {
@@ -106,11 +106,10 @@ function resolveOpenCodeModel(ctx: {
   cliPath: string;
   modelSlug?: string | undefined;
 }): string | undefined {
-  // 1. explicit env var override (PULLFROG_MODEL takes precedence over OPENCODE_MODEL)
-  const envModel = process.env.PULLFROG_MODEL?.trim() || process.env.OPENCODE_MODEL?.trim();
+  // 1. explicit env var override
+  const envModel = process.env.PULLFROG_MODEL?.trim();
   if (envModel) {
-    const source = process.env.PULLFROG_MODEL?.trim() ? "PULLFROG_MODEL" : "OPENCODE_MODEL";
-    log.info(`» model: ${envModel} (override via ${source})`);
+    log.info(`» model: ${envModel} (override via PULLFROG_MODEL)`);
     return envModel;
   }
 
@@ -126,17 +125,17 @@ function resolveOpenCodeModel(ctx: {
 
   // 3. auto-select: ask OpenCode what's available, pick our best curated match.
   // `opencode models` returns `provider/model-id` specifiers matching our resolve values exactly.
-  // two-pass: recommended (top-tier per provider) first, then secondary models.
+  // two-pass: preferred (top-tier per provider) first, then secondary models.
   const availableModels = getOpenCodeModels(ctx.cliPath);
   const availableSet = new Set(availableModels);
   if (availableSet.size > 0) {
     log.debug(`» opencode models (${availableSet.size}): ${availableModels.join(", ")}`);
     const match =
-      modelAliases.find((a) => a.recommended && availableSet.has(a.resolve)) ??
+      modelAliases.find((a) => a.preferred && availableSet.has(a.resolve)) ??
       modelAliases.find((a) => availableSet.has(a.resolve));
     if (match) {
       log.info(
-        `» model: ${match.resolve} (auto-selected${match.recommended ? " — recommended" : ""} curated match)`
+        `» model: ${match.resolve} (auto-selected${match.preferred ? " — preferred" : ""} curated match)`
       );
       log.warning(`» model auto-selected. ${AUTO_SELECT_WARNING}`);
       return match.resolve;
@@ -622,10 +621,12 @@ export const opentoad = agent({
   run: async (ctx) => {
     const cliPath = await installOpencodeCli();
 
-    const model = resolveOpenCodeModel({
-      cliPath,
-      modelSlug: ctx.payload.model,
-    });
+    const model =
+      ctx.payload.proxyModel ??
+      resolveOpenCodeModel({
+        cliPath,
+        modelSlug: ctx.payload.model,
+      });
 
     const tempHome = ctx.tmpdir;
     mkdirSync(join(tempHome, ".config", "opencode"), { recursive: true });

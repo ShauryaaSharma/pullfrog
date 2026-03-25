@@ -96,10 +96,10 @@ describe("modelAliases registry", () => {
     }
   });
 
-  it("has exactly one recommended model per provider", () => {
+  it("has exactly one preferred model per provider", () => {
     for (const providerKey of Object.keys(providers)) {
-      const recommended = modelAliases.filter((a) => a.provider === providerKey && a.recommended);
-      expect(recommended.length, `${providerKey} should have exactly 1 recommended model`).toBe(1);
+      const preferred = modelAliases.filter((a) => a.provider === providerKey && a.preferred);
+      expect(preferred.length, `${providerKey} should have exactly 1 preferred model`).toBe(1);
     }
   });
 

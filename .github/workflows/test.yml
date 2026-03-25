@@ -42,7 +42,6 @@ jobs:
       MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       PULLFROG_MODEL: ${{ vars.PULLFROG_MODEL }}
-      OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4

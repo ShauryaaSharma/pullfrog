@@ -64,7 +64,6 @@ const expectedAgentEnvVars = [
   "GITHUB_TOKEN",
   ...new Set(Object.values(providers).flatMap((p) => [...p.envVars])),
   "PULLFROG_MODEL",
-  "OPENCODE_MODEL",
 ].sort();
 
 const expectedAgnosticEnvVars = ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"].sort();

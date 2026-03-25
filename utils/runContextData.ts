@@ -12,6 +12,8 @@ export interface RunContextData {
   };
   repoSettings: RepoSettings;
   apiToken: string;
+  oss: boolean;
+  proxyModel?: string | undefined;
 }
 
 interface ResolveRunContextDataParams {
@@ -42,5 +44,7 @@ export async function resolveRunContextData(
     },
     repoSettings: runContext.settings,
     apiToken: runContext.apiToken,
+    oss: runContext.oss,
+    proxyModel: runContext.proxyModel,
   };
 }

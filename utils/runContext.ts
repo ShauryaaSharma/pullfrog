@@ -23,6 +23,8 @@ export interface RepoSettings {
 export interface RunContext {
   settings: RepoSettings;
   apiToken: string;
+  oss: boolean;
+  proxyModel?: string | undefined;
 }
 
 const defaultSettings: RepoSettings = {
@@ -39,6 +41,7 @@ const defaultSettings: RepoSettings = {
 const defaultRunContext: RunContext = {
   settings: defaultSettings,
   apiToken: "",
+  oss: false,
 };
 
 /**
@@ -73,6 +76,8 @@ export async function fetchRunContext(params: {
     const data = (await response.json()) as {
       settings: RepoSettings | null;
       apiToken: string;
+      oss?: boolean;
+      proxyModel?: string;
     } | null;
 
     if (data === null) {
@@ -88,6 +93,8 @@ export async function fetchRunContext(params: {
         postCheckoutScript: data.settings?.postCheckoutScript ?? null,
       },
       apiToken: data.apiToken,
+      oss: data.oss ?? false,
+      proxyModel: data.proxyModel,
     };
   } catch {
     clearTimeout(timeoutId);

@@ -30,6 +30,13 @@ function hasEnvVar(name: string): boolean {
   return typeof value === "string" && value.length > 0;
 }
 
+/** check if the user has a BYOK key for the given model's provider (does not throw) */
+export function hasProviderKey(model: string): boolean {
+  const requiredVars = getModelEnvVars(model);
+  if (requiredVars.length === 0) return true;
+  return requiredVars.some((v) => hasEnvVar(v));
+}
+
 export function validateAgentApiKey(params: {
   agent: { name: string };
   model: string | undefined;
