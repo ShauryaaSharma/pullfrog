@@ -11,6 +11,7 @@ interface InstructionsContext {
   repo: RunContextData["repo"];
   modes: Mode[];
   outputSchema?: Record<string, unknown> | undefined;
+  learnings: string | null;
 }
 
 function buildRuntimeContext(ctx: InstructionsContext): string {
@@ -328,12 +329,19 @@ interface AssembleFullPromptInput {
   runtime: string;
   system: string;
   contextSections: string;
+  learnings: string | null;
 }
 
 function assembleFullPrompt(ctx: AssembleFullPromptInput): string {
+  const learningsSection = ctx.learnings
+    ? `************* REPO INTELLIGENCE *************\n\n${ctx.learnings}`
+    : "";
+
   const rawFull = `************* RUNTIME CONTEXT *************
 
 ${ctx.runtime}
+
+${learningsSection}
 
 ${ctx.system}
 
@@ -385,6 +393,7 @@ If the task clearly requires no work, call \`${ghPullfrogMcpName}/report_progres
     runtime: inputs.runtime,
     system,
     contextSections,
+    learnings: ctx.learnings,
   });
 
   return {

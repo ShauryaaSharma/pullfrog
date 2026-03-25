@@ -29,6 +29,7 @@ import { GetIssueCommentsTool } from "./issueComments.ts";
 import { GetIssueEventsTool } from "./issueEvents.ts";
 import { IssueInfoTool } from "./issueInfo.ts";
 import { AddLabelsTool } from "./labels.ts";
+import { UpdateLearningsTool } from "./learnings.ts";
 import { SetOutputTool } from "./output.ts";
 import { CreatePullRequestTool, UpdatePullRequestBodyTool } from "./pr.ts";
 import { PullRequestInfoTool } from "./prInfo.ts";
@@ -213,6 +214,7 @@ function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): To
     DeleteBranchTool(ctx),
     CreatePullRequestTool(ctx),
     UpdatePullRequestBodyTool(ctx),
+    UpdateLearningsTool(ctx),
   ];
 }
 

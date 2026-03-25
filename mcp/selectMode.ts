@@ -19,6 +19,10 @@ function resolveMode(modes: Mode[], modeName: string): Mode | null {
   return modes.find((m) => m.name.toLowerCase() === modeName.toLowerCase()) ?? null;
 }
 
+function learningsStep(n: number): string {
+  return `${n}. **learnings** (only if high confidence): if you discovered something about repo setup, test commands, conventions, or patterns that you are confident is correct and would reliably help future runs, call \`${ghPullfrogMcpName}/update_learnings\` to persist it. skip this step if you are unsure or the finding is speculative/one-off. format as a flat bullet list (\`- \` per line, one fact per bullet). merge with existing learnings from the prompt — pass the FULL merged list. deduplicate, and drop bullets that are clearly wrong or no longer relevant to the current codebase.`;
+}
+
 const modeGuidance: Record<string, string> = {
   Build: `### Checklist
 
@@ -39,6 +43,8 @@ const modeGuidance: Record<string, string> = {
    - push the branch via \`${ghPullfrogMcpName}/push_branch\`
    - create a PR via \`${ghPullfrogMcpName}/create_pull_request\`
    - call \`${ghPullfrogMcpName}/report_progress\` with the final summary including PR link
+
+${learningsStep(5)}
 
 ### Notes
 
@@ -86,7 +92,9 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
    - push changes via \`${ghPullfrogMcpName}/push_branch\`
    - reply to each comment using \`${ghPullfrogMcpName}/reply_to_review_comment\`
    - resolve addressed threads via \`${ghPullfrogMcpName}/resolve_review_thread\`
-   - call \`${ghPullfrogMcpName}/report_progress\` with a brief summary`,
+   - call \`${ghPullfrogMcpName}/report_progress\` with a brief summary
+
+${learningsStep(6)}`,
 
   Review: `### Checklist
 
@@ -139,7 +147,9 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
 2. Produce a structured, actionable plan with clear milestones.
 
-3. Call \`${ghPullfrogMcpName}/report_progress\` with the plan.`,
+3. Call \`${ghPullfrogMcpName}/report_progress\` with the plan.
+
+${learningsStep(4)}`,
 
   PlanEdit: `### Checklist (editing existing plan)
 
@@ -170,7 +180,9 @@ An existing plan comment was found for this issue. Update that comment with the 
 
 5. Finalize:
    - push changes via \`${ghPullfrogMcpName}/push_branch\`
-   - call \`${ghPullfrogMcpName}/report_progress\` with the diagnosis and fix summary`,
+   - call \`${ghPullfrogMcpName}/report_progress\` with the diagnosis and fix summary
+
+${learningsStep(6)}`,
 
   Task: `### Checklist
 
@@ -185,7 +197,9 @@ An existing plan comment was found for this issue. Update that comment with the 
 3. Finalize:
    - call \`${ghPullfrogMcpName}/report_progress\` with results
    - if the task involved code changes, push via \`${ghPullfrogMcpName}/push_branch\` and create a PR via \`${ghPullfrogMcpName}/create_pull_request\`
-   - if the task involved labeling, commenting, or other GitHub operations, perform those directly`,
+   - if the task involved labeling, commenting, or other GitHub operations, perform those directly
+
+${learningsStep(4)}`,
 
   Summarize: `### Checklist
 

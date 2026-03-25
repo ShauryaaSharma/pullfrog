@@ -289,6 +289,7 @@ export async function main(): Promise<MainResult> {
       repo: runContext.repo,
       modes,
       outputSchema,
+      learnings: runContext.repoSettings.learnings,
     });
     // log instructions as soon as they are fully resolved
     const logParts = [

@@ -84,8 +84,9 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       // set issue context (PRs are issues)
       ctx.toolState.issueNumber = pull_number;
 
-      // skip empty reviews (no body, no inline comments) — nothing to post
-      if (!body && comments.length === 0) {
+      // skip empty COMMENT reviews (no body, no inline comments) — nothing to post.
+      // APPROVE reviews are never skipped: the approval stamp itself is the content.
+      if (!approved && !body && comments.length === 0) {
         log.info(
           "review has no body and no inline comments — skipping submission (no issues found)"
         );

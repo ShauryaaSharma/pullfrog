@@ -18,6 +18,7 @@ export interface RepoSettings {
   shell: ShellPermission;
   prApproveEnabled: boolean;
   modeInstructions: Record<string, string>;
+  learnings: string | null;
 }
 
 export interface RunContext {
@@ -36,6 +37,7 @@ const defaultSettings: RepoSettings = {
   shell: "restricted",
   prApproveEnabled: false,
   modeInstructions: {},
+  learnings: null,
 };
 
 const defaultRunContext: RunContext = {
