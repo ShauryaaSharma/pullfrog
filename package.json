@@ -31,7 +31,6 @@
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.0",
     "@octokit/webhooks-types": "^7.6.1",
-    "@opencode-ai/sdk": "^1.0.143",
     "@standard-schema/spec": "1.1.0",
     "@toon-format/toon": "^1.0.0",
     "ajv": "^8.18.0",
@@ -47,6 +46,7 @@
     "turndown": "^7.2.0"
   },
   "devDependencies": {
+    "agent-browser": "0.21.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/node": "^24.7.2",
     "@types/semver": "^7.7.1",
@@ -54,6 +54,7 @@
     "arg": "^5.0.2",
     "esbuild": "^0.25.9",
     "husky": "^9.0.0",
+    "opencode-ai": "1.1.56",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17",
     "yaml": "^2.8.2"

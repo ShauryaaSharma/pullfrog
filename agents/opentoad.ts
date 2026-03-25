@@ -10,7 +10,7 @@
  * the agent process itself gets full env (needs LLM API keys, PATH, etc.).
  * security is enforced at the tool layer, not the process layer.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -21,16 +21,14 @@ import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
+import { getDevDependencyVersion } from "../utils/version.ts";
 import type { TodoTracker } from "../utils/todoTracking.ts";
 import { type AgentResult, type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
-
-// pinned CLI version
-const OPENCODE_CLI_VERSION = "1.1.56";
 
 async function installOpencodeCli(): Promise<string> {
   return await installFromNpmTarball({
     packageName: "opencode-ai",
-    version: OPENCODE_CLI_VERSION,
+    version: getDevDependencyVersion("opencode-ai"),
     executablePath: "bin/opencode",
     installDependencies: true,
   });
@@ -55,6 +53,7 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       read: "allow",
       webfetch: "allow",
       external_directory: "deny",
+      skill: "allow",
     },
     mcp: {
       [ghPullfrogMcpName]: { type: "remote", url: ctx.mcpServerUrl },
@@ -173,6 +172,23 @@ function detectProviderError(text: string): string | null {
     if (text.includes(entry.pattern)) return entry.label;
   }
   return null;
+}
+
+function addSkill(params: { ref: string; skill: string; env: Record<string, string> }): void {
+  const result = spawnSync(
+    "npx",
+    ["skills", "add", params.ref, "--skill", params.skill, "-g", "-a", "opencode", "-y"],
+    {
+      env: { ...process.env, ...params.env },
+      stdio: "pipe",
+      timeout: 30_000,
+    }
+  );
+  if (result.status === 0) {
+    log.info(`installed ${params.skill} skill`);
+  } else {
+    log.info(`${params.skill} skill install failed: ${(result.stderr?.toString() || "").trim()}`);
+  }
 }
 
 // ── NDJSON event types ─────────────────────────────────────────────────────────
@@ -652,8 +668,19 @@ export const opentoad = agent({
         modelSlug: ctx.payload.model,
       });
 
-    const tempHome = ctx.tmpdir;
-    mkdirSync(join(tempHome, ".config", "opencode"), { recursive: true });
+    const homeEnv = {
+      HOME: ctx.tmpdir,
+      XDG_CONFIG_HOME: join(ctx.tmpdir, ".config"),
+    };
+
+    mkdirSync(join(homeEnv.XDG_CONFIG_HOME, "opencode"), { recursive: true });
+
+    const agentBrowserVersion = getDevDependencyVersion("agent-browser");
+    addSkill({
+      ref: `vercel-labs/agent-browser@v${agentBrowserVersion}`,
+      skill: "agent-browser",
+      env: homeEnv,
+    });
 
     const args = ["run", ctx.instructions.full, "--format", "json", "--print-logs"];
 
@@ -661,8 +688,7 @@ export const opentoad = agent({
     // security is enforced via OPENCODE_CONFIG_CONTENT (bash: deny) and MCP tool filtering.
     const env: Record<string, string | undefined> = {
       ...process.env,
-      HOME: tempHome,
-      XDG_CONFIG_HOME: join(tempHome, ".config"),
+      ...homeEnv,
       OPENCODE_CONFIG_CONTENT: buildSecurityConfig(ctx, model),
       GOOGLE_GENERATIVE_AI_API_KEY:
         process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY,

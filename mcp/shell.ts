@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { type } from "arktype";
+import { ensureBrowserDaemon } from "../utils/browser.ts";
 import { log } from "../utils/log.ts";
 import { resolveEnv } from "../utils/secrets.ts";
 import type { ToolContext } from "./server.ts";
@@ -115,7 +117,12 @@ function spawnShell(params: SpawnParams): ChildProcess {
     // sudo is only needed for unshare; the actual command should run as the normal user
     // to avoid ownership mismatches with files created by the Node.js parent process.
     const username = userInfo().username;
-    const escaped = params.command.replace(/'/g, "'\\''");
+    // su -p resets PATH on many Linux systems (ALWAYS_SET_PATH in /etc/login.defs).
+    // restore it from the SANDBOX_PATH env var that survives the su transition.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: we need to restore the PATH variable
+    const pathRestore = 'export PATH="${SANDBOX_PATH:-$PATH}"; ';
+    const escaped = (pathRestore + params.command).replace(/'/g, "'\\''");
+    envArgs.push(`SANDBOX_PATH=${params.env.PATH ?? ""}`);
     return spawn(
       "sudo",
       [
@@ -194,6 +201,21 @@ Do NOT use this tool for git commands — use the dedicated git tools instead.`,
       const timeout = Math.min(params.timeout ?? 30000, 120000);
       const cwd = params.working_directory ?? process.cwd();
       const env = resolveEnv(ctx.payload.shell === "enabled" ? "inherit" : "restricted");
+
+      if (params.command.includes("agent-browser")) {
+        const daemonError = ensureBrowserDaemon(ctx.toolState);
+        if (daemonError) {
+          return {
+            output: `browser daemon unavailable: ${daemonError}`,
+            exit_code: 1,
+            timed_out: false,
+          };
+        }
+        const binDir = ctx.toolState.browserDaemon?.binDir;
+        if (binDir) {
+          env.PATH = `${binDir}:${env.PATH ?? ""}`;
+        }
+      }
 
       if (params.background) {
         const tempDir = getTempDir();
@@ -305,7 +327,7 @@ export function KillBackgroundTool(ctx: ToolContext) {
       } catch {
         // already dead
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await sleep(200);
       try {
         process.kill(-proc.pid, "SIGKILL");
       } catch {

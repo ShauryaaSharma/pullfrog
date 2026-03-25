@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { log } from "./cli.ts";
 
 export type RetryOptions = {
@@ -38,7 +39,7 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
 
       const delay = delayMs * attempt;
       log.info(`» ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await sleep(delay);
     }
   }
 

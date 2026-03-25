@@ -25743,6 +25743,7 @@ async function apiFetch(options) {
 }
 
 // utils/retry.ts
+import { setTimeout as sleep } from "node:timers/promises";
 var defaultShouldRetry = (error2) => {
   if (!(error2 instanceof Error)) return false;
   return error2.name === "AbortError" || error2.message.includes("fetch failed") || error2.message.includes("ECONNRESET") || error2.message.includes("ETIMEDOUT");
@@ -25763,7 +25764,7 @@ async function retry(fn, options = {}) {
       }
       const delay = delayMs * attempt;
       log.info(`\xBB ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await sleep(delay);
     }
   }
   throw lastError;

@@ -26,9 +26,6 @@ importers:
       '@octokit/webhooks-types':
         specifier: ^7.6.1
         version: 7.6.1
-      '@opencode-ai/sdk':
-        specifier: ^1.0.143
-        version: 1.0.143
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0
@@ -81,6 +78,9 @@ importers:
       '@types/turndown':
         specifier: ^5.0.5
         version: 5.0.6
+      agent-browser:
+        specifier: 0.21.0
+        version: 0.21.0
       arg:
         specifier: ^5.0.2
         version: 5.0.2
@@ -90,12 +90,15 @@ importers:
       husky:
         specifier: ^9.0.0
         version: 9.1.7
+      opencode-ai:
+        specifier: 1.1.56
+        version: 1.1.56
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vitest:
         specifier: ^4.0.17
-        version: 4.0.17(@types/node@24.7.2)(yaml@2.8.2)
+        version: 4.0.17(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2)
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -547,9 +550,6 @@ packages:
   '@octokit/webhooks-types@7.6.1':
     resolution: {integrity: sha512-S8u2cJzklBC0FgTwWVLaM8tMrDuDMVE4xiTK4EYXM9GntyvrdbSoxqDQa+Fh57CCNApyIpyeqPhhFEmHPfrXgw==}
 
-  '@opencode-ai/sdk@1.0.143':
-    resolution: {integrity: sha512-dtmkBfJ7IIAHzL6KCzAlwc9GybfJONVeCsF6ePYySpkuhslDbRkZBJYb5vqGd1H5zdsgjc6JjuvmOf0rPWUL6A==}
-
   '@rollup/rollup-android-arm-eabi@4.55.1':
     resolution: {integrity: sha512-9R0DM/ykwfGIlNu6+2U09ga0WXeZ9MRC2Ter8jnz8415VbuIykVuc6bhdrbORFZANDmTDvq26mJrEVTl8TdnDg==}
     cpu: [arm]
@@ -752,6 +752,10 @@ packages:
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
+
+  agent-browser@0.21.0:
+    resolution: {integrity: sha512-isVHEeb2WL5hLhr4o+zNmcYwmBrldxvrH+FIoRoUmDxyrHr3bhIS6L8BlUMHqT77YtkPq0YSmwoBRrwqeouw9Q==}
+    hasBin: true
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -1209,6 +1213,10 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
+  jiti@2.6.1:
+    resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
+    hasBin: true
+
   jose@6.1.3:
     resolution: {integrity: sha512-0TpaTfihd4QMNwrz/ob2Bp7X04yuxJkjRGi4aKmOqwhov54i6u79oCv7T+C7lo70MKH6BesI3vscD1yb/yzKXQ==}
 
@@ -1315,6 +1323,65 @@ packages:
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
+
+  opencode-ai@1.1.56:
+    resolution: {integrity: sha512-OAF0G/1jVXpOrCh++M5gFEZ0bRLiXOnbxSYMFx5TOoD0OhCjHJS1JlARzaLDAx461qBnn+jocI9BBxD0wwFH3Q==}
+    hasBin: true
+
+  opencode-darwin-arm64@1.1.56:
+    resolution: {integrity: sha512-0HqvLm7tcYZr4VJgEzi3Wicia5M9yCX66O7Cv470Qu4+GGbCC2sTTmzQu6pCehSleYgkZsiSBNRcFcW/6F7v0Q==}
+    cpu: [arm64]
+    os: [darwin]
+
+  opencode-darwin-x64-baseline@1.1.56:
+    resolution: {integrity: sha512-Z9QO9cTC9TnlUxTfEtDbvZbRFxc5Je8rs2Ei0cLH46W9gHGhh1fW4oX64tcrlhF5NUDKJzr/qwdoMfmKkeu53A==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-darwin-x64@1.1.56:
+    resolution: {integrity: sha512-8ZhNd4sFbDviT1OJs42C35Bx2/z6mkcb7uNhPHX3KKm27KOm7cYjFQa1UTF5or3ZpjkjPQpR/cpo7TELvnnmRA==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-linux-arm64-musl@1.1.56:
+    resolution: {integrity: sha512-f30SmYX4xE2fUsnNl66dDX++8iTMI9PLXz7BRHhgXL4XAdMpUUJbOKIsw3ZUB0KWHwjR8cjkEJQOZxR3HPbrZg==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-arm64@1.1.56:
+    resolution: {integrity: sha512-wEmIEXiEKghurQYgKY5yFUFOmnT/QIlAbYnVeH73gSqOwlYFUUlowXLDJnF+3OGd6m000qalhCxjExL7qKINWw==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-x64-baseline-musl@1.1.56:
+    resolution: {integrity: sha512-EC8EGTJCgTZgGIMZdQjOKGXw02+igo0am1Ry6wrPrB0li7XBlYbY6dz8tL3FlknRVMLamtGtb3tXQ6tqbwjX0g==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-baseline@1.1.56:
+    resolution: {integrity: sha512-jKOvhkNLcn0h6zmKX+hDdkODijSVDxjAGTZp8BPbJCCJVxnKll9dYfDMTqxi3YN6yXp6sBvyaJT1mcpf8knkeA==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-musl@1.1.56:
+    resolution: {integrity: sha512-9BFYBPgpY2RrUd7/Ul0VNh+6B9l0FmCNRUV4yYmeFGee9ZDgPem5YGicsKAMQqS/5X0jW3ZWje+KBbBQz4RMwQ==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64@1.1.56:
+    resolution: {integrity: sha512-0FP3BzLjn+a9naTtm9hpHibJ+eV1RkI+tItcDQXKwHtvzoBUvytDRP8v6TotEHNtNF0ZLAb3OGurwDIIdtLarg==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-windows-x64-baseline@1.1.56:
+    resolution: {integrity: sha512-zEokdohfoDjWzwULvlSq0Y/tRoVmz2/6GofYO936buPQf09cBcPqpAgLUjZV+pQI0Atyd05YG3BCO4PQxmXzdw==}
+    cpu: [x64]
+    os: [win32]
+
+  opencode-windows-x64@1.1.56:
+    resolution: {integrity: sha512-zm/oaWT5uGrW3DumKRHiqv2L2pKwrTvhsT4XUSfIPLQn5EvrYNU6bh3WFO4v71ZBjSIKx5Q7rEvTEQvFiFEZFQ==}
+    cpu: [x64]
+    os: [win32]
 
   package-manager-detector@1.6.0:
     resolution: {integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==}
@@ -2060,8 +2127,6 @@ snapshots:
 
   '@octokit/webhooks-types@7.6.1': {}
 
-  '@opencode-ai/sdk@1.0.143': {}
-
   '@rollup/rollup-android-arm-eabi@4.55.1':
     optional: true
 
@@ -2182,13 +2247,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
-  '@vitest/mocker@4.0.17(vite@7.3.1(@types/node@24.7.2)(yaml@2.8.2))':
+  '@vitest/mocker@4.0.17(vite@7.3.1(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.0.17
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.1(@types/node@24.7.2)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2)
 
   '@vitest/pretty-format@4.0.17':
     dependencies:
@@ -2221,6 +2286,8 @@ snapshots:
     dependencies:
       mime-types: 3.0.2
       negotiator: 1.0.0
+
+  agent-browser@0.21.0: {}
 
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:
@@ -2752,6 +2819,9 @@ snapshots:
 
   isexe@2.0.0: {}
 
+  jiti@2.6.1:
+    optional: true
+
   jose@6.1.3: {}
 
   jose@6.2.0: {}
@@ -2854,6 +2924,53 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+
+  opencode-ai@1.1.56:
+    optionalDependencies:
+      opencode-darwin-arm64: 1.1.56
+      opencode-darwin-x64: 1.1.56
+      opencode-darwin-x64-baseline: 1.1.56
+      opencode-linux-arm64: 1.1.56
+      opencode-linux-arm64-musl: 1.1.56
+      opencode-linux-x64: 1.1.56
+      opencode-linux-x64-baseline: 1.1.56
+      opencode-linux-x64-baseline-musl: 1.1.56
+      opencode-linux-x64-musl: 1.1.56
+      opencode-windows-x64: 1.1.56
+      opencode-windows-x64-baseline: 1.1.56
+
+  opencode-darwin-arm64@1.1.56:
+    optional: true
+
+  opencode-darwin-x64-baseline@1.1.56:
+    optional: true
+
+  opencode-darwin-x64@1.1.56:
+    optional: true
+
+  opencode-linux-arm64-musl@1.1.56:
+    optional: true
+
+  opencode-linux-arm64@1.1.56:
+    optional: true
+
+  opencode-linux-x64-baseline-musl@1.1.56:
+    optional: true
+
+  opencode-linux-x64-baseline@1.1.56:
+    optional: true
+
+  opencode-linux-x64-musl@1.1.56:
+    optional: true
+
+  opencode-linux-x64@1.1.56:
+    optional: true
+
+  opencode-windows-x64-baseline@1.1.56:
+    optional: true
+
+  opencode-windows-x64@1.1.56:
+    optional: true
 
   package-manager-detector@1.6.0: {}
 
@@ -3159,7 +3276,7 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite@7.3.1(@types/node@24.7.2)(yaml@2.8.2):
+  vite@7.3.1(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2):
     dependencies:
       esbuild: 0.27.2
       fdir: 6.5.0(picomatch@4.0.3)
@@ -3170,12 +3287,13 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.7.2
       fsevents: 2.3.3
+      jiti: 2.6.1
       yaml: 2.8.2
 
-  vitest@4.0.17(@types/node@24.7.2)(yaml@2.8.2):
+  vitest@4.0.17(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.17
-      '@vitest/mocker': 4.0.17(vite@7.3.1(@types/node@24.7.2)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.17(vite@7.3.1(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.17
       '@vitest/runner': 4.0.17
       '@vitest/snapshot': 4.0.17
@@ -3192,7 +3310,7 @@ snapshots:
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vite: 7.3.1(@types/node@24.7.2)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@24.7.2)(jiti@2.6.1)(yaml@2.8.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.7.2

@@ -1,11 +1,13 @@
 // this must be imported first
 import "./arkConfig.ts";
 import { createServer } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import { FastMCP, type Tool } from "fastmcp";
 import type { AgentUsage } from "../agents/index.ts";
 import { ghPullfrogMcpName } from "../external.ts";
 import type { Mode } from "../modes.ts";
 import type { PrepResult } from "../prep/index.ts";
+import { closeBrowserDaemon } from "../utils/browser.ts";
 import { log } from "../utils/cli.ts";
 import type { OctokitWithPlugins } from "../utils/github.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
@@ -51,6 +53,8 @@ export type BackgroundProcess = {
   pidPath: string;
 };
 
+export type BrowserDaemon = { binDir: string; error?: never } | { binDir?: never; error: string };
+
 export type StoredPushDest = {
   remoteName: string;
   remoteBranch: string;
@@ -70,6 +74,7 @@ export interface ToolState {
   checkoutSha?: string;
   selectedMode?: string;
   backgroundProcesses: Map<string, BackgroundProcess>;
+  browserDaemon?: BrowserDaemon | undefined;
   review?: {
     id: number;
     nodeId: string;
@@ -319,7 +324,7 @@ async function killBackgroundProcesses(toolState: ToolState): Promise<void> {
       // already dead
     }
   }
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await sleep(200);
   for (const proc of backgroundProcesses.values()) {
     try {
       process.kill(-proc.pid, "SIGKILL");
@@ -347,6 +352,7 @@ export async function startMcpHttpServer(
   return {
     url: startResult.url,
     [Symbol.asyncDispose]: async () => {
+      closeBrowserDaemon(ctx.toolState);
       await killBackgroundProcesses(ctx.toolState);
       await startResult.server.stop();
     },

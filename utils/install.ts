@@ -4,6 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { log } from "./cli.ts";
 
 export interface InstallFromNpmTarballParams {
@@ -172,7 +173,7 @@ async function fetchWithRetry(
       const waitSeconds = parseInt(retryAfter, 10);
       if (!Number.isNaN(waitSeconds) && waitSeconds > 0) {
         log.info(`» rate limited, waiting ${waitSeconds} seconds before retry...`);
-        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+        await sleep(waitSeconds * 1000);
         const retryResponse = await fetch(url, { headers });
         if (!retryResponse.ok) {
           throw new Error(
