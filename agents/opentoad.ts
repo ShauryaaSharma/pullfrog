@@ -21,8 +21,8 @@ import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
-import { getDevDependencyVersion } from "../utils/version.ts";
 import type { TodoTracker } from "../utils/todoTracking.ts";
+import { getDevDependencyVersion } from "../utils/version.ts";
 import { type AgentResult, type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 async function installOpencodeCli(): Promise<string> {
