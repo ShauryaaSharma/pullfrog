@@ -19,7 +19,7 @@ export async function handleAgentResult(ctx: HandleAgentResultParams): Promise<M
     };
   }
 
-  if (!ctx.toolState.wasUpdated && ctx.toolState.progressCommentId && !ctx.silent) {
+  if (!ctx.toolState.wasUpdated && ctx.toolState.hadProgressComment && !ctx.silent) {
     const error = ctx.result.error || "agent completed without reporting progress";
     try {
       await reportErrorToComment({

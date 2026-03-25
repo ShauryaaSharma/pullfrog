@@ -70,6 +70,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
     description:
       "Submit a review for an existing pull request. " +
       "Each call creates a permanent, visible review on the PR — NEVER submit test or diagnostic reviews. " +
+      "Reviews with no body AND no comments are silently skipped (nothing to post). " +
       "IMPORTANT: 95%+ of feedback should be in 'comments' array with file paths and line numbers. " +
       "Only use 'body' for a 1-2 sentence summary with urgency and critical callouts. " +
       "Use 'suggestion' to propose replacement code - MUST preserve exact indentation of original code. " +

@@ -1,5 +1,4 @@
 import type { WriteablePayload } from "../external.ts";
-import { deleteProgressComment } from "../mcp/comment.ts";
 import { reportReviewNodeId } from "../mcp/review.ts";
 import type { ToolContext } from "../mcp/server.ts";
 import { log } from "./cli.ts";
@@ -34,8 +33,6 @@ export async function postReviewCleanup(ctx: ToolContext): Promise<void> {
       "follow-up re-review dispatch"
     );
   }
-
-  await bestEffort(() => deleteProgressComment(ctx), "delete progress comment");
 }
 
 async function bestEffort(fn: () => Promise<unknown>, label: string): Promise<void> {

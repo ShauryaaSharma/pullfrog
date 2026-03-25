@@ -70,8 +70,17 @@ async function validateStuckProgressComment(
       comment_id: commentId,
     });
 
-    if (commentResult.data.body?.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
+    const body = commentResult.data.body ?? "";
+
+    if (body.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
       log.info(`[post] comment ${commentId} is stuck on "Leaping into action"`);
+      return commentId;
+    }
+
+    // detect stranded todo checklists left by the tracker when the process was killed
+    // before the agent could call report_progress with a final summary
+    if (/^- \[[ x]\] |^- \*\*→\*\* |^- ~~/.test(body)) {
+      log.info(`[post] comment ${commentId} is stuck on a todo checklist`);
       return commentId;
     }
 

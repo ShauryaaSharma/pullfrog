@@ -10,6 +10,7 @@ import { log } from "../utils/cli.ts";
 import type { OctokitWithPlugins } from "../utils/github.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
 import type { RunContextData } from "../utils/runContextData.ts";
+import type { TodoTracker } from "../utils/todoTracking.ts";
 import { CheckoutPrTool } from "./checkout.ts";
 import { GetCheckSuiteLogsTool } from "./checkSuite.ts";
 import {
@@ -81,8 +82,14 @@ export interface ToolState {
   };
   // undefined = no comment yet, number = active comment, null = deliberately deleted
   progressCommentId: number | null | undefined;
+  // immutable snapshot: true if a progress comment was pre-created at init time.
+  // survives deleteProgressComment so handleAgentResult can still detect "expected but never reported".
+  hadProgressComment: boolean;
   lastProgressBody?: string;
   wasUpdated?: boolean;
+  // set after a non-plan report_progress successfully writes the final summary.
+  // decoupled from todoTracker.enabled so cleanup detection survives API failures.
+  finalSummaryWritten?: boolean;
   // set by select_mode when Plan + issue_number and plan-comment API returns existing plan (for report_progress target_plan_comment)
   existingPlanCommentId?: number;
   previousPlanBody?: string;
@@ -91,6 +98,7 @@ export interface ToolState {
   output?: string;
   usageEntries: AgentUsage[];
   model?: string | undefined;
+  todoTracker?: TodoTracker | undefined;
 }
 
 interface InitToolStateParams {
@@ -107,6 +115,7 @@ export function initToolState(params: InitToolStateParams): ToolState {
 
   return {
     progressCommentId: resolvedId,
+    hadProgressComment: !!resolvedId,
     backgroundProcesses: new Map(),
     usageEntries: [],
   };
@@ -192,8 +201,12 @@ function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any
     GitTool(ctx),
     GitFetchTool(ctx),
     UploadFileTool(ctx),
-    SetOutputTool(ctx, outputSchema),
   ];
+
+  const isStandalone = ctx.payload.event.trigger === "unknown";
+  if (isStandalone || outputSchema) {
+    tools.push(SetOutputTool(ctx, outputSchema));
+  }
 
   // MCP shell with filtered env (no secrets leaked to child processes)
   if (ctx.payload.shell === "restricted") {

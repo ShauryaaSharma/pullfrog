@@ -21,6 +21,7 @@ import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { spawn } from "../utils/subprocess.ts";
 import { ThinkingTimer } from "../utils/timer.ts";
+import type { TodoTracker } from "../utils/todoTracking.ts";
 import { type AgentResult, type AgentRunContext, type AgentUsage, agent } from "./shared.ts";
 
 // pinned CLI version
@@ -294,6 +295,7 @@ type RunParams = {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  todoTracker?: TodoTracker | undefined;
 };
 
 async function runOpenCode(params: RunParams): Promise<AgentResult> {
@@ -393,6 +395,17 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
 
       if (event.part?.state?.status === "completed" && event.part.state.output) {
         log.debug(`  output: ${event.part.state.output}`);
+      }
+
+      // agent's explicit MCP report_progress takes priority over todo tracking
+      if (toolName.includes("report_progress") && params.todoTracker) {
+        log.debug("» report_progress detected, disabling todo tracking");
+        params.todoTracker.cancel();
+      }
+
+      // parse todowrite events for live progress tracking
+      if (toolName === "todowrite" && params.todoTracker?.enabled) {
+        params.todoTracker.update(event.part?.state?.input);
       }
     },
     tool_result: (event: OpenCodeToolResultEvent) => {
@@ -535,6 +548,12 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
       },
     });
 
+    if (result.exitCode === 0) {
+      await params.todoTracker?.flush();
+    } else {
+      params.todoTracker?.cancel();
+    }
+
     const duration = performance.now() - startTime;
     log.info(
       `» ${params.label} completed in ${Math.round(duration)}ms with exit code ${result.exitCode}`
@@ -588,6 +607,7 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
 
     return { success: true, output: finalOutput || output, usage };
   } catch (error) {
+    params.todoTracker?.cancel();
     const duration = performance.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
     const isActivityTimeout = errorMessage.includes("activity timeout");
@@ -659,6 +679,7 @@ export const opentoad = agent({
       args,
       cwd: repoDir,
       env,
+      todoTracker: ctx.todoTracker,
     });
   },
 });

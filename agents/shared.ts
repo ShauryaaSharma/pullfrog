@@ -1,6 +1,7 @@
 import { log } from "../utils/cli.ts";
 import type { ResolvedInstructions } from "../utils/instructions.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
+import type { TodoTracker } from "../utils/todoTracking.ts";
 
 /**
  * token/cost usage data from a single agent run
@@ -33,6 +34,7 @@ export interface AgentRunContext {
   mcpServerUrl: string;
   tmpdir: string;
   instructions: ResolvedInstructions;
+  todoTracker?: TodoTracker | undefined;
 }
 
 export interface Agent {

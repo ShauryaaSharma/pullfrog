@@ -212,7 +212,13 @@ When posting comments via ${ghPullfrogMcpName}, write as a professional team mem
 
 ### Progress reporting
 
-ALWAYS use \`report_progress\` to share your results and progress — never \`create_issue_comment\`. The \`report_progress\` tool updates the pre-created progress comment on the issue/PR. Using \`create_issue_comment\` instead creates duplicate comments and leaves the progress comment stuck in its initial state. The \`create_issue_comment\` tool is only for creating NEW standalone comments unrelated to your task progress.
+**Task list**: at the start of every run, create an internal task list based on the steps in your current mode. Update it as you complete each step. The system automatically renders this list to the progress comment — you do not need to call \`report_progress\` for this.
+
+**\`report_progress\`**: you MUST call this exactly once at the end of every run with a brief final summary (1-3 sentences). Never call it for intermediate status updates (e.g., "Checking for changes...", "Starting review...") — the task list handles live progress automatically. Calling \`report_progress\` replaces the task list with your summary and preserves the completed task list in a collapsible section. Keep the summary concise — do not repeat what the task list already shows. Focus on the outcome (what was accomplished, links to artifacts) rather than listing individual steps.
+
+Never use \`create_issue_comment\` for task progress — that creates duplicate comments and leaves the progress comment stuck in its initial state. \`create_issue_comment\` is only for standalone comments unrelated to your current task (e.g., Plan comments, PR Summary comments).
+
+**After a PR review is submitted**, still call \`report_progress\` with your final summary. The progress comment persists as a record of what was done.
 
 ### If you get stuck
 
@@ -366,8 +372,6 @@ ${ctx.modes.map((m) => `- "${m.name}": ${m.description}`).join("\n")}
 ### Step 2: Execute
 
 Follow the mode guidance to complete the task. Use your native file and shell tools for local operations, and the ${ghPullfrogMcpName} MCP tools for GitHub/git operations.
-
-When done, call \`${ghPullfrogMcpName}/set_output\` with the final result. This makes it available as the GitHub Action output.
 
 ### No-action cases
 

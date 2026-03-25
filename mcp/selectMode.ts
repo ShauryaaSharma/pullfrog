@@ -111,10 +111,9 @@ ${learningsStep(6)}`,
 
 3. Self-critique: review all drafted comments and drop any that are praise, style preferences, speculative/unverified claims, about pre-existing code unrelated to the PR, or not actionable.
 
-4. Submit a **single** review:
-   - call \`${ghPullfrogMcpName}/create_pull_request_review\` with all comments and a unified summary body
-   - call \`${ghPullfrogMcpName}/report_progress\` with the summary
-   - if no actionable issues found, skip the review — just call \`report_progress\` noting the PR was reviewed`,
+4. Submit:
+   - **actionable issues found**: call \`${ghPullfrogMcpName}/create_pull_request_review\` with all comments, a 1-3 sentence summary body, and \`approved: false\`. Then call \`report_progress\` with a 1-sentence summary.
+   - **no actionable issues found**: do NOT submit a review. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Reviewed — no issues found.").`,
 
   IncrementalReview: `### Checklist
 
@@ -134,10 +133,9 @@ ${learningsStep(6)}`,
 
 5. Self-critique: drop any comments that are praise, style preferences, speculative, about pre-existing code, or not actionable.
 
-6. Submit a **single** review:
-   - if actionable issues found: call \`${ghPullfrogMcpName}/create_pull_request_review\` with \`approved: false\`, all comments, and an **empty body** (do NOT include a summary — inline comments speak for themselves and a top-level comment clutters the PR conversation on every re-review)
-   - if no actionable issues found: submit with \`approved: true\` and an **empty body** (no inline comments, no summary)
-   - do NOT call \`${ghPullfrogMcpName}/report_progress\` — incremental reviews should be silent`,
+6. Submit:
+   - **actionable issues found**: call \`${ghPullfrogMcpName}/create_pull_request_review\` with \`approved: false\`, all comments, and an **empty body** — inline comments speak for themselves, and a top-level body clutters the PR conversation on every re-review cycle. Then call \`report_progress\` with a 1-sentence summary.
+   - **no actionable issues found**: do NOT submit a review. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").`,
 
   Plan: `### Checklist
 
@@ -209,8 +207,9 @@ ${learningsStep(4)}`,
    - PR metadata (title, file count, commit count, base/head branches)
    - format instructions from EVENT INSTRUCTIONS (if any); otherwise use default format: TL;DR, key changes list, per-change sections with plain-language \`##\` titles and before/after framing
    - instruct it to use the TOC to selectively read relevant diff sections, not the entire file
-   - instruct it to return the full summary markdown via \`${ghPullfrogMcpName}/set_output\`
+   - instruct it to return the full summary markdown as its final response
 3. After the subagent completes, call \`${ghPullfrogMcpName}/create_issue_comment\` with \`type: "Summary"\` and the summary body.
+4. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Posted PR summary.").
 
 ### Effort
 
@@ -226,8 +225,9 @@ An existing summary comment was found for this PR. Update it rather than creatin
    - the diff file path and PR metadata
    - the existing summary body (\`previousSummaryBody\`) so it can update rather than rewrite from scratch
    - format instructions from EVENT INSTRUCTIONS (if any)
-   - instruct it to produce an updated summary reflecting the current state of the PR and return via \`${ghPullfrogMcpName}/set_output\`
+   - instruct it to produce an updated summary reflecting the current state of the PR and return it as its final response
 4. After the subagent completes, call \`${ghPullfrogMcpName}/edit_issue_comment\` with \`commentId: existingSummaryCommentId\` (from this response) and the updated summary body.
+5. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Updated PR summary.").
 
 ### Effort
 

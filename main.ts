@@ -1,6 +1,7 @@
 // changes to tool permissions should be reflected in wiki/granular-tools.md
 
 import * as core from "@actions/core";
+import { deleteProgressComment, reportProgress } from "./mcp/comment.ts";
 import {
   initToolState,
   startMcpHttpServer,
@@ -35,6 +36,7 @@ import { createTempDirectory, setupGit } from "./utils/setup.ts";
 import { killTrackedChildren } from "./utils/subprocess.ts";
 import { parseTimeString, TIMEOUT_DISABLED } from "./utils/time.ts";
 import { Timer } from "./utils/timer.ts";
+import { createTodoTracker } from "./utils/todoTracking.ts";
 import { getJobToken, resolveTokens } from "./utils/token.ts";
 import { resolveRun } from "./utils/workflow.ts";
 
@@ -203,6 +205,8 @@ export async function main(): Promise<MainResult> {
 
   const runInfo = await resolveRun({ octokit });
   let toolContext: ToolContext | undefined;
+  let progressCallbackDisabled = false;
+  let todoTracker: ReturnType<typeof createTodoTracker> | undefined;
 
   try {
     if (payload.cwd && process.cwd() !== payload.cwd) {
@@ -309,11 +313,22 @@ export async function main(): Promise<MainResult> {
       checkIntervalMs: DEFAULT_ACTIVITY_CHECK_INTERVAL_MS,
     });
     activityTimeout.promise.catch(() => {}); // prevent unhandled rejection if agent wins race
+    todoTracker = createTodoTracker(async (body) => {
+      if (progressCallbackDisabled || !toolContext) return;
+      try {
+        await reportProgress(toolContext, { body });
+      } catch (err) {
+        log.debug(`progress update failed: ${err}`);
+      }
+    });
+    toolState.todoTracker = todoTracker;
+
     const agentPromise = agent.run({
       payload,
       mcpServerUrl: mcpHttpServer.url,
       tmpdir,
       instructions,
+      todoTracker,
     });
 
     // timeout enforcement: default is 1 hour, but can be overridden via flags in the prompt:
@@ -355,12 +370,31 @@ export async function main(): Promise<MainResult> {
       );
     }
 
-    // post-agent review cleanup: reportReviewNodeId → follow-up dispatch → delete progress comment.
+    // post-agent review cleanup: reportReviewNodeId → follow-up re-review dispatch.
     // runs after the agent exits so ordering is architecturally guaranteed (no LLM involvement).
     // best-effort: cleanup failures must not turn a successful agent run into a failure.
     if (toolContext) {
       await postReviewCleanup(toolContext).catch((error) => {
         log.debug(`post-review cleanup failed: ${error}`);
+      });
+    }
+
+    // clean up stranded progress comments. two cases:
+    // 1. wasUpdated=false: nothing wrote to the comment ("Leaping into action" orphan)
+    // 2. tracker published a checklist but the agent never wrote a final summary
+    //    (hasPublished=true, finalSummaryWritten=false).
+    // in both cases, delete the comment so it doesn't linger with stale content.
+    // wasUpdated is intentionally NOT set here — cleanup is not a real progress update.
+    // uses finalSummaryWritten (not todoTracker.enabled) so cleanup survives API failures
+    // in report_progress where cancel() ran but the write didn't succeed.
+    const trackerWasLastWriter = todoTracker?.hasPublished && !toolState.finalSummaryWritten;
+    if (
+      toolContext &&
+      toolState.progressCommentId &&
+      (!toolState.wasUpdated || trackerWasLastWriter)
+    ) {
+      await deleteProgressComment(toolContext).catch((error) => {
+        log.debug(`stranded progress comment cleanup failed: ${error}`);
       });
     }
 
@@ -379,6 +413,8 @@ export async function main(): Promise<MainResult> {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "unknown error occurred";
+    progressCallbackDisabled = true;
+    todoTracker?.cancel();
     killTrackedChildren();
     log.error(errorMessage);
 

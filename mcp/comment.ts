@@ -329,7 +329,7 @@ export async function reportProgress(
     };
   }
 
-  // null = progress comment was deliberately deleted (e.g. by create_pull_request_review)
+  // null = progress comment was deleted by stranded-comment cleanup in main.ts
   if (existingCommentId === null) {
     return { body, action: "skipped" };
   }
@@ -400,17 +400,33 @@ export function ReportProgressTool(ctx: ToolContext) {
   return tool({
     name: "report_progress",
     description:
-      "Share progress on the associated GitHub issue/PR. Call this to post updates as you work. The first call creates a comment, subsequent calls update it. Use this throughout your work to keep stakeholders informed.",
+      "Share progress on the associated GitHub issue/PR. The first call creates a comment; subsequent calls update it in place. You MUST call this at the end of every run with a brief final summary (1-3 sentences). The completed task list is automatically appended in a collapsible section — do not restate individual steps.",
     parameters: ReportProgress,
     execute: execute(async (params) => {
-      const reportParams: { body: string; target_plan_comment?: boolean } = { body: params.body };
+      let body = params.body;
+
+      // for non-plan calls: stop auto-updates, wait for in-flight writes to settle,
+      // then append completed task list collapsible
+      if (!params.target_plan_comment && ctx.toolState.todoTracker) {
+        ctx.toolState.todoTracker.cancel();
+        await ctx.toolState.todoTracker.settled();
+        const collapsible = ctx.toolState.todoTracker.renderCollapsible();
+        if (collapsible) {
+          body = `${body}\n\n${collapsible}`;
+        }
+      }
+
+      const reportParams: { body: string; target_plan_comment?: boolean } = { body };
       if (params.target_plan_comment !== undefined) {
         reportParams.target_plan_comment = params.target_plan_comment;
       }
       const result = await reportProgress(ctx, reportParams);
 
+      if (!params.target_plan_comment) {
+        ctx.toolState.finalSummaryWritten = true;
+      }
+
       if (result.action === "skipped") {
-        // no-op: no comment target, but progress is still tracked for job summary
         return {
           success: true,
           message:
@@ -428,9 +444,9 @@ export function ReportProgressTool(ctx: ToolContext) {
 
 /**
  * Delete the progress comment if it exists.
- * Used after submitting a PR review since the review body contains all necessary info.
- * Sets progressCommentId to null, which prevents future report_progress calls from
- * creating a new comment (the agent may call report_progress again after this).
+ * Used by main.ts for stranded-comment cleanup (orphaned "Leaping into action" or
+ * checklist left by the todo tracker when the agent didn't call report_progress).
+ * Sets progressCommentId to null so subsequent report_progress calls are no-ops.
  */
 export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> {
   const existingCommentId = ctx.toolState.progressCommentId;
@@ -455,7 +471,6 @@ export async function deleteProgressComment(ctx: ToolContext): Promise<boolean> 
 
   // set to null (not undefined) so report_progress skips instead of creating a new comment
   ctx.toolState.progressCommentId = null;
-  ctx.toolState.wasUpdated = true;
 
   return true;
 }

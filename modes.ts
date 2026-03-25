@@ -15,7 +15,7 @@ export const ModeSchema = type({
   prompt: "string",
 });
 
-const reportProgressInstruction = `Use ${ghPullfrogMcpName}/report_progress to share progress and results. Continue calling it as you make progress — it will update the same comment. Never create additional comments manually.`;
+const reportProgressInstruction = `Use ${ghPullfrogMcpName}/report_progress to share your **final** results in 1-3 sentences. The completed task list is automatically preserved in a collapsible section below your summary — do not repeat individual steps in the summary. Focus on the outcome and link to any artifacts (PRs, branches). Never create additional comments manually.`;
 
 const dependencyInstallationStep = `If this task will require running tests, builds, linters, or CLI commands that need installed packages, call \`${ghPullfrogMcpName}/start_dependency_installation\` NOW. This is non-blocking and allows dependencies to install in the background while you continue. Later, call \`${ghPullfrogMcpName}/await_dependency_installation\` before running commands that need them. Skip this step if only reading code or answering questions.`;
 
@@ -47,14 +47,12 @@ export function computeModes(): Mode[] {
 
 7. **COMMIT** - Commit your changes using \`${ghPullfrogMcpName}/git\` (e.g., \`git add .\` then \`git commit -m "message"\`), then push with \`${ghPullfrogMcpName}/push_branch\`. Do NOT use \`git push\` directly - it requires credentials that only the MCP tool provides.
 
-8. **PROGRESS** - ${reportProgressInstruction}
-
-9. **PR** - Determine whether to create a PR (if not already on a PR branch):
+8. **PR** - Determine whether to create a PR (if not already on a PR branch):
    - **Default behavior**: Create a PR using ${ghPullfrogMcpName}/create_pull_request with an informative title and body. If you are working in the context of an issue (check EVENT DATA for \`issue_number\` where \`is_pr\` is not true), include "Closes #<issue_number>" in the PR body to auto-close the issue when merged.
    - **Draft PR request**: If the user explicitly asks for a draft PR (e.g. "draft PR", "create as draft", "WIP"), create a PR with \`draft: true\`.
    - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-10. **FINAL REPORT** - Call report_progress one final time ONLY if you haven't already included all the important information (PR links, branch links, summary) in a previous report_progress call. If you already called report_progress with complete information including PR links after creating the PR, you do NOT need to call it again. Only make a final call if you need to add missing information. When making the final call, ensure it includes:
+9. **FINAL REPORT** - ${reportProgressInstruction} Ensure the summary includes:
    - A summary of what was accomplished
    - Links to any artifacts created (PRs, branches, issues)
    - If you created a PR, ALWAYS include the PR link. e.g.:
@@ -66,7 +64,6 @@ export function computeModes(): Mode[] {
      [\`pullfrog/branch-name\`](https://github.com/pullfrog/scratch/tree/pullfrog/branch-name) • [Create PR ➔](https://github.com/pullfrog/scratch/compare/main...pullfrog/branch-name?quick_pull=1&title=<informative_title>&body=<informative_body>)
      \`\`\`
 
-   Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task. Please review the PR." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.
 `,
     },
     {
@@ -120,14 +117,13 @@ Keep the progress comment extremely brief. The summary should be 1-2 sentences m
    - **Impact analysis**: Identify what was removed, renamed, or deprecated in the PR. Use grep to search the broader codebase for remaining references to those things in code, tests, docs, comments, and configs. Report stale references in the review body.
    - Do NOT stop at "this looks reasonable." Dig until you either find a problem or have concrete evidence there isn't one.
 
-4. **DRAFT LINE-BY-LINE COMMENTS** - Every comment must be actionable: the author should need to change something in response. 2-3 sentences max. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`). If no issues found, skip to step 5. NO COMPLIMENTS. NO NITPICKING ABOUT CHANGES UNRELATED TO THE MAIN CHANGE. Non-actionable comments (praise, style preferences, minor optimizatfixons, documentation nits) must not be drafted.
+4. **DRAFT LINE-BY-LINE COMMENTS** - Every comment must be actionable: the author should need to change something in response. 2-3 sentences max. Use the NEW line number from the diff (second column: \`| OLD | NEW | TYPE | CODE\`). If no issues found, skip to step 5. NO COMPLIMENTS. NO NITPICKING ABOUT CHANGES UNRELATED TO THE MAIN CHANGE. Non-actionable comments (praise, style preferences, minor optimizations, documentation nits) must not be drafted.
 
 5. **WRITE SUMMARY** - Draft a 1-3 sentence summary for the review body. If issues were found, include urgency level and any concerns about code outside the diff. If no issues were found, write a brief approval summary (e.g., "Changes look good. No issues found.").
 
-6. **SUBMIT** — Always submit a review via ${ghPullfrogMcpName}/create_pull_request_review:
-   - \`body\`: The summary from step 5
-   - \`comments\`: The inline comments from step 4
-   - \`approved\`: Set to \`true\` ONLY if the review contains no actionable feedback — neither inline comments nor actionable content in the body. An approval signals "no changes needed."
+6. **SUBMIT** — Determine whether to submit a review:
+   - **Issues found**: Submit via ${ghPullfrogMcpName}/create_pull_request_review with the summary body from step 5, the inline comments from step 4, and \`approved: false\`. Then call \`report_progress\` with a 1-sentence summary (e.g., "Reviewed — found 3 issues.").
+   - **No issues found**: Do NOT submit a review. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Reviewed — no issues found.").
 
 ${permalinkTip}
 `,
@@ -159,12 +155,9 @@ ${permalinkTip}
 
 6. **DRAFT LINE-BY-LINE COMMENTS** - Every comment must be actionable. 2-3 sentences max. Use the NEW line number from the full PR diff. NO COMPLIMENTS. NO NITPICKING.
 
-7. **WRITE SUMMARY** - Draft a 1-3 sentence summary for the review body. Focus on what changed since the last review and whether the new changes are sound. If issues were found, include urgency level. If no issues were found, write a brief approval summary.
-
-8. **SUBMIT** — Use ${ghPullfrogMcpName}/create_pull_request_review:
-   - \`body\`: The summary from step 7
-   - \`comments\`: The inline comments from step 6
-   - \`approved\`: Set to \`true\` ONLY if the review contains no actionable feedback — neither inline comments nor actionable content in the body. An approval signals "no changes needed."
+7. **SUBMIT** — Determine whether to submit a review:
+   - **Issues found**: Submit via ${ghPullfrogMcpName}/create_pull_request_review with \`approved: false\`, the inline comments from step 6, and an **empty body** — inline comments speak for themselves, and a top-level body clutters the PR conversation on every re-review cycle. Then call \`report_progress\` with a 1-sentence summary (e.g., "Re-reviewed — found 2 issues in the new commits.").
+   - **No issues found**: Do NOT submit a review. Call \`report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").
 
 ${permalinkTip}
 `,
@@ -308,9 +301,7 @@ Your job is to fix issues THIS PR introduced, not to fix all CI failures. If in 
      - **Draft PR request**: If the user explicitly asks for a draft PR (e.g. "draft PR", "create as draft", "WIP"), create a PR with \`draft: true\`.
      - **Branch-only request**: If the user explicitly asks for a branch without a PR (e.g. "don't create a PR", "branch only", "just create a branch"), do NOT create a PR. Simply push the branch and report the branch link.
 
-5. **PROGRESS** - ${reportProgressInstruction}
-
-Do NOT overwrite a good comment with links/details with a generic message like "I have completed the task." If your previous report_progress call already contains all the necessary information and links, skip the final call entirely.`,
+5. **PROGRESS** - ${reportProgressInstruction}`,
     },
     {
       name: "Summarize",
@@ -325,6 +316,8 @@ Do NOT overwrite a good comment with links/details with a generic message like "
 3. **SUMMARIZE** - Write a structured summary following the format from EVENT INSTRUCTIONS. If no format instructions are provided, produce a concise summary with a TL;DR, key changes list, and per-change sections with human-readable \`##\` titles and before/after framing.
 
 4. **POST** - Call ${ghPullfrogMcpName}/create_issue_comment with type: 'Summary' and the summary body.
+
+5. **PROGRESS** - ${reportProgressInstruction}
 
 ${permalinkTip}`,
     },
