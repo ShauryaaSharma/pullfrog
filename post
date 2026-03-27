@@ -37805,6 +37805,7 @@ function buildPullfrogFooter(params) {
   }
   const allParts = [...parts, "[\u{1D54F}](https://x.com/pullfrogai)"];
   return `
+
 ${PULLFROG_DIVIDER}
 <sup>${FROG_LOGO}&nbsp;&nbsp;\uFF5C ${allParts.join(" \uFF5C ")}</sup>`;
 }

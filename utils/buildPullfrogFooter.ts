@@ -61,9 +61,7 @@ export function buildPullfrogFooter(params: BuildPullfrogFooterParams): string {
 
   const allParts = [...parts, "[𝕏](https://x.com/pullfrogai)"];
 
-  return `
-${PULLFROG_DIVIDER}
-<sup>${FROG_LOGO}&nbsp;&nbsp;｜ ${allParts.join(" ｜ ")}</sup>`;
+  return `\n\n${PULLFROG_DIVIDER}\n<sup>${FROG_LOGO}&nbsp;&nbsp;｜ ${allParts.join(" ｜ ")}</sup>`;
 }
 
 /**
