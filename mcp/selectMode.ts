@@ -135,7 +135,8 @@ ${learningsStep(6)}`,
 
 6. Submit:
    - **actionable issues found**: call \`${ghPullfrogMcpName}/create_pull_request_review\` with \`approved: false\`, all comments, and an **empty body** — inline comments speak for themselves, and a top-level body clutters the PR conversation on every re-review cycle. Then call \`report_progress\` with a 1-sentence summary.
-   - **no actionable issues found**: do NOT submit a review. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").`,
+   - **no actionable issues, but substantive changes or prior fixes confirmed**: post a brief comment (1-3 sentences) via \`${ghPullfrogMcpName}/create_issue_comment\` confirming the review happened and listing which prior review issues were resolved. Substantive = new functionality, behavior changes, architectural changes, or fixes to previously flagged issues.
+   - **no actionable issues, non-substantive changes only** (e.g., trivial formatting, import reordering, comment tweaks with no functional impact): do NOT submit a review. Call \`${ghPullfrogMcpName}/report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").`,
 
   Plan: `### Checklist
 

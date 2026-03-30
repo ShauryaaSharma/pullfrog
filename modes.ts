@@ -154,7 +154,8 @@ ${permalinkTip}
 
 7. **SUBMIT** — Determine whether to submit a review:
    - **Issues found**: Submit via ${ghPullfrogMcpName}/create_pull_request_review with \`approved: false\`, the inline comments from step 6, and an **empty body** — inline comments speak for themselves, and a top-level body clutters the PR conversation on every re-review cycle. Then call \`report_progress\` with a 1-sentence summary (e.g., "Re-reviewed — found 2 issues in the new commits.").
-   - **No issues found**: Do NOT submit a review. Call \`report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").
+   - **No issues, but substantive changes or prior fixes confirmed**: Post a brief comment (1-3 sentences) via ${ghPullfrogMcpName}/create_issue_comment confirming the review happened and listing which prior review issues were resolved. Substantive = new functionality, behavior changes, architectural changes, or fixes to previously flagged issues.
+   - **No issues, non-substantive changes only** (e.g., trivial formatting, import reordering, comment tweaks with no functional impact): Do NOT submit a review. Call \`report_progress\` with a brief note (e.g., "Re-reviewed — no new issues found.").
 
 ${permalinkTip}
 `,

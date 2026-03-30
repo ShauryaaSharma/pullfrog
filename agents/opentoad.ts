@@ -52,7 +52,7 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       edit: "allow",
       read: "allow",
       webfetch: "allow",
-      external_directory: "deny",
+      external_directory: "allow",
       skill: "allow",
     },
     mcp: {
