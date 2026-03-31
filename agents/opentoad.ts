@@ -502,7 +502,7 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
       args: params.args,
       cwd: params.cwd,
       env: params.env,
-      activityTimeout: 0,
+      activityTimeout: 300_000,
       stdio: ["ignore", "pipe", "pipe"],
       onStdout: async (chunk) => {
         const text = chunk.toString();

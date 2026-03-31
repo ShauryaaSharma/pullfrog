@@ -76,7 +76,8 @@ export interface SpawnOptions {
   env?: NodeJS.ProcessEnv;
   input?: string;
   timeout?: number;
-  // activity timeout: kill process if no stdout/stderr for this many ms (default: 30s, 0 to disable)
+  // activity timeout: kill process if no stdout for this many ms (default: 30s, 0 to disable).
+  // only stdout resets the timer — stderr (e.g. provider error retries) does not count as progress.
   activityTimeout?: number;
   cwd?: string;
   stdio?: ("pipe" | "ignore" | "inherit")[];
@@ -95,7 +96,6 @@ export interface SpawnResult {
  * Spawn a subprocess with streaming callbacks and buffered results
  */
 export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
-  const { cmd, args, env, input, timeout, cwd, stdio, onStdout, onStderr } = options;
   const activityTimeoutMs = options.activityTimeout ?? DEFAULT_ACTIVITY_TIMEOUT_MS;
 
   installSignalHandler();
@@ -106,13 +106,13 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
 
   return new Promise((resolve, reject) => {
     // security: caller must provide complete env object, not merged with process.env
-    const child = nodeSpawn(cmd, args, {
-      env: env || {
+    const child = nodeSpawn(options.cmd, options.args, {
+      env: options.env || {
         PATH: process.env.PATH || "",
         HOME: process.env.HOME || "",
       },
-      stdio: stdio || ["pipe", "pipe", "pipe"],
-      cwd: cwd || process.cwd(),
+      stdio: options.stdio || ["pipe", "pipe", "pipe"],
+      cwd: options.cwd || process.cwd(),
     });
 
     // track child for cleanup on Ctrl+C
@@ -125,7 +125,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
     let lastActivityTime = performance.now();
 
     // overall timeout
-    if (timeout) {
+    if (options.timeout) {
       timeoutId = setTimeout(() => {
         isTimedOut = true;
         child.kill("SIGTERM");
@@ -135,12 +135,14 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
             child.kill("SIGKILL");
           }
         }, 5000);
-      }, timeout);
+      }, options.timeout);
     }
 
     // activity timeout: kill if no output for too long
     if (activityTimeoutMs > 0) {
-      log.debug(`spawn activity timer: pid=${child.pid} cmd=${cmd} timeout=${activityTimeoutMs}ms`);
+      log.debug(
+        `spawn activity timer: pid=${child.pid} cmd=${options.cmd} timeout=${activityTimeoutMs}ms`
+      );
       activityCheckIntervalId = setInterval(() => {
         const idleMs = performance.now() - lastActivityTime;
         log.debug(
@@ -149,7 +151,9 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
         if (idleMs > activityTimeoutMs) {
           isActivityTimedOut = true;
           const idleSec = Math.round(idleMs / 1000);
-          log.info(`no output for ${idleSec}s from pid=${child.pid} (${cmd}), killing process`);
+          log.info(
+            `no output for ${idleSec}s from pid=${child.pid} (${options.cmd}), killing process`
+          );
           child.kill("SIGKILL");
           clearInterval(activityCheckIntervalId);
         }
@@ -165,16 +169,15 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
         updateActivity();
         const chunk = data.toString();
         stdoutBuffer += chunk;
-        onStdout?.(chunk);
+        options.onStdout?.(chunk);
       });
     }
 
     if (child.stderr) {
       child.stderr.on("data", (data: Buffer) => {
-        updateActivity();
         const chunk = data.toString();
         stderrBuffer += chunk;
-        onStderr?.(chunk);
+        options.onStderr?.(chunk);
       });
     }
 
@@ -186,7 +189,7 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
       if (activityCheckIntervalId) clearInterval(activityCheckIntervalId);
 
       if (isTimedOut) {
-        reject(new Error(`process timed out after ${timeout}ms`));
+        reject(new Error(`process timed out after ${options.timeout}ms`));
         return;
       }
 
@@ -222,8 +225,8 @@ export async function spawn(options: SpawnOptions): Promise<SpawnResult> {
       });
     });
 
-    if (input && child.stdin && stdio?.[0] !== "ignore") {
-      child.stdin.write(input);
+    if (options.input && child.stdin && options.stdio?.[0] !== "ignore") {
+      child.stdin.write(options.input);
       child.stdin.end();
     }
   });
