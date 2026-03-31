@@ -14,6 +14,7 @@ export interface RunContextData {
   apiToken: string;
   oss: boolean;
   proxyModel?: string | undefined;
+  dbSecrets?: Record<string, string> | undefined;
 }
 
 interface ResolveRunContextDataParams {
@@ -46,5 +47,6 @@ export async function resolveRunContextData(
     apiToken: runContext.apiToken,
     oss: runContext.oss,
     proxyModel: runContext.proxyModel,
+    dbSecrets: runContext.dbSecrets,
   };
 }

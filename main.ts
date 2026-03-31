@@ -169,6 +169,18 @@ export async function main(): Promise<MainResult> {
   const runContext = await resolveRunContextData({ octokit: initialOctokit, token: jobToken });
   timer.checkpoint("runContextData");
 
+  // inject account-level secrets into process.env (YAML secrets take precedence)
+  if (runContext.dbSecrets) {
+    for (const [key, value] of Object.entries(runContext.dbSecrets)) {
+      if (!process.env[key]) {
+        process.env[key] = value;
+        core.setSecret(value);
+      }
+    }
+    const count = Object.keys(runContext.dbSecrets).length;
+    if (count > 0) log.info(`» ${count} db secret(s) loaded`);
+  }
+
   // resolve payload to determine shell permission
   const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
   toolState.model = payload.model;

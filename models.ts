@@ -93,7 +93,7 @@ export const providers = {
   }),
   google: provider({
     displayName: "Google",
-    envVars: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
+    envVars: ["GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
     models: {
       "gemini-pro": {
         displayName: "Gemini Pro",
