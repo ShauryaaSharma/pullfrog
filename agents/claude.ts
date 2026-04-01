@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { ghPullfrogMcpName } from "../external.ts";
-import { resolveModelSlug } from "../models.ts";
+
 import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
@@ -52,32 +52,12 @@ function writeMcpConfig(ctx: AgentRunContext): string {
   return configPath;
 }
 
-// ── model resolution ─────────────────────────────────────────────────────────
+// ── model helpers ─────────────────────────────────────────────────────────────
 
-function resolveClaudeModel(modelSlug: string | undefined): string | undefined {
-  // 1. explicit env var override
-  const envModel = process.env.PULLFROG_MODEL?.trim();
-  if (envModel) {
-    const slashIndex = envModel.indexOf("/");
-    const cliModel = slashIndex > 0 ? envModel.slice(slashIndex + 1) : envModel;
-    log.info(`» model: ${cliModel} (override via PULLFROG_MODEL)`);
-    return cliModel;
-  }
-
-  if (!modelSlug) return undefined;
-
-  // 2. resolve slug to concrete specifier (e.g. "anthropic/claude-opus" → "anthropic/claude-opus-4-6")
-  //    then strip the "anthropic/" prefix to get the Claude CLI model name
-  const resolved = resolveModelSlug(modelSlug);
-  if (resolved) {
-    const slashIndex = resolved.indexOf("/");
-    const cliModel = slashIndex > 0 ? resolved.slice(slashIndex + 1) : resolved;
-    log.info(`» model: ${cliModel} (resolved from ${modelSlug})`);
-    return cliModel;
-  }
-
-  log.warning(`» unknown model slug "${modelSlug}" — letting Claude Code auto-select`);
-  return undefined;
+// claude CLI expects bare model names (e.g. "claude-sonnet-4-6"), not provider-prefixed specifiers
+function stripProviderPrefix(specifier: string): string {
+  const slashIndex = specifier.indexOf("/");
+  return slashIndex > 0 ? specifier.slice(slashIndex + 1) : specifier;
 }
 
 // ── NDJSON event types ─────────────────────────────────────────────────────────
@@ -488,7 +468,8 @@ export const claude = agent({
   run: async (ctx) => {
     const cliPath = await installClaudeCli();
 
-    const model = ctx.payload.proxyModel ?? resolveClaudeModel(ctx.payload.model);
+    const specifier = ctx.payload.proxyModel ?? ctx.resolvedModel;
+    const model = specifier ? stripProviderPrefix(specifier) : undefined;
 
     const homeEnv = {
       HOME: ctx.tmpdir,

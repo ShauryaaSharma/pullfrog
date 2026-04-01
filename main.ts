@@ -15,7 +15,7 @@ import {
   DEFAULT_ACTIVITY_CHECK_INTERVAL_MS,
   DEFAULT_ACTIVITY_TIMEOUT_MS,
 } from "./utils/activity.ts";
-import { resolveAgent } from "./utils/agent.ts";
+import { resolveAgent, resolveModel } from "./utils/agent.ts";
 import { apiFetch } from "./utils/apiFetch.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
@@ -249,11 +249,12 @@ export async function main(): Promise<MainResult> {
     await using gitAuthServer = await startGitAuthServer(tmpdir);
     setGitAuthServer(gitAuthServer);
 
-    const agent = resolveAgent({ model: payload.proxyModel ? undefined : payload.model });
+    const resolvedModel = payload.proxyModel ? undefined : resolveModel({ slug: payload.model });
+    const agent = resolveAgent({ model: resolvedModel });
 
     validateAgentApiKey({
       agent,
-      model: payload.proxyModel ?? payload.model,
+      model: payload.proxyModel ?? resolvedModel ?? payload.model,
       owner: runContext.repo.owner,
       name: runContext.repo.name,
     });
@@ -341,6 +342,7 @@ export async function main(): Promise<MainResult> {
 
     const agentPromise = agent.run({
       payload,
+      resolvedModel,
       mcpServerUrl: mcpHttpServer.url,
       tmpdir,
       instructions,

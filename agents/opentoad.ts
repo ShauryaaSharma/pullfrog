@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { ghPullfrogMcpName } from "../external.ts";
-import { modelAliases, resolveCliModel } from "../models.ts";
+import { modelAliases } from "../models.ts";
 import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
@@ -74,13 +74,11 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
   return JSON.stringify(config);
 }
 
-// ── model resolution (see wiki/model-resolution.md) ─────────────────────────────
+// ── model auto-select fallback ──────────────────────────────────────────────────
 //
-// priority:
-//   1. PULLFROG_MODEL env var (explicit override)
-//   2. explicit slug from repo config / payload
-//   3. auto-select: `opencode models` → preferred aliases first, then secondary
-//   4. undefined → let OpenCode decide
+// steps 1–2 of model resolution (PULLFROG_MODEL env, slug resolution) are handled
+// by resolveModel() in utils/agent.ts before the agent runs. this fallback only
+// handles step 3: auto-select via `opencode models`.
 
 function getOpenCodeModels(cliPath: string): string[] {
   try {
@@ -104,35 +102,8 @@ function getOpenCodeModels(cliPath: string): string[] {
 const AUTO_SELECT_WARNING =
   "select a model explicitly in the Pullfrog console (https://pullfrog.com/console) to avoid this.";
 
-function resolveOpenCodeModel(ctx: {
-  cliPath: string;
-  modelSlug?: string | undefined;
-}): string | undefined {
-  // 1. explicit env var override
-  const envModel = process.env.PULLFROG_MODEL?.trim();
-  if (envModel) {
-    log.info(`» model: ${envModel} (override via PULLFROG_MODEL)`);
-    return envModel;
-  }
-
-  // 2. explicit slug from repo config / payload
-  if (ctx.modelSlug) {
-    const resolved = resolveCliModel(ctx.modelSlug);
-    if (resolved) {
-      if (resolved !== ctx.modelSlug) {
-        log.info(`» model: ${ctx.modelSlug} (resolved to ${resolved})`);
-      } else {
-        log.info(`» model: ${resolved}`);
-      }
-      return resolved;
-    }
-    log.warning(`» unknown model slug "${ctx.modelSlug}" — falling through to auto-select`);
-  }
-
-  // 3. auto-select: ask OpenCode what's available, pick our best curated match.
-  // `opencode models` returns `provider/model-id` specifiers matching our resolve values exactly.
-  // two-pass: preferred (top-tier per provider) first, then secondary models.
-  const availableModels = getOpenCodeModels(ctx.cliPath);
+function autoSelectModel(cliPath: string): string | undefined {
+  const availableModels = getOpenCodeModels(cliPath);
   const availableSet = new Set(availableModels);
   if (availableSet.size > 0) {
     log.debug(`» opencode models (${availableSet.size}): ${availableModels.join(", ")}`);
@@ -625,12 +596,7 @@ export const opentoad = agent({
   run: async (ctx) => {
     const cliPath = await installOpencodeCli();
 
-    const model =
-      ctx.payload.proxyModel ??
-      resolveOpenCodeModel({
-        cliPath,
-        modelSlug: ctx.payload.model,
-      });
+    const model = ctx.payload.proxyModel ?? ctx.resolvedModel ?? autoSelectModel(cliPath);
 
     const homeEnv = {
       HOME: ctx.tmpdir,

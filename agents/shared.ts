@@ -31,6 +31,7 @@ export interface AgentResult {
  */
 export interface AgentRunContext {
   payload: ResolvedPayload;
+  resolvedModel?: string | undefined;
   mcpServerUrl: string;
   tmpdir: string;
   instructions: ResolvedInstructions;

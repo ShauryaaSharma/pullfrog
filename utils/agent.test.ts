@@ -3,7 +3,7 @@ import { resolveAgent } from "./agent.ts";
 
 describe("resolveAgent", () => {
   it("returns opentoad", () => {
-    const agent = resolveAgent();
+    const agent = resolveAgent({});
     expect(agent.name).toBe("opentoad");
   });
 });
