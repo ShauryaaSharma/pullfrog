@@ -305,6 +305,11 @@ export async function main(): Promise<MainResult> {
     log.info(`» MCP server started at ${mcpHttpServer.url}`);
     timer.checkpoint("mcpServer");
 
+    if (payload.model) log.info(`» model:   ${payload.model}`);
+    if (payload.timeout) log.info(`» timeout: ${payload.timeout}`);
+    log.info(`» push:    ${payload.push}`);
+    log.info(`» shell:   ${payload.shell}`);
+
     const instructions = resolveInstructions({
       payload,
       repo: runContext.repo,
@@ -312,7 +317,6 @@ export async function main(): Promise<MainResult> {
       outputSchema,
       learnings: runContext.repoSettings.learnings,
     });
-    // log instructions as soon as they are fully resolved
     const logParts = [
       instructions.eventInstructions
         ? `EVENT-LEVEL INSTRUCTIONS:\n${instructions.eventInstructions}`

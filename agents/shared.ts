@@ -51,12 +51,7 @@ export const agent = (input: Agent): Agent => {
   return {
     ...input,
     run: async (ctx: AgentRunContext): Promise<AgentResult> => {
-      if (ctx.payload.model) log.info(`» model:   ${ctx.payload.model}`);
-      if (ctx.payload.timeout) log.info(`» timeout: ${ctx.payload.timeout}`);
-      log.info(`» push:    ${ctx.payload.push}`);
-      log.info(`» shell:   ${ctx.payload.shell}`);
       log.debug(`» payload: ${JSON.stringify(ctx.payload, null, 2)}`);
-
       return input.run(ctx);
     },
   };

@@ -23,6 +23,7 @@ export {
   modelAliases,
   parseModel,
   providers,
+  resolveCliModel,
   resolveModelSlug,
 } from "../external.ts";
 export type { Mode } from "../modes.ts";
