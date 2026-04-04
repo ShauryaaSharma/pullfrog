@@ -83,6 +83,16 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
     execute: execute(async ({ pull_number, body, approved, commit_id, comments = [] }) => {
       if (body) body = fixDoubleEscapedString(body);
 
+      // in Review mode (not IncrementalReview), append the completed task list
+      if (body && ctx.toolState.selectedMode === "Review" && ctx.toolState.todoTracker) {
+        ctx.toolState.todoTracker.cancel();
+        await ctx.toolState.todoTracker.settled();
+        const collapsible = ctx.toolState.todoTracker.renderCollapsible();
+        if (collapsible) {
+          body = `${body}\n\n${collapsible}`;
+        }
+      }
+
       // set issue context (PRs are issues)
       ctx.toolState.issueNumber = pull_number;
 

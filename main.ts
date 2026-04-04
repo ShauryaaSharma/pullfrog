@@ -407,6 +407,17 @@ export async function main(): Promise<MainResult> {
       });
     }
 
+    // review submitted → always delete the progress comment.
+    // the review is the durable artifact; the progress comment is noise.
+    // defense-in-depth: covers the case where the agent calls report_progress
+    // despite mode instructions, which sets finalSummaryWritten and prevents
+    // the stranded-comment heuristic below from firing.
+    if (toolContext && toolState.review && toolState.progressCommentId) {
+      await deleteProgressComment(toolContext).catch((error) => {
+        log.debug(`review progress comment cleanup failed: ${error}`);
+      });
+    }
+
     // clean up stranded progress comments. two cases:
     // 1. wasUpdated=false: nothing wrote to the comment ("Leaping into action" orphan)
     // 2. tracker published a checklist but the agent never wrote a final summary
