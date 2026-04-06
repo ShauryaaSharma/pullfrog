@@ -38,9 +38,9 @@ export function computeModes(agentId: AgentId): Mode[] {
    - commit locally via shell (\`git add . && git commit -m "..."\`)
 
 5. **finalize**:
-   - push the branch via \`${t("push_branch")}\`
+   - confirm a clean working tree, then push via \`${t("push_branch")}\` (see *SYSTEM* Git rules if this fails — prepush errors are usually the repo's tests/lint, not infra timeouts)
    - create a PR via \`${t("create_pull_request")}\`
-   - call \`${t("report_progress")}\` with the final summary including PR link
+   - call \`${t("report_progress")}\` with the PR link or the exact error if push/PR failed
 
 ${learningsStep(t, 6)}
 
@@ -68,10 +68,10 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
    - commit locally via shell (\`git add . && git commit -m "..."\`)
 
 5. Finalize:
-   - push changes via \`${t("push_branch")}\`
+   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
    - reply to each comment using \`${t("reply_to_review_comment")}\`
    - resolve addressed threads via \`${t("resolve_review_thread")}\`
-   - call \`${t("report_progress")}\` with a brief summary
+   - call \`${t("report_progress")}\` with a brief summary (or the exact push error if push failed)
 
 ${learningsStep(t, 6)}`,
     },
@@ -181,8 +181,8 @@ ${learningsStep(t, 4)}`,
    - commit locally via shell (\`git add . && git commit -m "..."\`)
 
 5. Finalize:
-   - push changes via \`${t("push_branch")}\`
-   - call \`${t("report_progress")}\` with the diagnosis and fix summary
+   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
+   - call \`${t("report_progress")}\` with the diagnosis and fix summary (or the exact push error if push failed)
 
 ${learningsStep(t, 6)}`,
     },
@@ -198,8 +198,8 @@ ${learningsStep(t, 6)}`,
 
 2. **Merge Attempt**:
    - Run \`git merge origin/<base_branch>\` via shell.
-   - If it succeeds automatically, push via \`${t("push_branch")}\` and report success.
-   - If it fails (conflicts), resolve them manually.
+   - If it succeeds automatically, confirm a clean working tree, push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*), and call \`${t("report_progress")}\` with a brief success note or the exact push error if push failed — **then stop; do not run steps 3–4.**
+   - If it fails (conflicts), resolve them manually (continue to steps 3–4).
 
 3. **Resolve Conflicts**:
    - Run \`git status\` or parse the merge output to find the list of conflicting files.
@@ -209,8 +209,8 @@ ${learningsStep(t, 6)}`,
 4. **Finalize**:
    - Run a final verification (build/test) to ensure the resolution works.
    - \`git add . && git commit -m "resolve merge conflicts"\`
-   - Push via \`${t("push_branch")}\`
-   - Call \`${t("report_progress")}\` with a summary of what was resolved`,
+   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
+   - Call \`${t("report_progress")}\` with a summary of what was resolved (or the exact push error if push failed)`,
     },
     {
       name: "Task",
@@ -227,8 +227,8 @@ ${learningsStep(t, 6)}`,
    - if code changes are needed: review your own diff before committing — verify only intended changes are present, no debug artifacts remain, and the changes are clean enough that a senior engineer would approve without hesitation
 
 3. Finalize:
-   - if code changes were made, push all changes to a pull request (new or existing). \`git status\` must be clean before you finish.
-   - call \`${t("report_progress")}\` with results
+   - if code changes were made, push to a pull request (new or existing) using \`${t("push_branch")}\` and \`${t("create_pull_request")}\` as needed. \`git status\` must be clean before you finish (see *SYSTEM* Git rules if push fails).
+   - call \`${t("report_progress")}\` once with results — include exact tool errors if push or PR creation failed
    - if the task involved labeling, commenting, or other GitHub operations, perform those directly
 
 ${learningsStep(t, 4)}`,

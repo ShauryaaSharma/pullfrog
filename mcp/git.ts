@@ -96,6 +96,7 @@ export function PushBranchTool(ctx: ToolContext) {
       "Push the current branch to the remote repository. Omit branchName to push the current branch (recommended). " +
       "If specifying branchName, use the LOCAL branch name (e.g., 'pr-1'), not the remote branch name. " +
       "The correct remote and remote branch are determined automatically from branch config set by checkout_pr. " +
+      "Requires a clean working tree. Runs the repository prepush hook (if configured) before the network push — hook failure means tests/lint or similar in that script failed, not necessarily a Pullfrog timeout. " +
       "Never force push unless explicitly requested. Pushes to the default branch are blocked in restricted mode.",
     parameters: PushBranch,
     execute: execute(async ({ branchName, force }) => {
@@ -110,7 +111,7 @@ export function PushBranchTool(ctx: ToolContext) {
       const status = $("git", ["status", "--porcelain"], { log: false });
       if (status) {
         throw new Error(
-          `push blocked: working tree has uncommitted changes. commit or discard them before pushing.\n\n` +
+          `push blocked: working tree is not clean (tracked changes and/or untracked files). commit, discard, or remove stray artifacts before pushing.\n\n` +
             `git status:\n${status}`
         );
       }

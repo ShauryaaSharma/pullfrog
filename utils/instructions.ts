@@ -252,6 +252,9 @@ Rules:
 - Do not attempt to configure git credentials manually — the ${pullfrogMcpName} server handles all authentication internally.
 - Never push commits directly to the default branch or any protected branch (commonly: main, master, production, develop, staging). Always create a feature branch following the pattern: \`pullfrog/<issue-number>-<kebab-case-description>\` (e.g., \`pullfrog/123-fix-login-bug\`).
 - Never add co-author trailers (e.g., "Co-authored-by" or "Co-Authored-By") to commit messages.
+- Untracked files from tests or tooling (e.g. \`coverage/\`) often remain *after* your last commit and still block \`${t("push_branch")}\` — delete them, extend \`.gitignore\`, or only add files that truly belong in the repo.
+- \`${t("push_branch")}\` runs the repository's optional **prepush** hook before the network push. If the error includes \`lifecycle hook 'prepush' failed\` (with an exit code and script output after it), the hook script exited non-zero (commonly tests or lint). Fix that or change the hook — do not describe it as an infrastructure "timeout" unless the tool output or logs clearly show a timeout.
+- If push or PR creation fails, \`${t("report_progress")}\` must summarize using the **actual** error from the tool. Do not substitute vague causes unless they match what failed.
 
 ### GitHub
 
@@ -267,7 +270,7 @@ ${getStandaloneModeInstructions(ctx.payload.event.trigger, t, ctx.outputSchema)}
 
 ### Efficiency
 
-Trust the tools — do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error.
+Trust the tools — do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error. Exception: right before \`${t("push_branch")}\`, ensure the working tree is clean — that tool rejects dirty trees, and tests you ran earlier often leave untracked output.
 
 ### Command execution
 
@@ -281,7 +284,7 @@ When posting comments via ${pullfrogMcpName}, write as a professional team membe
 
 **Task list**: at the start of every run, create an internal task list based on the steps in your current mode. Update it as you complete each step. The system automatically renders this list to the progress comment — you do not need to call \`report_progress\` for this.
 
-**\`report_progress\`**: call this exactly once at the end of every run with a brief final summary (1-3 sentences) unless the mode guidance instructs otherwise. Never call it for intermediate status updates (e.g., "Checking for changes...", "Starting review...") — the task list handles live progress automatically. Calling \`report_progress\` replaces the task list with your summary and preserves the current task list in a collapsible section. Keep the summary concise — do not repeat what the task list already shows. Focus on the outcome (what was accomplished, links to artifacts) rather than listing individual steps.
+**\`report_progress\`**: call this exactly once at the end of every run with a brief final summary (1-3 sentences) unless the mode guidance instructs otherwise. Never call it for intermediate status updates (e.g., "Checking for changes...", "Starting review...") — the task list handles live progress automatically. Calling \`report_progress\` replaces the task list with your summary and preserves the current task list in a collapsible section. Keep the summary concise — do not repeat what the task list already shows. Focus on the outcome (what was accomplished, links to artifacts) rather than listing individual steps. If something failed, include the tool's error text even when that makes the summary longer.
 
 Never use \`create_issue_comment\` for task progress — that creates duplicate comments and leaves the progress comment stuck in its initial state. \`create_issue_comment\` is only for standalone comments unrelated to your current task (e.g., Plan comments, PR Summary comments).
 
