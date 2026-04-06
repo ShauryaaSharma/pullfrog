@@ -11,7 +11,7 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2025-12-01",
   },
   "google": {
-    "modelId": "gemma-4-31b",
+    "modelId": "gemma-4-31b-it",
     "releaseDate": "2026-04-02",
   },
   "moonshotai": {
@@ -27,8 +27,8 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2026-03-30",
   },
   "openrouter": {
-    "modelId": "qwen/qwen3.6-plus:free",
-    "releaseDate": "2026-04-02",
+    "modelId": "google/gemma-4-26b-a4b-it",
+    "releaseDate": "2026-04-03",
   },
   "xai": {
     "modelId": "grok-4.20-multi-agent-0309",
