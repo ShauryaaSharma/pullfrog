@@ -136,9 +136,30 @@ export function CreateCommentTool(ctx: ToolContext) {
         body: bodyWithFooter,
       });
 
-      if (commentType === "Plan" && result.data.node_id) {
-        await updateCommentNodeId(ctx, "planCommentNodeId", result.data.node_id);
+      if (commentType === "Plan") {
+        if (result.data.node_id) {
+          await updateCommentNodeId(ctx, "planCommentNodeId", result.data.node_id);
+        }
+        // add "Implement plan" link (needs comment ID, so create-then-update)
+        const customParts = [buildImplementPlanLink(ctx, issueNumber, result.data.id)];
+        const footer = buildCommentFooter(ctx, customParts);
+        const bodyWithPlanLink = `${stripExistingFooter(body)}${footer}`;
+
+        const updateResult = await ctx.octokit.rest.issues.updateComment({
+          owner: ctx.repo.owner,
+          repo: ctx.repo.name,
+          comment_id: result.data.id,
+          body: bodyWithPlanLink,
+        });
+
+        return {
+          success: true,
+          commentId: updateResult.data.id,
+          url: updateResult.data.html_url,
+          body: updateResult.data.body,
+        };
       }
+
       if (commentType === "Summary" && result.data.node_id) {
         await updateCommentNodeId(ctx, "summaryCommentNodeId", result.data.node_id);
       }
@@ -230,9 +251,7 @@ export async function reportProgress(
   if (target_plan_comment === true && ctx.toolState.existingPlanCommentId !== undefined) {
     const commentId = ctx.toolState.existingPlanCommentId;
     const customParts =
-      isPlanMode && issueNumber !== undefined
-        ? [buildImplementPlanLink(ctx, issueNumber, commentId)]
-        : undefined;
+      issueNumber !== undefined ? [buildImplementPlanLink(ctx, issueNumber, commentId)] : undefined;
     const bodyWithoutFooter = stripExistingFooter(body);
     const footer = buildCommentFooter(ctx, customParts);
     const bodyWithFooter = `${bodyWithoutFooter}${footer}`;
