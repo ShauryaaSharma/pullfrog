@@ -127,23 +127,23 @@ ${learningsStep(t, 6)}`,
    - check whether prior review feedback was addressed by the new commits
    - trace data flow, check boundaries, verify assumptions, consider lifecycle, spot performance issues
    - if the new commits remove, rename, or deprecate anything, run impact analysis with grep across code/tests/docs/comments/configs to find stale references and include those findings in the summary body
-   - never repeat prior feedback. if the author did not address an earlier comment, assume it was intentionally declined; only comment on genuinely new issues introduced by the new commits
+   - never repeat prior feedback. only comment on genuinely new issues introduced by the new commits.
    - draft inline comments with NEW line numbers from the full PR diff — every comment must be actionable (2-3 sentences max)
    - for large or cross-cutting PRs, consider delegating read-only subagents for parallel investigation. subagents must ONLY read files, grep, and search — no MCP tools, no writes, no shell commands, no side effects. collect their findings and use them to draft comments.
 
 5. Self-critique: drop any comments that are praise, style preferences, speculative, about pre-existing code, or not actionable.
 
-6. **Summarize incremental changes**: produce a concise bullet-point summary of the changes since the last review:
-   - one bullet per logical change (e.g. \`- lowered cache TTLs to 60s across all three helpers\`)
-   - note which prior review comments were addressed with a checklist (\`- [x] addressed\` / \`- [ ] not addressed\`)
-   - no headings, no tables, no prose paragraphs — just bullets
+6. **Summarize**: build two distinct sections for the review body:
+   a. **Reviewed changes**: one bullet per logical change in the new commits (e.g. \`- dispatch/route.ts: switched from parse() to safeParse with structured 400 responses\`). describe what each change does — these are the novel changes you are acknowledging as reviewed.
+   b. **Prior review feedback**: list only the prior review comments that WERE addressed by the new commits (\`- [x] safeParse instead of parse — addressed\`). omit unaddressed comments. a change can appear in both sections — described as a reviewed change AND acknowledged as addressed feedback.
+   - no headings, no tables, no prose paragraphs in either section — just bullets
    - in some cases you may receive a complete diff for the whole pull request instead of an incremental one. when this happens, you will need to determine what changes have happened since Pullfrog's most recent review.
 
-7. Submit — Do NOT call \`report_progress\` or \`create_issue_comment\` — the review is the final record and the progress comment will be cleaned up automatically. Follow these rules:
+7. Submit — Do NOT call \`report_progress\` or \`create_issue_comment\` — the review is the final record and the progress comment will be cleaned up automatically. every review body includes both sections from step 6: the reviewed changes bullets, then \`Prior review feedback:\\n\` followed by the checklist. Follow these rules:
    - IF NO NEW ISSUES, NON-SUBSTANTIVE CHANGES ONLY (trivial formatting, import reordering, comment tweaks): do NOT submit a review. Do NOT call \`report_progress\`. Exit — the progress comment will be cleaned up automatically.
-   - ELSE IF NEW CRITICAL ISSUES (blocks merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. The review body begins with a GitHub alert blockquote (e.g. \`> [!CAUTION]\\n> This PR introduces ...\`) followed by the bullet-point summary from step 6.
-   - ELSE IF NEW RECOMMENDED CHANGES (non-critical): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. The review body begins with a GitHub alert blockquote (e.g. \`> [!IMPORTANT]\\n> Consider adding input validation for ...\`) followed by the bullet-point summary.
-   - ELSE IF NO NEW ISSUES, SUBSTANTIVE CHANGES (new functionality, behavior changes, or fixes to prior review feedback): call \`${t("create_pull_request_review")}\` to create a PR review. If all previous reviews have been properly addressed and no new issues were discovered, you can set \`approved: true\`. The body is just "No new issues. Reviewed the following changes:" followed by the bullet-point summary from step 6.`,
+   - ELSE IF NEW CRITICAL ISSUES (blocks merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with a GitHub alert blockquote (e.g. \`> [!CAUTION]\\n> This PR introduces ...\`), then the two sections.
+   - ELSE IF NEW RECOMMENDED CHANGES (non-critical): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!IMPORTANT]\\n> ...\` alert, then the two sections.
+   - ELSE IF NO NEW ISSUES, SUBSTANTIVE CHANGES (new functionality, behavior changes, or fixes to prior review feedback): call \`${t("create_pull_request_review")}\` to create a PR review. If all previous reviews have been properly addressed and no new issues were discovered, you can set \`approved: true\`. body opens with \`No new issues. Reviewed the following changes:\\n\`, then the two sections.`,
     },
     {
       name: "Plan",

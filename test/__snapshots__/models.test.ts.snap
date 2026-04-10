@@ -23,8 +23,8 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2026-03-17",
   },
   "opencode": {
-    "modelId": "qwen3.6-plus-free",
-    "releaseDate": "2026-03-30",
+    "modelId": "glm-5.1",
+    "releaseDate": "2026-04-07",
   },
   "openrouter": {
     "modelId": "z-ai/glm-5.1",
