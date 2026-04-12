@@ -44,7 +44,7 @@ function runNpx(context: RuntimeContext, packageSpec: string, cliArgs: string[])
       ? join(context.nodeBinDir, "npx.cmd")
       : join(context.nodeBinDir, "npx");
   execFileSync(npxPath, ["--yes", packageSpec, ...cliArgs], {
-    cwd: context.actionRoot,
+    cwd: process.env.GITHUB_WORKSPACE || context.actionRoot,
     stdio: "inherit",
     env: context.env,
   });
