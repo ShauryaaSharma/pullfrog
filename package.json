@@ -1,6 +1,6 @@
 {
   "name": "pullfrog",
-  "version": "0.0.194",
+  "version": "0.0.195",
   "type": "module",
   "bin": {
     "pullfrog": "dist/cli.mjs",

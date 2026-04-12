@@ -155,7 +155,6 @@ function openBrowser(url: string) {
 type SecretsApiData = {
   error?: string;
   appSlug?: string;
-  ownerHasInstallation?: boolean;
   installationId?: number | null;
   repositorySelection?: string | null;
   isOrg?: boolean;
@@ -181,7 +180,6 @@ type SecretsInfo = {
 
 type InstallationNotFound = {
   appSlug: string;
-  ownerHasInstallation: boolean;
   installationId: number | null;
   repositorySelection: "all" | "selected" | null;
   isOrg: boolean;
@@ -256,7 +254,6 @@ async function fetchStatus(ctx: {
       return {
         installed: false,
         appSlug: result.data.appSlug,
-        ownerHasInstallation: result.data.ownerHasInstallation === true,
         installationId:
           typeof result.data.installationId === "number" ? result.data.installationId : null,
         repositorySelection: sel === "all" || sel === "selected" ? sel : null,
@@ -379,27 +376,18 @@ async function ensureInstallation(ctx: {
 
   const sessionId = await createSession(ctx);
 
-  if (initial.ownerHasInstallation && initial.installationId) {
+  if (initial.installationId) {
     const repoRef = pc.bold(`${ctx.owner}/${ctx.repo}`);
     const configUrl = installationConfigUrl({
       owner: ctx.owner,
       installationId: initial.installationId,
       isOrg: initial.isOrg,
     });
-    if (initial.repositorySelection === "selected") {
-      activeSpin!.stop("checked installation");
-      const proceed = await p.confirm({
-        message: `pullfrog is installed on selected repos only\n${repoRef} is not in the list — you'll need to add it\n${pc.dim(configUrl)}`,
-        active: "open",
-        inactive: "cancel",
-      });
-      handleCancel(proceed);
-      if (!proceed) bail("canceled.");
-    } else {
-      activeSpin!.stop(`pullfrog app doesn't have access to ${repoRef}`);
-      p.log.info(`update your pullfrog installation to include this repo:\n  ${configUrl}`);
-    }
-    openBrowser(configUrl);
+    activeSpin!.stop(`pullfrog is installed on selected repos, but ${repoRef} is not included.`);
+    p.log.info(`add it under "Repository access" on the installation config page.\n  ${pc.dim(configUrl)}`);
+    const openIt = await p.confirm({ message: "open browser?", active: "yes", inactive: "no" });
+    handleCancel(openIt);
+    if (openIt) openBrowser(configUrl);
   } else {
     activeSpin!.stop("pullfrog app not installed");
     const installUrl = `https://github.com/apps/${initial.appSlug}/installations/select_target?state=cli`;
@@ -407,7 +395,10 @@ async function ensureInstallation(ctx: {
     openBrowser(installUrl);
   }
 
-  const baseMsg = "once you've installed the app, onboarding will proceed automatically";
+  const isRepoAccessUpdate = !!initial.installationId;
+  const baseMsg = isRepoAccessUpdate
+    ? "once you've added the repo, onboarding will proceed automatically"
+    : "once you've installed the app, onboarding will proceed automatically";
   activeSpin!.start(baseMsg);
 
   let activeSessionId = sessionId;
@@ -425,13 +416,15 @@ async function ensureInstallation(ctx: {
         hintShown = true;
       }
 
+      const doneMsg = isRepoAccessUpdate ? "repo access confirmed" : "pullfrog app installed";
+
       if (listener.consume()) {
         activeSpin!.message("rechecking via GitHub API");
         try {
           const status = await fetchStatus(ctx);
           if (status.installed) {
             if (activeSessionId) cleanupSession({ token: ctx.token, sessionId: activeSessionId });
-            activeSpin!.stop("pullfrog app installed");
+            activeSpin!.stop(doneMsg);
             return status;
           }
         } catch {
@@ -454,7 +447,7 @@ async function ensureInstallation(ctx: {
             const status = await fetchStatus(ctx);
             if (status.installed) {
               cleanupSession({ token: ctx.token, sessionId: activeSessionId });
-              activeSpin!.stop("pullfrog app installed");
+              activeSpin!.stop(doneMsg);
               return status;
             }
           }
@@ -466,7 +459,7 @@ async function ensureInstallation(ctx: {
         try {
           const status = await fetchStatus(ctx);
           if (status.installed) {
-            activeSpin!.stop("pullfrog app installed");
+            activeSpin!.stop(doneMsg);
             return status;
           }
         } catch {
@@ -480,9 +473,12 @@ async function ensureInstallation(ctx: {
 
   if (activeSessionId) cleanupSession({ token: ctx.token, sessionId: activeSessionId });
   bail(
-    "timed out waiting for app installation.\n" +
-      `  ${pc.dim("if your org requires admin approval, ask an admin to approve,")}\n` +
-      `  ${pc.dim("then re-run:")} npx pullfrog init`
+    isRepoAccessUpdate
+      ? "timed out waiting for repo access.\n" +
+          `  ${pc.dim("add the repo, then re-run:")} npx pullfrog init`
+      : "timed out waiting for app installation.\n" +
+          `  ${pc.dim("if your org requires admin approval, ask an admin to approve,")}\n` +
+          `  ${pc.dim("then re-run:")} npx pullfrog init`
   );
 }
 
@@ -586,7 +582,7 @@ async function handleSecret(ctx: {
 
   if (matches.length > 0) {
     activeSpin!.start("");
-    activeSpin!.stop("found secrets");
+    activeSpin!.stop("secrets already configured");
     for (const m of matches) {
       process.stdout.write(
         `${pc.gray(p.S_BAR)}    ${pc.cyan(m.name)} ${pc.dim(`(${m.source})`)}\n`
@@ -672,18 +668,17 @@ async function handleSecret(ctx: {
     } catch (error) {
       activeSpin!.stop(pc.red("could not save secret"));
       p.log.warn(
-        `${error instanceof Error ? error.message : "network error"}\n  ${pc.dim("set it manually at:")} ${PULLFROG_API_URL}/console/${ctx.owner}`
+        `${error instanceof Error ? error.message : "network error"}\n  set it manually at: ${pc.dim(`${PULLFROG_API_URL}/console/${ctx.owner}`)}`
       );
       return;
     }
 
     if (saveResult.saved) {
-      const scopeLabel = ctx.secrets.isOrg ? (scope === "repo" ? "repo secret" : "org secret") : "";
-      activeSpin!.stop(`${pc.cyan(envVar)} saved${scopeLabel ? ` as ${scopeLabel}` : ""}`);
+      activeSpin!.stop(`saved ${pc.cyan(envVar)} to Pullfrog`);
     } else {
       activeSpin!.stop(pc.red("could not save secret"));
       p.log.warn(
-        `${saveResult.error}\n  ${pc.dim("set it manually at:")} ${PULLFROG_API_URL}/console/${ctx.owner}`
+        `${saveResult.error}\n  set it manually at: ${pc.dim(`${PULLFROG_API_URL}/console/${ctx.owner}`)}`
       );
     }
     return;
@@ -709,7 +704,7 @@ async function handleSecret(ctx: {
   });
   if (secretResult.saved) {
     activeSpin!.stop(
-      `${pc.cyan(envVar)} saved${org && !secretResult.orgFailed ? ` to ${pc.dim(ctx.owner)} org` : ""}`
+      `saved ${pc.cyan(envVar)} to ${org && !secretResult.orgFailed ? `${pc.dim(ctx.owner)} org secret` : "GitHub Actions secret"}`
     );
     if (secretResult.orgFailed) {
       p.log.warn("org secret failed (admin access required) — saved as repo secret instead");
@@ -724,7 +719,7 @@ async function promptTestRun(ctx: { token: string; owner: string; repo: string }
   const proceed = await p.select({
     message: "test your installation?",
     options: [
-      { value: true, label: "yes", hint: `runs "Tell me a joke"` },
+      { value: true, label: "yes", hint: "dispatches a test run in your GitHub Actions" },
       { value: false, label: "skip" },
     ],
   });
@@ -745,10 +740,9 @@ async function promptTestRun(ctx: { token: string; owner: string; repo: string }
     return;
   }
 
-  activeSpin!.stop("test run dispatched");
+  activeSpin!.stop("dispatched test run");
   if (result.data.url) {
-    activeSpin!.start("");
-    activeSpin!.stop(link(result.data.url, result.data.url));
+    process.stdout.write(`${pc.gray(p.S_BAR)}    ${link(pc.dim(result.data.url), result.data.url)}\n`);
     openBrowser(result.data.url);
   }
 }
@@ -799,7 +793,7 @@ async function main() {
     if (!resolved) bail(`unknown model provider: ${secrets.model}`);
     provider = resolved;
     spin.start("");
-    spin.stop(`selected model is ${pc.cyan(secrets.model)}`);
+    spin.stop(`using model ${pc.cyan(secrets.model)}`);
   } else {
     const providerId = await p.select({
       message: "select your preferred model provider",
@@ -856,7 +850,7 @@ async function main() {
   if (result.data.already_existed) {
     spin.stop("pullfrog.yml already exists");
   } else if (result.data.pull_request_url) {
-    spin.stop("created pull request with pullfrog.yml");
+    spin.stop("opened pull request with pullfrog.yml");
     process.stdout.write(
       `${pc.gray(p.S_BAR)}    ${link(pc.dim(result.data.pull_request_url), result.data.pull_request_url)}\n`
     );
@@ -873,7 +867,7 @@ async function main() {
     if (!merged) skipTestRun = true;
   } else {
     const short = result.data.hash?.slice(0, 7);
-    spin.stop(short ? `pullfrog.yml committed ${pc.dim(short)}` : "pullfrog.yml committed");
+    spin.stop(short ? `committed pullfrog.yml to repo ${pc.dim(short)}` : "committed pullfrog.yml to repo");
   }
 
   if (!skipTestRun && !secrets.hasRuns) {
