@@ -1,9 +1,12 @@
 // @ts-check
 
 import { build } from "esbuild";
-import { readFileSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
+
+rmSync("./dist", { recursive: true, force: true });
+mkdirSync("./dist", { recursive: true });
 
 // Plugin to strip shebangs from output files
 /**
@@ -71,6 +74,21 @@ await build({
   define: {
     "process.env.CLI_VERSION": JSON.stringify(pkg.version),
   },
+});
+
+// Build ESM library entrypoints for programmatic imports
+await build({
+  ...sharedConfig,
+  entryPoints: ["./index.ts"],
+  outfile: "./dist/index.js",
+  target: "node20",
+});
+
+await build({
+  ...sharedConfig,
+  entryPoints: ["./internal/index.ts"],
+  outfile: "./dist/internal.js",
+  target: "node20",
 });
 
 // prepend shebang after strip (esbuild banner can't guarantee line 1 placement)
