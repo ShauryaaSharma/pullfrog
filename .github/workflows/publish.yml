@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build
+        run: pnpm build
+
       - name: Get package version
         id: version
         run: |
@@ -98,9 +101,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check_tag.outputs.exists == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: NODE_AUTH_TOKEN="" npm publish --provenance --access public
 
       - name: Summary
         if: always()
