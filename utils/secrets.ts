@@ -1,9 +1,6 @@
 /**
- * Secret detection and redaction utilities
- * Redacts actual secret values rather than using pattern matching
+ * Secret detection and env filtering utilities
  */
-
-import { getGitHubInstallationToken } from "./token.ts";
 
 // patterns for sensitive env var names
 export const SENSITIVE_PATTERNS = [
@@ -46,39 +43,4 @@ export function resolveEnv(mode: EnvMode | undefined): Record<string, string | u
   }
   // custom env object - merge with restricted base
   return { ...filterEnv(), ...mode };
-}
-
-function getAllSecrets(): string[] {
-  const secrets: string[] = [];
-
-  // collect all env var values matching SENSITIVE_PATTERNS
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value && isSensitiveEnvName(key)) {
-      secrets.push(value);
-    }
-  }
-
-  // add GitHub installation token (stored in memory, not in env)
-  try {
-    const token = getGitHubInstallationToken();
-    if (token) {
-      secrets.push(token);
-    }
-  } catch {
-    // token not set yet, ignore
-  }
-
-  return secrets;
-}
-
-export function redactSecrets(content: string, secrets?: string[]): string {
-  const secretsToRedact = [...(secrets ?? []), ...getAllSecrets()];
-  let redacted = content;
-  for (const secret of secretsToRedact) {
-    if (secret) {
-      const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      redacted = redacted.replaceAll(new RegExp(escaped, "g"), "[REDACTED_SECRET]");
-    }
-  }
-  return redacted;
 }

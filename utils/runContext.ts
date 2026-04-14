@@ -57,18 +57,24 @@ const defaultRunContext: RunContext = {
 export async function fetchRunContext(params: {
   token: string;
   repoContext: RepoContext;
+  oidcToken?: string | undefined;
 }): Promise<RunContext> {
   const timeoutMs = 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${params.token}`,
+      "Content-Type": "application/json",
+    };
+    if (params.oidcToken) {
+      headers["X-GitHub-OIDC-Token"] = params.oidcToken;
+    }
+
     const response = await apiFetch({
       path: `/api/repo/${params.repoContext.owner}/${params.repoContext.name}/run-context`,
-      headers: {
-        Authorization: `Bearer ${params.token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       signal: controller.signal,
     });
 

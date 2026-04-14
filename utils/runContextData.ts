@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import type { Octokit } from "@octokit/rest";
 import packageJson from "../package.json" with { type: "json" };
 import { log } from "./cli.ts";
@@ -32,9 +33,16 @@ export async function resolveRunContextData(
 
   const repoContext = parseRepoContext();
 
+  let oidcToken: string | undefined;
+  try {
+    oidcToken = await core.getIDToken("pullfrog-api");
+  } catch {
+    // OIDC not available (local dev, non-actions environment, fork PRs)
+  }
+
   const [repoResponse, runContext] = await Promise.all([
     params.octokit.repos.get({ owner: repoContext.owner, repo: repoContext.name }),
-    fetchRunContext({ token: params.token, repoContext }),
+    fetchRunContext({ token: params.token, repoContext, oidcToken }),
   ]);
 
   return {
