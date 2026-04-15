@@ -27,9 +27,22 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        agent: [claude, opentoad]
+        agent: [claude, opencode]
         test:
-          [mcpmerge, nobash, restricted, smoke, token-exfil]
+          [
+            mcpmerge,
+            nobash,
+            restricted,
+            skill-invoke-claude,
+            skill-invoke-opencode,
+            smoke,
+            token-exfil,
+          ]
+        exclude:
+          - agent: claude
+            test: skill-invoke-opencode
+          - agent: opencode
+            test: skill-invoke-claude
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

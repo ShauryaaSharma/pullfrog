@@ -38,6 +38,7 @@ export const test: TestRunnerOptions = {
   validator,
   env: {
     GITHUB_REPOSITORY: "pullfrog/test-repo-mcp",
+    PULLFROG_DISABLE_SECURITY_INSTRUCTIONS: "1",
     PULLFROG_MCP_SECRET: secret,
   },
   repoSetup:

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateAgentApiKey } from "./apiKeys.ts";
 
 const base = {
-  agent: { name: "opentoad" },
+  agent: { name: "opencode" },
   owner: "test-owner",
   name: "test-repo",
 };

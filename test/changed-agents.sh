@@ -4,7 +4,7 @@
 # outputs a JSON array of agent names to stdout.
 #
 # only agents whose harness file changed AND are exported from index.ts are included.
-# shared.ts/index.ts and other non-harness action changes fall back to opentoad as a canary.
+# shared.ts/index.ts and other non-harness action changes fall back to opencode as a canary.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,9 +58,9 @@ while IFS= read -r file; do
 done <<< "$files"
 
 # output agents based on change type.
-# non-agent action changes always include opentoad as a canary.
+# non-agent action changes always include opencode as a canary.
 if $has_non_agent_change; then
-  changed_agents+=("opentoad")
+  changed_agents+=("opencode")
 fi
 
 if [[ ${#changed_agents[@]} -gt 0 ]]; then

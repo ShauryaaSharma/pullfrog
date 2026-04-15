@@ -6,7 +6,7 @@ import { defineFixture, generateAgentUuids, getAgentOutput } from "../utils.ts";
  * process environment. SANDBOX_TEST_TOKEN is set in the agent's process env
  * but should be invisible via:
  *   - shell: filterEnv() strips *_TOKEN vars, PID namespace hides parent /proc
- *   - native tools: OPENCODE_PERMISSION denies external_directory (opentoad),
+ *   - native tools: OPENCODE_PERMISSION denies external_directory (opencode),
  *     managed-settings.json denies /proc reads (claude)
  *
  * runs with both agents to verify each sandbox independently.

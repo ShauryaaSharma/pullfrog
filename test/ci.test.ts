@@ -87,29 +87,29 @@ describe("ci workflow consistency", () => {
       expect(rootJob.strategy!.matrix.agent).toBe(dynamicAgentsExpression);
     });
 
-    it("changed-agents.sh falls back to opentoad when shared agent code changed", () => {
+    it("changed-agents.sh falls back to opencode when shared agent code changed", () => {
       const input = JSON.stringify(["action/agents/shared.ts"]);
       const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
         input,
         encoding: "utf-8",
       });
-      expect(JSON.parse(output)).toEqual(["opentoad"]);
+      expect(JSON.parse(output)).toEqual(["opencode"]);
     });
 
-    it("changed-agents.sh falls back to opentoad for non-agent action changes", () => {
+    it("changed-agents.sh falls back to opencode for non-agent action changes", () => {
       const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
         input: JSON.stringify(["action/mcp/server.ts"]),
         encoding: "utf-8",
       });
-      expect(JSON.parse(output)).toEqual(["opentoad"]);
+      expect(JSON.parse(output)).toEqual(["opencode"]);
     });
 
-    it("changed-agents.sh includes opentoad canary alongside changed agents", () => {
+    it("changed-agents.sh includes opencode canary alongside changed agents", () => {
       const output = execFileSync("bash", [join(__dirname, "changed-agents.sh")], {
-        input: JSON.stringify(["action/agents/opentoad.ts", "action/mcp/server.ts"]),
+        input: JSON.stringify(["action/agents/opencode.ts", "action/mcp/server.ts"]),
         encoding: "utf-8",
       });
-      expect(JSON.parse(output)).toEqual(["opentoad"]);
+      expect(JSON.parse(output)).toEqual(["opencode"]);
     });
 
     it("changed-agents.sh treats legacy agent files as non-agent changes", () => {
@@ -117,7 +117,7 @@ describe("ci workflow consistency", () => {
         input: JSON.stringify(["action/agents/codex.ts", "action/agents/gemini.ts"]),
         encoding: "utf-8",
       });
-      expect(JSON.parse(output)).toEqual(["opentoad"]);
+      expect(JSON.parse(output)).toEqual(["opencode"]);
     });
 
     it("action agent matrix matches agents map", () => {

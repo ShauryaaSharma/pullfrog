@@ -298,5 +298,5 @@ ${PR_SUMMARY_FORMAT}`,
   ];
 }
 
-// static export for UI display — uses opentoad format as the readable default
-export const modes: Mode[] = computeModes("opentoad");
+// static export for UI display — uses opencode format as the readable default
+export const modes: Mode[] = computeModes("opencode");

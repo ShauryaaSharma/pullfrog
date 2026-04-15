@@ -64,5 +64,5 @@ export function resolveAgent(ctx: { model?: string | undefined }): Agent {
   }
 
   // 3. default: OpenCode (universal, supports all providers)
-  return agents.opentoad;
+  return agents.opencode;
 }

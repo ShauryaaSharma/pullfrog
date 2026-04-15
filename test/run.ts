@@ -27,14 +27,14 @@ import {
  * filters can be test names, tags, or agent names:
  *   node test/run.ts               # run all tests (excludes adhoc-tagged tests)
  *   node test/run.ts smoke         # run tests named "smoke" or tagged "smoke"
- *   node test/run.ts opentoad      # run all tests for opentoad only
+ *   node test/run.ts opencode      # run all tests for opencode only
  *   node test/run.ts security      # run all tests tagged "security"
- *   node test/run.ts agnostic      # run all agnostic-tagged tests (with opentoad)
+ *   node test/run.ts agnostic      # run all agnostic-tagged tests (with opencode)
  *   node test/run.ts adhoc         # run all adhoc-tagged tests
- *   node test/run.ts smoke opentoad # run smoke tests for opentoad only
+ *   node test/run.ts smoke opencode # run smoke tests for opencode only
  *
  * special tags:
- *   - "agnostic": runs with opentoad only, excluded when filtering by agent
+ *   - "agnostic": runs with opencode only, excluded when filtering by agent
  *   - "adhoc": excluded from default runs, must be explicitly requested
  *
  * by default, runs in a Docker container for isolation.
@@ -303,7 +303,7 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
   if (!Object.hasOwn(env, "PULLFROG_MODEL")) {
     const defaultModels: Record<string, string> = {
       claude: "anthropic/claude-sonnet-4-6",
-      opentoad: "anthropic/claude-sonnet-4-6",
+      opencode: "anthropic/claude-sonnet-4-6",
     };
     const model = defaultModels[ctx.agent];
     if (model) {
@@ -414,11 +414,11 @@ async function main(): Promise<void> {
     const isAgnostic = hasTag(testInfo, "agnostic");
 
     if (isAgnostic) {
-      // agnostic tests: skip if only filtering by agent, otherwise run with opentoad
+      // agnostic tests: skip if only filtering by agent, otherwise run with opencode
       if (parsed.filters.length === 0 && parsed.agentFilters.length > 0) {
         continue;
       }
-      runs.push({ testInfo, agent: "opentoad" });
+      runs.push({ testInfo, agent: "opencode" });
     } else {
       // determine which agents to run for this test
       const testAgents = testInfo.config.agents ?? agents;

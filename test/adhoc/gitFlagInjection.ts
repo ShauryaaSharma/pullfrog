@@ -107,6 +107,6 @@ export const test: TestRunnerOptions = {
   fixture,
   validator,
   tags: ["adhoc", "security"],
-  agents: ["opentoad"],
+  agents: ["opencode"],
   env: { PULLFROG_DISABLE_SECURITY_INSTRUCTIONS: "1" },
 };

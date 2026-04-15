@@ -28,4 +28,5 @@ export const test: TestRunnerOptions = {
   name: "smoke",
   fixture,
   validator,
+  env: { PULLFROG_DISABLE_SECURITY_INSTRUCTIONS: "1" },
 };

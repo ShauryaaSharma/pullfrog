@@ -90,7 +90,7 @@ export function generateAgentUuids<T extends string>(envVarNames: T[]): AgentUui
 
 // assign consistent colors to agents (using ANSI codes)
 const AGENT_COLORS: Record<string, string> = {
-  opentoad: "\x1b[32m", // green
+  opencode: "\x1b[32m", // green
 };
 const RESET = "\x1b[0m";
 
@@ -325,7 +325,7 @@ export interface TestRunnerOptions {
   repoSetup?: string;
   // tags for grouping tests (e.g., ["agnostic"], ["fs"])
   // special tags:
-  //   - "agnostic": runs with opentoad only, excluded when filtering by agent
+  //   - "agnostic": runs with opencode only, excluded when filtering by agent
   //   - "adhoc": excluded from default runs, must be explicitly requested
   tags?: TestTag[];
 }

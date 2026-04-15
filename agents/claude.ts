@@ -1,7 +1,7 @@
 /**
  * Claude Code agent — secure harness around the `claude` CLI.
  *
- * mirrors the opentoad harness's security model:
+ * mirrors the opencode harness's security model:
  * - native Bash blocked via --disallowedTools (agent cannot shell out)
  * - managed-settings.json: filesystem sandbox — deny /proc, /sys reads
  * - MCP ShellTool provides restricted shell (filtered env, no secrets)

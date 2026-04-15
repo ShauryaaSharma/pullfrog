@@ -341,7 +341,7 @@ export async function main(): Promise<MainResult> {
 
     // OpenCode loads .opencode/plugin/ files at startup. if the repo has any,
     // eagerly await dependency installation so plugin imports can resolve.
-    if (agentId === "opentoad") {
+    if (agentId === "opencode") {
       const pluginDir = join(process.cwd(), ".opencode", "plugin");
       const hasPlugins =
         existsSync(pluginDir) && readdirSync(pluginDir).some((f) => /\.[jt]sx?$/.test(f));

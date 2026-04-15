@@ -94,5 +94,6 @@ export const test: TestRunnerOptions = {
   fixture,
   validator,
   repoSetup,
+  env: { PULLFROG_DISABLE_SECURITY_INSTRUCTIONS: "1" },
   tags: ["agnostic", "security"],
 };
