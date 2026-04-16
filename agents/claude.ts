@@ -71,8 +71,8 @@ function stripProviderPrefix(specifier: string): string {
   return slashIndex > 0 ? specifier.slice(slashIndex + 1) : specifier;
 }
 
-// `max` effort is Opus 4.6 only — errors on other models.
-// use `max` when the resolved model is Opus, `high` otherwise.
+// `max` effort is supported on Opus 4.6 / 4.7; other models fall back to `high`.
+// claude-code deny-lists older opus/sonnet generations from `max` at invocation time.
 function resolveEffort(model: string | undefined): "max" | "high" {
   if (model?.includes("opus")) return "max";
   return "high";

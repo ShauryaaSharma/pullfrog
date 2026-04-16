@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "test": "vitest",
+    "test:catalog": "vitest run --config vitest.main.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.config.js && tsc -p tsconfig.exports.json",
     "check:entrypoints": "node scripts/check-entrypoint-imports.ts",
@@ -24,7 +25,7 @@
   },
   "devDependencies": {
     "@actions/core": "^1.11.1",
-    "@anthropic-ai/claude-code": "2.1.85",
+    "@anthropic-ai/claude-code": "2.1.112",
     "@ark/fs": "0.56.0",
     "@ark/util": "0.56.0",
     "@clack/prompts": "^1.2.0",

@@ -299,15 +299,21 @@ async function runTestForAgent(ctx: RunContext): Promise<ValidationResult> {
   env.PULLFROG_AGENT = ctx.agent;
 
   // override DB model to avoid mismatch when PULLFROG_AGENT forces a specific agent
-  // (DB model may belong to a different provider than the forced agent supports)
+  // (DB model may belong to a different provider than the forced agent supports).
+  // precedence: testConfig.env > process.env.PULLFROG_MODEL > per-agent default.
+  // the process.env pass-through lets CI (models-live matrix) pin an alias per job.
   if (!Object.hasOwn(env, "PULLFROG_MODEL")) {
-    const defaultModels: Record<string, string> = {
-      claude: "anthropic/claude-sonnet-4-6",
-      opencode: "anthropic/claude-sonnet-4-6",
-    };
-    const model = defaultModels[ctx.agent];
-    if (model) {
-      env.PULLFROG_MODEL = model;
+    if (process.env.PULLFROG_MODEL) {
+      env.PULLFROG_MODEL = process.env.PULLFROG_MODEL;
+    } else {
+      const defaultModels: Record<string, string> = {
+        claude: "anthropic/claude-sonnet-4-6",
+        opencode: "anthropic/claude-sonnet-4-6",
+      };
+      const model = defaultModels[ctx.agent];
+      if (model) {
+        env.PULLFROG_MODEL = model;
+      }
     }
   }
 
