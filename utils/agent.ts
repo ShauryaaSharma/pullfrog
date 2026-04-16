@@ -16,14 +16,16 @@ function hasClaudeCodeAuth(): boolean {
  * resolve the effective model for this run.
  *
  * priority:
- *   1. PULLFROG_MODEL env var (explicit specifier override)
+ *   1. PULLFROG_MODEL env var — resolved through the alias registry first,
+ *      so values like "anthropic/claude-opus" become "anthropic/claude-opus-4-7".
+ *      raw specifiers (e.g. "anthropic/claude-opus-4-6") pass through unchanged.
  *   2. slug from repo config / payload → alias registry
  *   3. undefined — agent will auto-select
  */
 export function resolveModel(ctx: { slug?: string | undefined }): string | undefined {
   const envModel = process.env.PULLFROG_MODEL?.trim();
   if (envModel) {
-    return envModel;
+    return resolveCliModel(envModel) ?? envModel;
   }
 
   if (ctx.slug) {
