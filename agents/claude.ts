@@ -591,8 +591,7 @@ export const claude = agent({
       "--effort",
       effort,
       "--disallowedTools",
-      "Bash",
-      "Agent(Bash)",
+      "Bash,Agent(Bash)",
     ];
 
     if (model) {
