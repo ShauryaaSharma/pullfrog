@@ -5,23 +5,30 @@ import type { ToolContext } from "./server.ts";
 // ── gemini schema sanitizer ────────────────────────────────────────────────────
 //
 // gemini's generateContent API expects an OpenAPI 3.0 Schema subset, not full
-// JSON Schema. arktype emits constructs that gemini rejects with errors like:
-//   - "any_of[0].enum: only allowed for STRING type"
-//   - "parameters.type schema didn't specify the schema type field"
+// JSON Schema. arktype 2.x emits constructs that gemini rejects with errors like:
+//   - "parameters.<field>.enum: only allowed for STRING type"
+//   - "functionDeclaration parameters.<field> schema didn't specify the schema type field"
 //   - "anyOf must be the only field in a schema node"
 //
-// specific transforms applied here:
-//   1. collapse `{anyOf: [{enum:["a"]}, {enum:["b"]}]}` (arktype's string-enum
-//      encoding) into the direct form gemini wants: `{type:"string", enum:[...]}`.
-//      also handles `{const:"a"}` variants defensively (arktype 2.x may emit these).
-//   2. when `anyOf` / `oneOf` can't be collapsed but has sibling fields
-//      (e.g. `type`, `description`, `items`), strip those siblings — gemini
-//      rejects `anyOf` alongside any peer keywords. see opencode #14659.
-//   3. drop `$schema` metadata and rename `$defs` -> `definitions` (draft-07
-//      compatibility; gemini doesn't understand `$defs`).
+// transforms applied here:
+//   1. add `type: "string"` to enum-only schemas. arktype emits string literal
+//      unions as `{enum: ["a","b"]}` without a `type` field — gemini requires
+//      the type declaration for any non-object schema.
+//   2. collapse `{anyOf: [{enum:["a"]}, {enum:["b"]}]}` (older arktype form)
+//      into `{type:"string", enum:[...]}`. also handles `{const:"a"}` branches.
+//   3. when `anyOf` / `oneOf` can't be collapsed, strip sibling fields (`type`,
+//      `description`, `items`, etc.) — gemini rejects `anyOf` alongside any
+//      peer keywords. see opencode #14659.
+//   4. drop `$schema` metadata and rename `$defs` → `definitions` (draft-07
+//      compatibility; gemini doesn't understand either).
 //
-// gated to gemini-routed traffic via `isGeminiRouted()` so other providers
-// continue to see the original (untransformed) schema.
+// gating: `isGeminiRouted()` detects gemini-targeted traffic so other
+// providers continue to see the original (untransformed) schema.
+//
+// delivery: fastmcp (3.x) uses `xsschema.toJsonSchema()` which reads
+// `schema["~standard"].jsonSchema.input({target:"draft-07"})` when present
+// (arktype 2.x exposes this). we proxy the whole `~standard` chain so our
+// transform runs regardless of which path xsschema takes.
 
 function parseStringEnumBranch(item: unknown): { values: string[] } | null {
   if (!item || typeof item !== "object") return null;
@@ -57,7 +64,18 @@ export function sanitizeForGemini(schema: unknown): unknown {
 
   const source = schema as Record<string, unknown>;
 
-  // case 1: collapsible string-enum union → `{type:"string", enum:[...]}`
+  // case 1: enum-only string union → add `type: "string"`.
+  // arktype emits `type: "'A' | 'B'"` as `{enum: ["A","B"]}` without a type.
+  if (Array.isArray(source.enum) && typeof source.type !== "string") {
+    const allStrings = source.enum.every((v) => typeof v === "string");
+    if (allStrings) {
+      const result: Record<string, unknown> = { type: "string", enum: source.enum };
+      if (typeof source.description === "string") result.description = source.description;
+      return result;
+    }
+  }
+
+  // case 2: collapsible string-enum union (older arktype form)
   for (const unionKey of ["anyOf", "oneOf"] as const) {
     const branches = source[unionKey];
     if (Array.isArray(branches) && branches.length > 0) {
@@ -70,7 +88,7 @@ export function sanitizeForGemini(schema: unknown): unknown {
     }
   }
 
-  // case 2: non-collapsible anyOf/oneOf → strip sibling fields (gemini rule)
+  // case 3: non-collapsible anyOf/oneOf → strip sibling fields (gemini rule)
   if (Array.isArray(source.anyOf) || Array.isArray(source.oneOf)) {
     const result: Record<string, unknown> = {};
     if (Array.isArray(source.anyOf)) result.anyOf = source.anyOf.map(sanitizeForGemini);
@@ -78,7 +96,7 @@ export function sanitizeForGemini(schema: unknown): unknown {
     return result;
   }
 
-  // case 3: generic pass — drop $schema, rename $defs, recurse
+  // case 4: generic pass — drop $schema, rename $defs, recurse
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(source)) {
     if (key === "$schema") continue;
@@ -91,19 +109,63 @@ export function sanitizeForGemini(schema: unknown): unknown {
   return sanitized;
 }
 
-/**
- * Wraps a StandardSchemaV1 so its `toJsonSchema()` output is sanitized
- * for gemini. other methods on the schema are passed through unchanged.
- */
-export function wrapSchemaForGemini(schema: StandardSchemaV1<any>): StandardSchemaV1<any> {
-  const originalToJsonSchema = (schema as any).toJsonSchema?.bind(schema);
-  if (!originalToJsonSchema) return schema;
-  return new Proxy(schema, {
-    get(target, prop) {
-      if (prop === "toJsonSchema") {
-        return () => sanitizeForGemini(originalToJsonSchema());
+// ── delivery mechanism ─────────────────────────────────────────────────────────
+//
+// fastmcp 3.x resolves the JSON schema via xsschema, which takes two paths:
+//   path A: `schema["~standard"].jsonSchema.input({target:"draft-07"})` when
+//           the StandardJSONSchemaV1 extension is present (arktype 2.x).
+//   path B: `schema.toJsonSchema()` via a vendor-dispatched function (older
+//           arktype, other vendors).
+//
+// we proxy both entry points so the transform runs regardless of which path
+// xsschema picks.
+
+function wrapJsonSchemaProducer<T extends object>(producer: T): T {
+  return new Proxy(producer, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if ((prop === "input" || prop === "output") && typeof value === "function") {
+        const fn = value as (...args: unknown[]) => unknown;
+        return (...args: unknown[]) => sanitizeForGemini(fn.apply(target, args));
       }
-      return (target as any)[prop];
+      return value;
+    },
+  });
+}
+
+function wrapStandard<T extends object>(standard: T): T {
+  return new Proxy(standard, {
+    get(target, prop, receiver) {
+      if (prop === "jsonSchema") {
+        const value = Reflect.get(target, prop, receiver);
+        if (value && typeof value === "object") {
+          return wrapJsonSchemaProducer(value as object);
+        }
+        return value;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+export function wrapSchemaForGemini(schema: StandardSchemaV1<any>): StandardSchemaV1<any> {
+  return new Proxy(schema, {
+    get(target, prop, receiver) {
+      if (prop === "~standard") {
+        const value = Reflect.get(target, prop, receiver);
+        if (value && typeof value === "object") {
+          return wrapStandard(value as object);
+        }
+        return value;
+      }
+      if (prop === "toJsonSchema") {
+        const method = Reflect.get(target, prop, receiver);
+        if (typeof method === "function") {
+          return () => sanitizeForGemini((method as (...args: unknown[]) => unknown).call(target));
+        }
+        return method;
+      }
+      return Reflect.get(target, prop, receiver);
     },
   }) as StandardSchemaV1<any>;
 }
