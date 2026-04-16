@@ -178,6 +178,7 @@ type RunParams = {
   cwd: string;
   env: Record<string, string | undefined>;
   todoTracker?: TodoTracker | undefined;
+  onToolUse?: ((event: { toolName: string; input: unknown }) => void) | undefined;
 };
 
 type ClaudeRunResult = AgentResult & { sessionId?: string | undefined };
@@ -221,6 +222,12 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
           finalOutput = message;
         } else if (block.type === "tool_use") {
           const toolName = block.name || "unknown";
+          if (params.onToolUse) {
+            params.onToolUse({
+              toolName,
+              input: block.input,
+            });
+          }
           thinkingTimer.markToolCall();
           log.toolCall({ toolName, input: block.input || {} });
 
@@ -605,7 +612,13 @@ export const claude = agent({
     log.debug(`» starting Pullfrog (Claude Code): node ${baseArgs.join(" ")}`);
     log.debug(`» working directory: ${repoDir}`);
 
-    const runParams = { label: "Pullfrog", cwd: repoDir, env, todoTracker: ctx.todoTracker };
+    const runParams = {
+      label: "Pullfrog",
+      cwd: repoDir,
+      env,
+      todoTracker: ctx.todoTracker,
+      onToolUse: ctx.onToolUse,
+    };
 
     let result = await runClaude({
       ...runParams,

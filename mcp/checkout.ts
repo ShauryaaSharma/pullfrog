@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Octokit, RestEndpointMethodTypes } from "@octokit/rest";
 import { type } from "arktype";
 import { log } from "../utils/cli.ts";
+import { countLines, createDiffCoverageState } from "../utils/diffCoverage.ts";
 import { $git } from "../utils/gitAuth.ts";
 import { executeLifecycleHook } from "../utils/lifecycle.ts";
 import { computeIncrementalDiff } from "../utils/rangeDiff.ts";
@@ -504,6 +505,14 @@ export function CheckoutPrTool(ctx: ToolContext) {
       const diffPath = join(tempDir, `pr-${pull_number}-${headShort}.diff`);
       writeFileSync(diffPath, formatResult.content);
       log.debug(`wrote diff to ${diffPath} (${formatResult.content.length} bytes)`);
+      ctx.toolState.diffCoverage = createDiffCoverageState({
+        diffPath,
+        totalLines: countLines({ content: formatResult.content }),
+        toc: formatResult.toc,
+      });
+      log.debug(
+        `» diff coverage initialized: diffPath=${diffPath}, totalLines=${ctx.toolState.diffCoverage.totalLines}, tocEntries=${ctx.toolState.diffCoverage.tocEntries.length}`
+      );
 
       const incrementalInstructions = incrementalDiffPath
         ? ` IMPORTANT: incrementalDiffPath contains ONLY the changes since the last reviewed version ` +
@@ -527,9 +536,10 @@ export function CheckoutPrTool(ctx: ToolContext) {
         toc: formatResult.toc,
         instructions:
           `the diff file at diffPath contains a table of contents (TOC) at the top listing every changed file with its line range. ` +
-          `use the line ranges to read specific files from the diff instead of reading the entire file. ` +
+          `use the TOC line ranges as your checklist and read specific files from the diff instead of reading the entire file. ` +
           `for example, if the TOC says "src/foo.ts → lines 5-42", read lines 5-42 from diffPath to see that file's changes. ` +
-          `review files selectively based on relevance rather than reading everything sequentially. ` +
+          `before your review is submitted, a one-time coverage pre-flight may error listing unread TOC regions. ` +
+          `retry the same create_pull_request_review call to proceed — optionally after reading the listed ranges. the pre-flight will not block again this session. ` +
           `the local branch is 'localBranch' (pr-{number}), not the remote branch name. ` +
           `when pushing, omit branchName to use the current branch. do not use remoteBranch as a local branch name.` +
           incrementalInstructions,

@@ -257,6 +257,7 @@ type RunParams = {
   cwd: string;
   env: Record<string, string | undefined>;
   todoTracker?: TodoTracker | undefined;
+  onToolUse?: ((event: { toolName: string; input: unknown }) => void) | undefined;
 };
 
 async function runOpenCode(params: RunParams): Promise<AgentResult> {
@@ -355,6 +356,13 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
 
       if (stepHistory.length > 0) {
         stepHistory[stepHistory.length - 1]!.toolCalls.push(toolName);
+      }
+
+      if (params.onToolUse) {
+        params.onToolUse({
+          toolName,
+          input: event.part?.state?.input,
+        });
       }
 
       thinkingTimer.markToolCall();
@@ -659,6 +667,7 @@ export const opencode = agent({
       cwd: repoDir,
       env,
       todoTracker: ctx.todoTracker,
+      onToolUse: ctx.onToolUse,
     };
 
     let result = await runOpenCode({

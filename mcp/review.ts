@@ -4,6 +4,11 @@ import { formatMcpToolRef } from "../external.ts";
 import { getApiUrl } from "../utils/apiUrl.ts";
 import { buildPullfrogFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/cli.ts";
+import {
+  countLinesInRanges,
+  getDiffCoverageBreakdown,
+  renderDiffCoverageBreakdown,
+} from "../utils/diffCoverage.ts";
 import { fixDoubleEscapedString } from "../utils/fixDoubleEscapedString.ts";
 import { patchWorkflowRunFields } from "../utils/patchWorkflowRunFields.ts";
 import type { ToolContext } from "./server.ts";
@@ -75,6 +80,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       "IMPORTANT: 95%+ of feedback should be in 'comments' array with file paths and line numbers. " +
       "Only use 'body' for a 1-2 sentence summary with urgency and critical callouts. " +
       "Use 'suggestion' to propose replacement code - MUST preserve exact indentation of original code. " +
+      "The first submission may error once with a one-time diff-coverage nudge listing unread TOC regions — retry with the same arguments and the pre-flight will not block again. " +
       "Example replacing lines 42-44 (3 lines) with 5 lines: " +
       `{ path: 'src/api.ts', start_line: 42, line: 44, suggestion: '    const result = await fetch(url);\\n    if (!result.ok) {\\n      log.error(result.status);\\n      throw new Error("request failed");\\n    }' }` +
       " CONSTRAINT: Inline comments can ONLY target files and lines that appear in the PR diff." +
@@ -131,6 +137,9 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
           );
         }
       }
+
+      runDiffCoveragePreflight({ ctx });
+
       type ReviewComment = NonNullable<typeof params.comments>[number];
       const reviewComments = comments.map((comment) => {
         let commentBody = fixDoubleEscapedString(comment.body || "");
@@ -246,6 +255,61 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       };
     }),
   });
+}
+
+function runDiffCoveragePreflight(params: { ctx: ToolContext }): void {
+  const coverageState = params.ctx.toolState.diffCoverage;
+  if (!coverageState) {
+    log.debug("diff coverage pre-flight skipped: no diffCoverage state present in toolState");
+    return;
+  }
+  if (coverageState.coveragePreflightRan) {
+    log.debug("diff coverage pre-flight skipped: already ran in this session");
+    return;
+  }
+
+  coverageState.coveragePreflightRan = true;
+  log.debug(
+    `diff coverage pre-flight start: diffPath=${coverageState.diffPath}, totalLines=${coverageState.totalLines}, tocEntries=${coverageState.tocEntries.length}, coveredRanges=${coverageState.coveredRanges.length}`
+  );
+  const breakdown = getDiffCoverageBreakdown({ state: coverageState });
+  const unread: Array<{ path: string; ranges: string; unreadLines: number }> = [];
+  let unreadLines = 0;
+  for (const file of breakdown.files) {
+    if (file.unreadRanges.length === 0) continue;
+    const rangesText = file.unreadRanges
+      .map((range) => `${range.startLine}-${range.endLine}`)
+      .join(", ");
+    const fileUnreadLines = countLinesInRanges({ ranges: file.unreadRanges });
+    unread.push({ path: file.filename, ranges: rangesText, unreadLines: fileUnreadLines });
+    unreadLines += fileUnreadLines;
+  }
+  coverageState.lastBreakdown = renderDiffCoverageBreakdown({
+    diffPath: coverageState.diffPath,
+    breakdown,
+  });
+  log.debug(
+    `diff coverage pre-flight breakdown: coveredLines=${breakdown.coveredLines}, unreadLines=${unreadLines}`
+  );
+
+  if (unreadLines === 0) {
+    log.debug("diff coverage pre-flight passed: no unread regions");
+    return;
+  }
+
+  log.info(
+    `diff coverage pre-flight nudge: unread lines=${unreadLines}, unread files=${unread.length}`
+  );
+  const unreadText = unread
+    .map((entry) => `- ${entry.path} (${entry.unreadLines} lines, ${entry.ranges})`)
+    .join("\n");
+  throw new Error(
+    `diff coverage pre-flight: some TOC regions were not read before review submission. ` +
+      `this is a one-time nudge — optionally read the ranges below from ${coverageState.diffPath}, then call create_pull_request_review again with the same arguments. ` +
+      `this pre-flight will not block again in this review session.\n\n` +
+      `unread TOC regions:\n${unreadText}\n\n` +
+      `${coverageState.lastBreakdown}`
+  );
 }
 
 type FooterOpts = { body: string; approved: boolean; hasComments: boolean };

@@ -77,6 +77,11 @@ function runLocalCli(context: RuntimeContext, cliArgs: string[]): void {
 }
 
 function runPullfrogCliInner(context: RuntimeContext, cliArgs: string[]): void {
+  if (process.env.PULLFROG_FORCE_LOCAL_CLI === "1") {
+    runLocalCli(context, cliArgs);
+    return;
+  }
+
   if (context.actionRef === "main" && context.actionRepository === "pullfrog/pullfrog") {
     runLocalCli(context, cliArgs);
     return;

@@ -130,7 +130,7 @@ ${learningsStep(t, 6)}`,
         "Review code, PRs, or implementations; provide feedback or suggestions; identify issues; or check code quality, style, and correctness",
       prompt: `### Checklist
 
-1. Checkout the PR via \`${t("checkout_pr")}\` — this returns PR metadata and a \`diffPath\`. Read the diff to identify the major areas of change.
+1. Checkout the PR via \`${t("checkout_pr")}\` — this returns PR metadata and a \`diffPath\`. read the diff TOC first and treat its file line ranges as your coverage checklist.
 
 2. For each area of change:
    - read the diff and trace data flow, check boundaries, and verify assumptions
@@ -147,6 +147,7 @@ ${learningsStep(t, 6)}`,
 4. Submit — ALWAYS submit exactly one review via \`${t("create_pull_request_review")}\`.
    Do NOT call \`report_progress\` — the review is the final record and the progress
    comment will be cleaned up automatically.
+   note: the first create_pull_request_review submission may error with a one-time diff-coverage nudge listing unread TOC regions. retry the same call to proceed — optionally after reading the listed ranges. the pre-flight will not block again this session.
 
    - **critical issues** (blocks merge — bugs, security, data loss):
      \`approved: false\`. Body begins with a GitHub alert blockquote, e.g.:
@@ -165,7 +166,7 @@ ${learningsStep(t, 6)}`,
         "Re-review a PR after new commits are pushed; focus on new changes since the last review",
       prompt: `### Checklist
 
-1. Checkout the PR via \`${t("checkout_pr")}\` — this returns PR metadata, \`diffPath\` (full diff), and \`incrementalDiffPath\` (changes since last reviewed version, if available).
+1. Checkout the PR via \`${t("checkout_pr")}\` — this returns PR metadata, \`diffPath\` (full diff), and \`incrementalDiffPath\` (changes since last reviewed version, if available). read the diff TOC first and use its line ranges as your coverage checklist.
 
 2. If \`incrementalDiffPath\` is present, read it to see what changed since the last review. This is a range-diff that isolates the net changes, filtering out base branch noise. If not present, fall back to reviewing the full PR diff.
 
@@ -189,6 +190,7 @@ ${learningsStep(t, 6)}`,
    - in some cases you may receive a complete diff for the whole pull request instead of an incremental one. when this happens, you will need to determine what changes have happened since Pullfrog's most recent review.
 
 7. Submit — Do NOT call \`report_progress\` or \`create_issue_comment\` — the review is the final record and the progress comment will be cleaned up automatically. the review body always includes the reviewed changes from step 6a. append \`Prior review feedback:\\n\` with the checklist from step 6b only if any prior comments were addressed. Follow these rules:
+   - note: the first create_pull_request_review submission may error with a one-time diff-coverage nudge listing unread TOC regions. retry the same call to proceed — optionally after reading the listed ranges. the pre-flight will not block again this session.
    - IF NO NEW ISSUES, NON-SUBSTANTIVE CHANGES ONLY (trivial formatting, import reordering, comment tweaks): do NOT submit a review. Do NOT call \`report_progress\`. Exit — the progress comment will be cleaned up automatically.
    - ELSE IF NEW CRITICAL ISSUES (blocks merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with a GitHub alert blockquote (e.g. \`> [!CAUTION]\\n> This PR introduces ...\`), then the reviewed changes summary and prior feedback (if any).
    - ELSE IF NEW RECOMMENDED CHANGES (non-critical): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!IMPORTANT]\\n> ...\` alert, then the reviewed changes summary and prior feedback (if any).

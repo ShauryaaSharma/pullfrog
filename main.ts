@@ -23,6 +23,7 @@ import { apiFetch } from "./utils/apiFetch.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
 import { formatUsageSummary, log, writeSummary } from "./utils/cli.ts";
+import { recordDiffReadFromToolUse } from "./utils/diffCoverage.ts";
 import { reportErrorToComment } from "./utils/errorReport.ts";
 import { onExitSignal } from "./utils/exitHandler.ts";
 import { resolveGit, setGitAuthServer } from "./utils/gitAuth.ts";
@@ -419,6 +420,19 @@ export async function main(): Promise<MainResult> {
       tmpdir,
       instructions,
       todoTracker,
+      onToolUse: (event) => {
+        const wasTracked = recordDiffReadFromToolUse({
+          state: toolState.diffCoverage,
+          toolName: event.toolName,
+          input: event.input,
+          cwd: process.cwd(),
+        });
+        if (!wasTracked) return;
+        const trackedRanges = toolState.diffCoverage?.coveredRanges ?? [];
+        log.debug(
+          `» diff coverage tracked from tool ${event.toolName} (${trackedRanges.length} merged range${trackedRanges.length === 1 ? "" : "s"})`
+        );
+      },
     });
 
     // timeout enforcement: default is 1 hour, but can be overridden via flags in the prompt:

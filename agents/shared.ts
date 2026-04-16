@@ -45,6 +45,11 @@ export interface AgentUsage {
   costUsd?: number | undefined;
 }
 
+export interface AgentToolUseEvent {
+  toolName: string;
+  input: unknown;
+}
+
 /**
  * Result returned by agent execution
  */
@@ -66,6 +71,7 @@ export interface AgentRunContext {
   tmpdir: string;
   instructions: ResolvedInstructions;
   todoTracker?: TodoTracker | undefined;
+  onToolUse?: ((event: AgentToolUseEvent) => void) | undefined;
 }
 
 export interface Agent {

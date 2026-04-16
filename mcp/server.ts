@@ -9,6 +9,7 @@ import type { Mode } from "../modes.ts";
 import type { PrepResult } from "../prep/index.ts";
 import { closeBrowserDaemon } from "../utils/browser.ts";
 import { log } from "../utils/cli.ts";
+import type { DiffCoverageState } from "../utils/diffCoverage.ts";
 import type { OctokitWithPlugins } from "../utils/github.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
 import type { RunContextData } from "../utils/runContextData.ts";
@@ -107,6 +108,7 @@ export interface ToolState {
   usageEntries: AgentUsage[];
   model?: string | undefined;
   todoTracker?: TodoTracker | undefined;
+  diffCoverage?: DiffCoverageState | undefined;
 }
 
 interface InitToolStateParams {
