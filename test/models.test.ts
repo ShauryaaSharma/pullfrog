@@ -164,8 +164,10 @@ describe("latest model per provider snapshot", async () => {
     }
   }
 
-  // when this fails, a provider shipped a new model. check whether we need
-  // to add or update an alias in models.ts before updating the snapshot.
+  // when this fails, a provider shipped a new model. usually that just means
+  // bumping the `resolve` on an existing alias in models.ts (e.g. point
+  // "claude-opus" at the latest opus) rather than introducing a new alias.
+  // refresh the alias resolution first, then update this snapshot.
   it("matches snapshot", () => {
     expect(latestByProvider).toMatchSnapshot();
   });

@@ -219,10 +219,7 @@ export async function main(): Promise<MainResult> {
 
   // configure env allowlist for subprocess filtering
   if (runContext.repoSettings.envAllowlist) {
-    const blocked = setEnvAllowlist(runContext.repoSettings.envAllowlist);
-    if (blocked.length > 0) {
-      log.warning(`env allowlist contains blocked names (ignored): ${blocked.join(", ")}`);
-    }
+    setEnvAllowlist(runContext.repoSettings.envAllowlist);
   }
 
   // resolve payload to determine shell permission

@@ -58,7 +58,7 @@ export const providers = {
     models: {
       "claude-opus": {
         displayName: "Claude Opus",
-        resolve: "anthropic/claude-opus-4-6",
+        resolve: "anthropic/claude-opus-4-7",
         openRouterResolve: "openrouter/anthropic/claude-opus-4.6",
         preferred: true,
       },
@@ -176,7 +176,7 @@ export const providers = {
       },
       "claude-opus": {
         displayName: "Claude Opus",
-        resolve: "opencode/claude-opus-4-6",
+        resolve: "opencode/claude-opus-4-7",
         openRouterResolve: "openrouter/anthropic/claude-opus-4.6",
       },
       "claude-sonnet": {

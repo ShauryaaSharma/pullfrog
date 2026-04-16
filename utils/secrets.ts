@@ -25,10 +25,9 @@ export function isSensitiveEnvName(key: string): boolean {
 
 // --- subprocess env filtering ---
 
-// vars that are never passed to subprocesses, even if prefix-matched
-const BLOCKED_ENV_NAMES = new Set(["GITHUB_TOKEN", "GH_TOKEN"]);
-
-// prefixes whose vars are safe to pass through (runner metadata, workflow context)
+// prefixes whose vars are safe to pass through (runner metadata, workflow context).
+// GITHUB_TOKEN/GH_TOKEN match the GITHUB_ prefix but are still filtered by default because
+// isSensitiveEnvName() catches the _TOKEN suffix; users can opt in explicitly via the allowlist.
 const SAFE_ENV_PREFIXES = ["GITHUB_", "RUNNER_", "JAVA_HOME_", "GOROOT_"];
 
 // exact var names safe to pass through (system + runner image toolchain)
@@ -87,18 +86,15 @@ const SAFE_ENV_NAMES = new Set([
 
 let _userAllowlist: Set<string> | null = null;
 
-export function setEnvAllowlist(raw: string): string[] {
+export function setEnvAllowlist(raw: string): void {
   const names = raw
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  const blocked = names.filter((n) => BLOCKED_ENV_NAMES.has(n));
-  _userAllowlist = new Set(names.filter((n) => !BLOCKED_ENV_NAMES.has(n)));
-  return blocked;
+  _userAllowlist = new Set(names);
 }
 
 function isSafeEnvVar(key: string): boolean {
-  if (BLOCKED_ENV_NAMES.has(key)) return false;
   if (SAFE_ENV_NAMES.has(key)) return true;
   return SAFE_ENV_PREFIXES.some((p) => key.startsWith(p));
 }
@@ -108,7 +104,6 @@ export function filterEnv(): Record<string, string> {
   const filtered: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (BLOCKED_ENV_NAMES.has(key)) continue;
     const userAllowed = _userAllowlist?.has(key) ?? false;
     if (isSensitiveEnvName(key) && !userAllowed) continue;
     if (isSafeEnvVar(key) || userAllowed) {

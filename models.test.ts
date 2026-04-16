@@ -67,7 +67,7 @@ describe("getModelEnvVars", () => {
 describe("resolveModelSlug", () => {
   it("resolves known alias to concrete specifier", () => {
     const resolved = resolveModelSlug("anthropic/claude-opus");
-    expect(resolved).toBe("anthropic/claude-opus-4-6");
+    expect(resolved).toBe("anthropic/claude-opus-4-7");
   });
 
   it("resolves openai alias", () => {
