@@ -14,6 +14,12 @@ import { execute, tool } from "./shared.ts";
  */
 export const LEAPING_INTO_ACTION_PREFIX = "Leaping into action";
 
+export function isLeapingIntoActionCommentBody(body: string): boolean {
+  const content = stripExistingFooter(body).trimStart();
+  const firstLine = content.split(/\r?\n/, 1)[0]?.trimEnd() ?? "";
+  return new RegExp(`(^|\\s)${LEAPING_INTO_ACTION_PREFIX}(\\.\\.\\.)?$`).test(firstLine);
+}
+
 function buildCommentFooter(ctx: ToolContext, customParts?: string[]): string {
   const runId = ctx.runId;
   return buildPullfrogFooter({

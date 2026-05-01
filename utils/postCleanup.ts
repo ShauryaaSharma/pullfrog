@@ -1,4 +1,4 @@
-import { LEAPING_INTO_ACTION_PREFIX } from "../mcp/comment.ts";
+import { isLeapingIntoActionCommentBody } from "../mcp/comment.ts";
 import { getApiUrl } from "./apiUrl.ts";
 import { buildPullfrogFooter } from "./buildPullfrogFooter.ts";
 import { log } from "./cli.ts";
@@ -68,7 +68,7 @@ async function validateStuckProgressComment(ctx: PostCleanupContext): Promise<nu
 
     const body = commentResult.data.body ?? "";
 
-    if (body.startsWith(LEAPING_INTO_ACTION_PREFIX)) {
+    if (isLeapingIntoActionCommentBody(body)) {
       log.info(`[post] comment ${commentId} is stuck on "Leaping into action"`);
       return commentId;
     }
