@@ -6,7 +6,9 @@ import {
   parseModel,
   providers,
   resolveCliModel,
+  resolveDisplayAlias,
   resolveModelSlug,
+  resolveOpenRouterModel,
 } from "./models.ts";
 
 describe("parseModel", () => {
@@ -28,7 +30,7 @@ describe("parseModel", () => {
 describe("getModelProvider", () => {
   it("extracts provider from slug", () => {
     expect(getModelProvider("anthropic/claude-opus")).toBe("anthropic");
-    expect(getModelProvider("openai/gpt-codex")).toBe("openai");
+    expect(getModelProvider("openai/gpt")).toBe("openai");
     expect(getModelProvider("google/gemini-pro")).toBe("google");
   });
 });
@@ -71,8 +73,12 @@ describe("resolveModelSlug", () => {
   });
 
   it("resolves openai alias", () => {
-    const resolved = resolveModelSlug("openai/gpt-codex");
-    expect(resolved).toBe("openai/gpt-5.3-codex");
+    const resolved = resolveModelSlug("openai/gpt");
+    expect(resolved).toBe("openai/gpt-5.5");
+  });
+
+  it("returns the raw resolve for deprecated aliases (does not walk fallback)", () => {
+    expect(resolveModelSlug("openai/gpt-codex")).toBe("openai/gpt-5.3-codex");
   });
 
   it("returns undefined for unknown slug", () => {
@@ -88,6 +94,75 @@ describe("resolveCliModel", () => {
 
   it("returns undefined for unknown slug", () => {
     expect(resolveCliModel("bogus/nope")).toBeUndefined();
+  });
+
+  it("walks fallback chain for deprecated deepseek aliases", () => {
+    expect(resolveCliModel("deepseek/deepseek-reasoner")).toBe("deepseek/deepseek-v4-pro");
+    expect(resolveCliModel("deepseek/deepseek-chat")).toBe("deepseek/deepseek-v4-flash");
+  });
+
+  it("walks fallback chain for deprecated openai codex aliases", () => {
+    expect(resolveCliModel("openai/gpt-codex")).toBe("openai/gpt-5.5");
+    expect(resolveCliModel("openai/gpt-codex-mini")).toBe("openai/gpt-5.4-mini");
+    expect(resolveCliModel("opencode/gpt-codex")).toBe("opencode/gpt-5.5");
+    expect(resolveCliModel("openrouter/gpt-codex")).toBe("openrouter/openai/gpt-5.5");
+  });
+});
+
+describe("resolveDisplayAlias", () => {
+  it("returns the alias itself for a non-deprecated slug", () => {
+    const alias = resolveDisplayAlias("anthropic/claude-opus");
+    expect(alias?.slug).toBe("anthropic/claude-opus");
+    expect(alias?.displayName).toBe("Claude Opus");
+  });
+
+  it("walks fallback chain to terminal alias for deprecated slug", () => {
+    const alias = resolveDisplayAlias("openai/gpt-codex");
+    expect(alias?.slug).toBe("openai/gpt");
+    expect(alias?.displayName).toBe("GPT");
+  });
+
+  it("walks fallback chain for deepseek-reasoner -> deepseek-pro", () => {
+    const alias = resolveDisplayAlias("deepseek/deepseek-reasoner");
+    expect(alias?.slug).toBe("deepseek/deepseek-pro");
+    expect(alias?.displayName).toBe("DeepSeek Pro");
+  });
+
+  it("returns undefined for unknown slug", () => {
+    expect(resolveDisplayAlias("bogus/nope")).toBeUndefined();
+  });
+});
+
+describe("resolveOpenRouterModel", () => {
+  it("returns the openrouter specifier for a non-deprecated alias", () => {
+    expect(resolveOpenRouterModel("anthropic/claude-opus")).toBe(
+      "openrouter/anthropic/claude-opus-4.7"
+    );
+  });
+
+  it("walks fallback chain for deprecated deepseek aliases", () => {
+    expect(resolveOpenRouterModel("deepseek/deepseek-reasoner")).toBe(
+      "openrouter/deepseek/deepseek-v4-pro"
+    );
+    expect(resolveOpenRouterModel("deepseek/deepseek-chat")).toBe(
+      "openrouter/deepseek/deepseek-v4-flash"
+    );
+    expect(resolveOpenRouterModel("openrouter/deepseek-chat")).toBe(
+      "openrouter/deepseek/deepseek-v4-flash"
+    );
+  });
+
+  it("walks fallback chain for deprecated openai codex aliases", () => {
+    expect(resolveOpenRouterModel("openai/gpt-codex")).toBe("openrouter/openai/gpt-5.5");
+    expect(resolveOpenRouterModel("openai/gpt-codex-mini")).toBe("openrouter/openai/gpt-5.4-mini");
+  });
+
+  it("returns undefined for free opencode models with no openrouter equivalent", () => {
+    expect(resolveOpenRouterModel("opencode/big-pickle")).toBeUndefined();
+  });
+
+  it("returns undefined for unknown slug", () => {
+    expect(resolveOpenRouterModel("bogus/nope")).toBeUndefined();
   });
 });
 

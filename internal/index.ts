@@ -24,7 +24,9 @@ export {
   providers,
   pullfrogMcpName,
   resolveCliModel,
+  resolveDisplayAlias,
   resolveModelSlug,
+  resolveOpenRouterModel,
 } from "../external.ts";
 export type { Mode } from "../modes.ts";
 export { modes } from "../modes.ts";

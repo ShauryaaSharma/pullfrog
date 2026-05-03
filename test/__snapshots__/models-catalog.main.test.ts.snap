@@ -7,32 +7,32 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2026-04-16",
   },
   "deepseek": {
-    "modelId": "deepseek-reasoner",
-    "releaseDate": "2025-12-01",
+    "modelId": "deepseek-v4-pro",
+    "releaseDate": "2026-04-24",
   },
   "google": {
     "modelId": "gemma-4-31b-it",
     "releaseDate": "2026-04-02",
   },
   "moonshotai": {
-    "modelId": "kimi-k2.5",
-    "releaseDate": "2026-01",
+    "modelId": "kimi-k2.6",
+    "releaseDate": "2026-04-21",
   },
   "openai": {
-    "modelId": "gpt-5.4-nano",
-    "releaseDate": "2026-03-17",
+    "modelId": "gpt-5.5-pro",
+    "releaseDate": "2026-04-23",
   },
   "opencode": {
-    "modelId": "claude-opus-4-7",
-    "releaseDate": "2026-04-16",
+    "modelId": "gpt-5.5-pro",
+    "releaseDate": "2026-04-24",
   },
   "openrouter": {
-    "modelId": "anthropic/claude-opus-4.7",
-    "releaseDate": "2026-04-16",
+    "modelId": "poolside/laguna-xs.2:free",
+    "releaseDate": "2026-04-28",
   },
   "xai": {
-    "modelId": "grok-4.20-multi-agent-0309",
-    "releaseDate": "2026-03-09",
+    "modelId": "grok-4.3",
+    "releaseDate": "2026-05-01",
   },
 }
 `;

@@ -36,7 +36,9 @@ export {
   parseModel,
   providers,
   resolveCliModel,
+  resolveDisplayAlias,
   resolveModelSlug,
+  resolveOpenRouterModel,
 } from "./models.ts";
 
 // tool permission types shared with server dispatch

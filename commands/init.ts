@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import arg from "arg";
 import pc from "picocolors";
-import { modelAliases, type ProviderConfig, providers } from "../models.ts";
+import { modelAliases, type ProviderConfig, providers, resolveDisplayAlias } from "../models.ts";
 
 const PULLFROG_API_URL = (process.env.PULLFROG_API_URL || "https://pullfrog.com").replace(
   /\/+$/,
@@ -24,7 +24,7 @@ function buildProviders(): CliProvider[] {
   return Object.entries(providers)
     .filter(([key]) => key !== "opencode" && key !== "openrouter")
     .map(([key, config]: [string, ProviderConfig]) => {
-      const aliases = modelAliases.filter((a) => a.provider === key);
+      const aliases = modelAliases.filter((a) => a.provider === key && !a.fallback);
       const recommended = aliases.find((a) => a.preferred);
       const sorted = [...aliases].sort((a, b) => {
         if (a.preferred && !b.preferred) return -1;
@@ -796,8 +796,12 @@ async function main() {
     const resolved = resolveModelProvider(secrets.model);
     if (!resolved) bail(`unknown model provider: ${secrets.model}`);
     provider = resolved;
+    // walk the fallback chain so a deprecated stored slug shows the model
+    // the run will actually execute against (e.g. "GPT", not "GPT Codex").
+    const displayAlias = resolveDisplayAlias(secrets.model);
+    const label = displayAlias ? displayAlias.displayName : secrets.model;
     spin.start("");
-    spin.stop(`using model ${pc.cyan(secrets.model)}`);
+    spin.stop(`using model ${pc.cyan(label)}`);
   } else {
     const providerId = await p.select({
       message: "select your preferred model provider",

@@ -1,4 +1,4 @@
-import { modelAliases } from "../models.ts";
+import { resolveDisplayAlias } from "../models.ts";
 
 export const PULLFROG_DIVIDER = "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->";
 
@@ -26,7 +26,9 @@ export interface BuildPullfrogFooterParams {
 }
 
 function formatModelLabel(slug: string): string {
-  const alias = modelAliases.find((a) => a.slug === slug);
+  // walk the fallback chain so a deprecated stored slug shows the model the
+  // run actually executed against (e.g. "GPT", not "GPT Codex").
+  const alias = resolveDisplayAlias(slug);
   if (!alias) return `\`${slug}\``;
   return alias.isFree ? `\`${alias.displayName}\` (free)` : `\`${alias.displayName}\``;
 }
