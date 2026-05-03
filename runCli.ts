@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import actionPackageJson from "./package.json" with { type: "json" };
 
@@ -42,9 +42,45 @@ function canAccessExecutable(path: string): boolean {
   }
 }
 
+// reject PATH entries that an attacker can plausibly write to before pullfrog
+// runs. specifically: relative entries (., bin, etc., which resolve against
+// cwd), and anything inside the customer's checkout. an attacker who can land
+// a malicious `npx` in the repo and prepend `$GITHUB_WORKSPACE/bin` to
+// `GITHUB_PATH` from a prior workflow step would otherwise get full code
+// execution under our action token.
+//
+// on Windows the filesystem is case-insensitive but `resolve()` preserves
+// input case, so we lowercase both sides before comparing — otherwise an
+// attacker can bypass the filter by varying the case of GITHUB_WORKSPACE in
+// their injected PATH entry (`d:\a\repo` vs `D:\a\repo`).
+function normalizePathForCompare(path: string): string {
+  return process.platform === "win32" ? resolve(path).toLowerCase() : resolve(path);
+}
+
+function isUntrustedPathEntry(entry: string, untrustedRoots: string[]): boolean {
+  if (!isAbsolute(entry)) return true;
+  const normalized = normalizePathForCompare(entry);
+  for (const root of untrustedRoots) {
+    if (normalized === root) return true;
+    if (normalized.startsWith(root + sep)) return true;
+  }
+  return false;
+}
+
+function getUntrustedPathRoots(env: NodeJS.ProcessEnv): string[] {
+  const roots: string[] = [];
+  const workspace = env.GITHUB_WORKSPACE;
+  if (workspace && isAbsolute(workspace)) roots.push(normalizePathForCompare(workspace));
+  return roots;
+}
+
 function resolveExecutable(params: { command: string; env: NodeJS.ProcessEnv }): string | null {
   const pathValue = params.env.PATH ?? "";
-  const pathEntries = pathValue.split(delimiter).filter(Boolean);
+  const untrustedRoots = getUntrustedPathRoots(params.env);
+  const pathEntries = pathValue
+    .split(delimiter)
+    .filter(Boolean)
+    .filter((entry) => !isUntrustedPathEntry(entry, untrustedRoots));
   const extensions =
     process.platform === "win32"
       ? (params.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
