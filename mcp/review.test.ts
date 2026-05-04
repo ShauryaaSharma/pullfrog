@@ -6,6 +6,7 @@ import {
   commentableLinesForFile,
   createReviewWithStrandedRecovery,
   type DroppedComment,
+  duplicateReviewDecision,
   formatDroppedCommentsNote,
   MAX_DROPPED_COMMENT_LINES,
   type ReviewCommentInput,
@@ -641,5 +642,68 @@ describe("reviewSkipDecision", () => {
       prApproveEnabled: false,
     });
     expect(decision).toBeNull();
+  });
+});
+
+describe("duplicateReviewDecision", () => {
+  // regression: colinhacks/zod#5897 had two reviews submitted from the same
+  // workflow run 8 seconds apart — a substantive review followed by an empty
+  // "Reviewed — no issues found." follow-up. the agent re-classified the
+  // first review's non-blocking observations as "no actionable issues" and
+  // submitted the canonical body per modes.ts. this guard makes the second
+  // call a no-op without burning a GitHub API call or polluting the PR.
+
+  it("allows the first submission when no prior review exists", () => {
+    const decision = duplicateReviewDecision({
+      existing: undefined,
+      currentCheckoutSha: "sha1",
+    });
+    expect(decision).toBeNull();
+  });
+
+  it("blocks a second submission when checkoutSha matches the prior reviewedSha", () => {
+    // exact reproduction of the zod#5897 shape: same session, same checked-out
+    // SHA, second create_pull_request_review call.
+    const decision = duplicateReviewDecision({
+      existing: { id: 100, reviewedSha: "sha1" },
+      currentCheckoutSha: "sha1",
+    });
+    expect(decision?.kind).toBe("already-submitted");
+    expect(decision?.reviewId).toBe(100);
+    expect(decision?.reason).toContain("already submitted");
+    expect(decision?.reason).toContain("checkout_pr");
+  });
+
+  it("allows a follow-up when checkoutSha advanced past the prior reviewedSha", () => {
+    // the new-commits-mid-review path advances toolState.checkoutSha to the
+    // new HEAD before returning, and the agent is told to call checkout_pr
+    // again — both paths leave checkoutSha != reviewedSha. those are real
+    // follow-up reviews and must go through.
+    const decision = duplicateReviewDecision({
+      existing: { id: 100, reviewedSha: "sha-old" },
+      currentCheckoutSha: "sha-new",
+    });
+    expect(decision).toBeNull();
+  });
+
+  it("blocks when checkoutSha is missing — cannot prove the SHA moved", () => {
+    // if the agent never called checkout_pr, we have no anchor to compare
+    // against. assume duplicate rather than letting a second review through
+    // — the prior review still satisfies the agent's intent.
+    const decision = duplicateReviewDecision({
+      existing: { id: 100, reviewedSha: "sha1" },
+      currentCheckoutSha: undefined,
+    });
+    expect(decision?.kind).toBe("already-submitted");
+  });
+
+  it("blocks when prior reviewedSha is missing — cannot prove the SHA moved", () => {
+    // belt-and-suspenders: if for any reason the prior review didn't capture
+    // a reviewedSha, treat the second call as a duplicate to be safe.
+    const decision = duplicateReviewDecision({
+      existing: { id: 100, reviewedSha: undefined },
+      currentCheckoutSha: "sha1",
+    });
+    expect(decision?.kind).toBe("already-submitted");
   });
 });

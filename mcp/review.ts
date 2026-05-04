@@ -171,6 +171,58 @@ export type ReviewSkipDecision =
   | { kind: "empty-downgraded-approve"; reason: string };
 
 /**
+ * decision returned by duplicateReviewDecision when a session has already
+ * submitted a review and the current call would be a duplicate.
+ */
+export type DuplicateReviewDecision = {
+  kind: "already-submitted";
+  reviewId: number;
+  reason: string;
+};
+
+/**
+ * decide whether a second create_pull_request_review call in the same session
+ * is a duplicate of an earlier submission.
+ *
+ * the agent is instructed to call create_pull_request_review exactly once per
+ * Review-mode session (see action/modes.ts), but in practice it sometimes
+ * submits twice — once with substantive feedback, then again with the
+ * canonical "Reviewed — no issues found." body when the prompt's branch
+ * logic re-classifies non-blocking observations. the second submission is
+ * always redundant: the first review is the record, and the duplicate just
+ * adds noise to the PR.
+ *
+ * legitimate follow-up reviews after new commits ARE allowed: the
+ * new-commits-mid-review path advances toolState.checkoutSha past the
+ * previously reviewed sha, and a subsequent checkout_pr advances it again.
+ * any call where checkoutSha has moved past the prior reviewedSha is a real
+ * follow-up and goes through. anything else — same sha, or no checkoutSha
+ * to compare against — is a duplicate.
+ */
+export function duplicateReviewDecision(params: {
+  existing: { id: number; reviewedSha: string | undefined } | undefined;
+  currentCheckoutSha: string | undefined;
+}): DuplicateReviewDecision | null {
+  const existing = params.existing;
+  if (!existing) return null;
+  // checkoutSha advanced past the prior reviewed sha — legitimate follow-up
+  // (e.g. after checkout_pr re-fetched new commits the agent was nudged to
+  // pull). only treat as a duplicate when we cannot prove the SHA moved.
+  if (
+    params.currentCheckoutSha &&
+    existing.reviewedSha &&
+    params.currentCheckoutSha !== existing.reviewedSha
+  ) {
+    return null;
+  }
+  return {
+    kind: "already-submitted",
+    reviewId: existing.id,
+    reason: `review ${existing.id} was already submitted in this session; ignoring duplicate call (call \`checkout_pr\` again first if new commits were pushed)`,
+  };
+}
+
+/**
  * decide whether to skip a review submission before any network call.
  *
  * GitHub rejects `event: "COMMENT"` reviews with no body and no inline comments
@@ -299,6 +351,26 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
 
       // set issue context (PRs are issues)
       ctx.toolState.issueNumber = pull_number;
+
+      // guard against duplicate review submissions in the same session.
+      // see duplicateReviewDecision for the rationale — short version: the
+      // agent occasionally submits twice (substantive review + canonical
+      // "no issues found" follow-up) and the second is always redundant.
+      // legit re-reviews after new commits are still allowed because
+      // checkout_pr advances toolState.checkoutSha past the prior reviewedSha.
+      const dup = duplicateReviewDecision({
+        existing: ctx.toolState.review,
+        currentCheckoutSha: ctx.toolState.checkoutSha,
+      });
+      if (dup) {
+        log.info(`skipping duplicate review submission: ${dup.reason}`);
+        return {
+          success: true,
+          skipped: true,
+          reason: dup.reason,
+          reviewId: dup.reviewId,
+        };
+      }
 
       // skip empty COMMENT reviews before any GitHub call. see reviewSkipDecision
       // for the cases (no-issues vs empty-downgraded-approve) and why GitHub 422s
