@@ -3,7 +3,7 @@ import type { Octokit } from "@octokit/rest";
 import packageJson from "../package.json" with { type: "json" };
 import { log } from "./cli.ts";
 import { type OctokitWithPlugins, parseRepoContext } from "./github.ts";
-import { fetchRunContext, type RepoSettings } from "./runContext.ts";
+import { type AccountPlan, fetchRunContext, type RepoSettings } from "./runContext.ts";
 
 export interface RunContextData {
   repo: {
@@ -14,6 +14,7 @@ export interface RunContextData {
   repoSettings: RepoSettings;
   apiToken: string;
   oss: boolean;
+  plan: AccountPlan;
   proxyModel?: string | undefined;
   dbSecrets?: Record<string, string> | undefined;
 }
@@ -54,6 +55,7 @@ export async function resolveRunContextData(
     repoSettings: runContext.settings,
     apiToken: runContext.apiToken,
     oss: runContext.oss,
+    plan: runContext.plan,
     proxyModel: runContext.proxyModel,
     dbSecrets: runContext.dbSecrets,
   };

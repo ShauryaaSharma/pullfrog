@@ -24,10 +24,27 @@ export interface RepoSettings {
   envAllowlist: string | null;
 }
 
+/**
+ * Account-level billing plan. Orthogonal to repo-level OSS status. Mirrors
+ * the server's `AccountPlan` in `utils/billing.ts`. `"none"` = free tier,
+ * `"payg"` = card on file / pay-as-you-go.
+ */
+export type AccountPlan = "none" | "payg";
+
+/**
+ * "Is Pullfrog absorbing marginal infra cost for this repo?" — composite
+ * predicate over the two orthogonal dimensions (repo-level OSS, account-level
+ * plan). Mirrors `isInfraCovered` in the server's `utils/billing.ts`.
+ */
+export function isInfraCovered(params: { isOss: boolean; plan: AccountPlan }): boolean {
+  return params.isOss || params.plan === "payg";
+}
+
 export interface RunContext {
   settings: RepoSettings;
   apiToken: string;
   oss: boolean;
+  plan: AccountPlan;
   proxyModel?: string | undefined;
   dbSecrets?: Record<string, string> | undefined;
 }
@@ -51,6 +68,7 @@ const defaultRunContext: RunContext = {
   settings: defaultSettings,
   apiToken: "",
   oss: false,
+  plan: "none",
 };
 
 /**
@@ -92,6 +110,7 @@ export async function fetchRunContext(params: {
       settings: RepoSettings | null;
       apiToken: string;
       oss?: boolean;
+      plan?: AccountPlan;
       proxyModel?: string;
       dbSecrets?: Record<string, string>;
     } | null;
@@ -112,6 +131,7 @@ export async function fetchRunContext(params: {
       },
       apiToken: data.apiToken,
       oss: data.oss ?? false,
+      plan: data.plan ?? "none",
       proxyModel: data.proxyModel,
       dbSecrets: data.dbSecrets,
     };

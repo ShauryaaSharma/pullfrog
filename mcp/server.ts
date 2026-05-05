@@ -12,6 +12,7 @@ import { log } from "../utils/cli.ts";
 import type { DiffCoverageState } from "../utils/diffCoverage.ts";
 import type { OctokitWithPlugins } from "../utils/github.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
+import type { AccountPlan } from "../utils/runContext.ts";
 import type { RunContextData } from "../utils/runContextData.ts";
 import type { TodoTracker } from "../utils/todoTracking.ts";
 import { CheckoutPrTool } from "./checkout.ts";
@@ -169,6 +170,13 @@ export interface ToolContext {
   jobId: string | undefined;
   mcpServerUrl: string;
   tmpdir: string;
+  // repo-level OSS flag + account-level billing plan. together they decide
+  // whether pullfrog is paying for marginal infra — see isInfraCovered in
+  // utils/runContext.ts. plan gating for things like update_learnings is
+  // enforced server-side via 402, so we pass plan along mostly for future
+  // use / observability. see wiki/pricing.md.
+  oss: boolean;
+  plan: AccountPlan;
   // resolved upstream model specifier (e.g. "google/gemini-3.1-pro-preview").
   // undefined when payload.proxyModel is set or when the alias is unresolvable.
   // used by the schema sanitizer to detect Gemini-routed traffic.

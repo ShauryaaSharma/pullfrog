@@ -36,6 +36,7 @@ import { aggregateUsage, patchWorkflowRunFields } from "./utils/patchWorkflowRun
 import { resolvePayload, resolvePromptInput } from "./utils/payload.ts";
 import { postReviewCleanup } from "./utils/reviewCleanup.ts";
 import { handleAgentResult } from "./utils/run.ts";
+import { type AccountPlan, isInfraCovered } from "./utils/runContext.ts";
 import { resolveRunContextData } from "./utils/runContextData.ts";
 import { setEnvAllowlist } from "./utils/secrets.ts";
 import { createTempDirectory, setupGit } from "./utils/setup.ts";
@@ -111,6 +112,106 @@ interface OidcCredentials {
   requestToken: string;
 }
 
+/**
+ * Billing-layer error surfaced from `/api/proxy-token` as a 402. User-actionable
+ * — distinct from TransientError (503 / transient sync issue) so the job
+ * summary + PR comment can use affirmative "you need to do X" copy rather than
+ * the ambiguous "billing error" label that makes transient outages look like
+ * the user's fault.
+ *
+ * `code` is a server-side discriminator: `router_requires_card` (no card + no
+ * wallet balance on Router), or null for unclassified. `declineCode` is
+ * Stripe's more specific sub-reason on `card_declined` (e.g.
+ * `insufficient_funds`, `lost_card`). `needsReauthentication` is the 3DS case
+ * broken out for convenience.
+ */
+class BillingError extends Error {
+  code: string | null;
+  declineCode: string | null;
+  needsReauthentication: boolean;
+
+  constructor(
+    message: string,
+    opts: {
+      code?: string | null;
+      declineCode?: string | null;
+      needsReauthentication?: boolean;
+    } = {}
+  ) {
+    super(message);
+    this.name = "BillingError";
+    this.code = opts.code ?? null;
+    this.declineCode = opts.declineCode ?? null;
+    this.needsReauthentication = opts.needsReauthentication ?? false;
+  }
+}
+
+/**
+ * Transient service failures from `/api/proxy-token` (503: partial OpenRouter
+ * usage sync, DB flake, in-flight payment intent). Not the user's fault — the
+ * summary uses "temporarily unavailable" framing, and the non-zero exit lets
+ * GH Actions apply whatever retry policy the workflow has configured.
+ */
+class TransientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransientError";
+  }
+}
+
+/**
+ * Render a BillingError as user-facing markdown (shared between GH job summary
+ * and the PR progress comment). Branches:
+ *
+ *   - `router_requires_card`: the user is on Router mode with no card AND
+ *     no wallet balance. Points at the add-card flow in the console.
+ *   - `needsReauthentication` (Stripe `authentication_required` decline): the
+ *     issuer requires a 3D Secure challenge on each off-session charge —
+ *     re-adding the card won't help because the issuer's policy persists
+ *     across credentials. The escape valve is a manual top-up from the
+ *     dashboard, where 3DS runs interactively inside Stripe Checkout.
+ *   - default: generic "manage billing" with the declineCode appended if
+ *     classified (insufficient_funds, lost_card, generic_decline, etc).
+ */
+function formatBillingErrorSummary(error: BillingError): string {
+  if (error.code === "router_requires_card") {
+    return [
+      "### ⛔ Pullfrog Router requires a card",
+      "",
+      "This run was going to use Pullfrog Router, which bills at raw OpenRouter cost and needs a card on file. Runs won't proceed until a card is added.",
+      "",
+      "[Add a card →](https://pullfrog.com/console#model-access) — your first $20 of Router usage is free.",
+    ].join("\n");
+  }
+
+  if (error.needsReauthentication) {
+    return [
+      "### ❌ Pullfrog billing error — card requires 3DS on every charge",
+      "",
+      `Your card issuer requires a 3D Secure challenge on each off-session charge (\`${error.declineCode ?? "authentication_required"}\`), which we can't run from the agent. Top up your Router credit balance manually — 3DS runs interactively in Stripe Checkout, and subsequent runs draw from the prepaid balance without triggering another off-session charge.`,
+      "",
+      "[Top up your Router credit balance →](https://pullfrog.com/console)",
+    ].join("\n");
+  }
+
+  const codeSuffix = error.declineCode ? ` (\`${error.declineCode}\`)` : "";
+  return `### ❌ Pullfrog billing error\n\n${error.message}${codeSuffix}\n\n[Manage billing →](https://pullfrog.com/console)`;
+}
+
+/**
+ * Render a TransientError as user-facing markdown. Distinct framing from
+ * BillingError so the user doesn't read "❌" and assume their card failed.
+ */
+function formatTransientErrorSummary(error: TransientError): string {
+  return [
+    "### ⚠️ Pullfrog temporarily unavailable",
+    "",
+    error.message,
+    "",
+    "This is typically transient — the next dispatch should succeed. If it persists, check [status.pullfrog.com](https://status.pullfrog.com).",
+  ].join("\n");
+}
+
 async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<string | null> {
   try {
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = ctx.oidcCredentials.requestUrl;
@@ -125,6 +226,31 @@ async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<
       headers: { Authorization: `Bearer ${oidcToken}` },
     });
 
+    if (response.status === 402) {
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+        declineCode?: string;
+        needsReauthentication?: boolean;
+      } | null;
+      throw new BillingError(body?.error ?? "insufficient balance", {
+        code: body?.code ?? null,
+        declineCode: body?.declineCode ?? null,
+        needsReauthentication: body?.needsReauthentication ?? false,
+      });
+    }
+
+    // 503 = transient sync issue (partial OpenRouter failure, DB flake,
+    // in-flight top-up). Not the user's fault — TransientError renders a
+    // "temporarily unavailable" summary instead of the "billing error"
+    // label that BillingError uses.
+    if (response.status === 503) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new TransientError(
+        body?.error ?? "billing service temporarily unavailable — retry shortly"
+      );
+    }
+
     if (!response.ok) {
       log.warning(`proxy key mint failed (${response.status})`);
       return null;
@@ -133,6 +259,8 @@ async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<
     const data = (await response.json()) as { key: string };
     return data.key;
   } catch (error) {
+    if (error instanceof BillingError) throw error;
+    if (error instanceof TransientError) throw error;
     log.warning(`proxy key mint error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   } finally {
@@ -144,29 +272,29 @@ async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<
 async function resolveProxyModel(ctx: {
   payload: ResolvedPayload;
   oss: boolean;
+  plan: AccountPlan;
   proxyModel?: string | undefined;
   oidcCredentials: OidcCredentials | null;
 }): Promise<void> {
   // env override = BYOK escape hatch, don't proxy
   if (process.env.PULLFROG_MODEL?.trim()) return;
 
-  // OSS: server decided the model
-  if (ctx.oss && ctx.proxyModel) {
-    if (!ctx.oidcCredentials) {
-      log.warning("» oss repo but no OIDC credentials available — skipping proxy");
-      return;
-    }
-    const key = await mintProxyKey({ oidcCredentials: ctx.oidcCredentials });
-    if (!key) return;
+  const needsProxy = isInfraCovered({ isOss: ctx.oss, plan: ctx.plan }) && ctx.proxyModel;
+  if (!needsProxy) return;
 
-    process.env.OPENROUTER_API_KEY = key;
-    core.setSecret(key);
-    ctx.payload.proxyModel = ctx.proxyModel;
-    log.info(`» proxy: oss → ${ctx.proxyModel}`);
+  if (!ctx.oidcCredentials) {
+    log.warning("» proxy requested but no OIDC credentials available — skipping");
     return;
   }
 
-  // managed billing will add its path here later
+  const key = await mintProxyKey({ oidcCredentials: ctx.oidcCredentials });
+  if (!key) return;
+
+  process.env.OPENROUTER_API_KEY = key;
+  core.setSecret(key);
+  ctx.payload.proxyModel = ctx.proxyModel;
+  const label = ctx.oss ? "oss" : "router";
+  log.info(`» proxy: ${label} → ${ctx.proxyModel}`);
 }
 
 async function writeJobSummary(toolState: ToolState): Promise<void> {
@@ -251,13 +379,39 @@ export async function main(): Promise<MainResult> {
     delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   }
 
-  // proxy decision: mint an OpenRouter key for OSS repos (or later, managed billing)
-  await resolveProxyModel({
-    payload,
-    oss: runContext.oss,
-    proxyModel: runContext.proxyModel,
-    oidcCredentials,
-  });
+  // Proxy decision: mint an OpenRouter key for OSS repos or managed billing
+  // accounts. BillingError (402) and TransientError (503) both surface here.
+  // Handle explicitly so the user sees an actionable message (job summary +
+  // PR progress comment when one exists) — otherwise the error unwinds past
+  // the main try/catch (which needs toolState) and lands in runMain with only
+  // a generic core.setFailed.
+  try {
+    await resolveProxyModel({
+      payload,
+      oss: runContext.oss,
+      plan: runContext.plan,
+      proxyModel: runContext.proxyModel,
+      oidcCredentials,
+    });
+  } catch (error) {
+    if (error instanceof BillingError) {
+      const summary = formatBillingErrorSummary(error);
+      await writeSummary(summary).catch(() => {});
+      // Mirror to the PR progress comment if the trigger created one
+      // (mention / PR event). Without this, auto-reload declines are only
+      // visible in the job summary — users rarely open that, so the agent
+      // just appears to silently stop mid-run.
+      await reportErrorToComment({ toolState, error: summary }).catch(() => {});
+      throw error;
+    }
+    if (error instanceof TransientError) {
+      const summary = formatTransientErrorSummary(error);
+      await writeSummary(summary).catch(() => {});
+      await reportErrorToComment({ toolState, error: summary }).catch(() => {});
+      throw error;
+    }
+    throw error;
+  }
 
   // create octokit with MCP token for GitHub API calls
   const octokit = createOctokit(tokenRef.mcpToken);
@@ -350,6 +504,8 @@ export async function main(): Promise<MainResult> {
       jobId: runInfo.jobId,
       mcpServerUrl: "",
       tmpdir,
+      oss: runContext.oss,
+      plan: runContext.plan,
       resolvedModel,
     };
     await using mcpHttpServer = await startMcpHttpServer(toolContext, { outputSchema });
