@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`getFormattedReviewThreads > formats body-only review > content 1`] = `
+exports[`formatReviewData > formats body-only review > content 1`] = `
 "# Review Threads (0) for PR #64 - Review 3531000326 by pullfrog[bot]
 
 ## Review Body
@@ -11,9 +11,9 @@ This PR looks great. The retry logic is well-implemented and the tests are compr
 "
 `;
 
-exports[`getFormattedReviewThreads > formats body-only review > toc 1`] = `""`;
+exports[`formatReviewData > formats body-only review > toc 1`] = `""`;
 
-exports[`getFormattedReviewThreads > formats thread blocks with TOC and correct line numbers > content 1`] = `
+exports[`formatReviewData > formats thread blocks with TOC and correct line numbers > content 1`] = `
 "# Review Threads (1) for PR #49 - Review 3485940013 by cursor[bot]
 
 ## TOC
@@ -68,4 +68,4 @@ LOCATIONS END -->
 "
 `;
 
-exports[`getFormattedReviewThreads > formats thread blocks with TOC and correct line numbers > toc 1`] = `"- .github/workflows/test.yml:7 → lines 25-52"`;
+exports[`formatReviewData > formats thread blocks with TOC and correct line numbers > toc 1`] = `"- .github/workflows/test.yml:7 → lines 25-52"`;

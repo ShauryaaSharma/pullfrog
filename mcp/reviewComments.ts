@@ -497,6 +497,67 @@ interface GetReviewDataInput {
   approvedBy?: string | undefined;
 }
 
+// pure formatter: takes already-fetched GitHub responses and produces the
+// review data the MCP tool returns. extracted from getReviewData so tests
+// can drive it from checked-in fixtures without live API access.
+//
+// `prFiles` may be empty when `threads` is empty — callers that hit the
+// network should skip the listFiles call in that case as a perf
+// optimization. when both are empty and `review.body` is also empty, the
+// formatter returns undefined just like getReviewData.
+export interface FormatReviewDataInput {
+  review: ReviewResponse;
+  threads: ReviewThread[];
+  prFiles: ReviewPrFile[];
+  pullNumber: number;
+  reviewId: number;
+}
+
+export type ReviewResponse = {
+  body: string | null | undefined;
+  user: { login: string } | null | undefined;
+};
+
+export type ReviewPrFile = {
+  filename: string;
+  patch?: string | undefined;
+};
+
+export function formatReviewData(input: FormatReviewDataInput):
+  | {
+      threadBlocks: Array<{ path: string; lineRange: string; content: string[] }>;
+      reviewer: string;
+      formatted: { toc: string; content: string };
+    }
+  | undefined {
+  const rawReviewBody = input.review.body;
+  const reviewBody = rawReviewBody ? stripExistingFooter(rawReviewBody) : "";
+  const reviewer = input.review.user?.login ?? "unknown";
+
+  if (input.threads.length === 0 && !reviewBody) return undefined;
+
+  let threadBlocks: Array<{ path: string; lineRange: string; content: string[] }> = [];
+
+  if (input.threads.length > 0) {
+    const filePatchMap = new Map<string, ParsedHunk[]>();
+    for (const file of input.prFiles) {
+      if (file.patch) {
+        filePatchMap.set(file.filename, parseFilePatches(file.patch));
+      }
+    }
+    threadBlocks = buildThreadBlocks(input.threads, filePatchMap, input.reviewId);
+  }
+
+  const formatted = formatReviewThreads(threadBlocks, {
+    pullNumber: input.pullNumber,
+    reviewId: input.reviewId,
+    reviewer,
+    reviewBody,
+  });
+
+  return { threadBlocks, reviewer, formatted };
+}
+
 export async function getReviewData(input: GetReviewDataInput): Promise<
   | {
       threadBlocks: Array<{ path: string; lineRange: string; content: string[] }>;
@@ -515,38 +576,25 @@ export async function getReviewData(input: GetReviewDataInput): Promise<
     getReviewThreads(input),
   ]);
 
-  const rawReviewBody = review.data.body;
-  const reviewBody = rawReviewBody ? stripExistingFooter(rawReviewBody) : "";
-  const reviewer = review.data.user?.login ?? "unknown";
+  // skip listFiles when there are no threads — prFiles is only used for
+  // building thread blocks, and an empty array short-circuits below.
+  const prFiles =
+    threads.length > 0
+      ? await input.octokit.paginate(input.octokit.rest.pulls.listFiles, {
+          owner: input.owner,
+          repo: input.name,
+          pull_number: input.pullNumber,
+          per_page: 100,
+        })
+      : [];
 
-  if (threads.length === 0 && !reviewBody) return undefined;
-
-  let threadBlocks: Array<{ path: string; lineRange: string; content: string[] }> = [];
-
-  if (threads.length > 0) {
-    const prFiles = await input.octokit.paginate(input.octokit.rest.pulls.listFiles, {
-      owner: input.owner,
-      repo: input.name,
-      pull_number: input.pullNumber,
-      per_page: 100,
-    });
-    const filePatchMap = new Map<string, ParsedHunk[]>();
-    for (const file of prFiles) {
-      if (file.patch) {
-        filePatchMap.set(file.filename, parseFilePatches(file.patch));
-      }
-    }
-    threadBlocks = buildThreadBlocks(threads, filePatchMap, input.reviewId);
-  }
-
-  const formatted = formatReviewThreads(threadBlocks, {
+  return formatReviewData({
+    review: review.data,
+    threads,
+    prFiles,
     pullNumber: input.pullNumber,
     reviewId: input.reviewId,
-    reviewer,
-    reviewBody,
   });
-
-  return { threadBlocks, reviewer, formatted };
 }
 
 export function GetReviewCommentsTool(ctx: ToolContext) {
