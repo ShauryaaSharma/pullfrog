@@ -140,14 +140,14 @@ export const providers = {
     models: {
       grok: {
         displayName: "Grok",
-        resolve: "xai/grok-4",
-        openRouterResolve: "openrouter/x-ai/grok-4",
+        resolve: "xai/grok-4.3",
+        openRouterResolve: "openrouter/x-ai/grok-4.3",
         preferred: true,
       },
       "grok-fast": {
         displayName: "Grok Fast",
-        resolve: "xai/grok-4-fast",
-        openRouterResolve: "openrouter/x-ai/grok-4-fast",
+        resolve: "xai/grok-4-1-fast",
+        openRouterResolve: "openrouter/x-ai/grok-4.1-fast",
       },
       "grok-code-fast": {
         displayName: "Grok Code Fast",
@@ -354,8 +354,8 @@ export const providers = {
       },
       grok: {
         displayName: "Grok",
-        resolve: "openrouter/x-ai/grok-4",
-        openRouterResolve: "openrouter/x-ai/grok-4",
+        resolve: "openrouter/x-ai/grok-4.3",
+        openRouterResolve: "openrouter/x-ai/grok-4.3",
       },
       "deepseek-pro": {
         displayName: "DeepSeek Pro",

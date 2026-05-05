@@ -27,8 +27,8 @@ exports[`latest model per provider snapshot > matches snapshot 1`] = `
     "releaseDate": "2026-04-24",
   },
   "openrouter": {
-    "modelId": "poolside/laguna-xs.2:free",
-    "releaseDate": "2026-04-28",
+    "modelId": "x-ai/grok-4.3",
+    "releaseDate": "2026-05-01",
   },
   "xai": {
     "modelId": "grok-4.3",
