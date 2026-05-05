@@ -112,7 +112,7 @@ export function computeModes(agentId: AgentId): Mode[] {
    - Do NOT defect-hunt the diff yourself in parallel with the subagent. Your role is dispatch + evaluation; doing the review yourself reintroduces the implementation bias the subagent is meant to mitigate.
    - For diffs that rely on third-party API contracts, SDK semantics, framework directives, or DB engine specifics, instruct the subagent to verify load-bearing claims via web search and quote source URLs rather than trust training data — this is the single most common review-quality failure mode.
 
-   Review the findings, address valid points, and discard nitpicks or false positives. Then verify only intended changes are present, no debug artifacts or commented-out code remain, no unrelated files were modified. Commit locally via shell (\`git add . && git commit -m "..."\`).
+   Review the findings, address valid points, and discard nitpicks or false positives. The reviewer is fallible — it biases toward *recommending additions* (defensive checks for impossible cases, extra logging, new abstractions used once, comments restating code, tests asserting tautologies, "just-in-case" guards). For each finding, ask: would applying it leave the code more sound, correct, AND elegant? Two-out-of-three is not enough — a fix that improves correctness while degrading elegance still degrades the codebase. Reject bloat-shaped findings without applying them, and after applying the rest re-read your diff and be discerning about what *you just changed*: if any fix turned out to be bloat in context, revert it. The goal is code that is sound and correct *while remaining elegant*; the smallest diff that fixes the real defect almost always wins. Then verify only intended changes are present, no debug artifacts or commented-out code remain, no unrelated files were modified. Commit locally via shell (\`git add . && git commit -m "..."\`).
 
 5. **finalize**:
    - confirm a clean working tree, then push via \`${t("push_branch")}\` (see *SYSTEM* Git rules if this fails — prepush errors are usually the repo's tests/lint, not infra timeouts)
@@ -137,11 +137,12 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
 3. For each comment:
    - understand the feedback
-   - make the code change using your native tools
-   - record what was done
+   - evaluate whether applying it would leave the code more **sound, correct, AND elegant**. reviewers are fallible and bias toward *recommending additions* (defensive checks for impossible cases, extra abstractions, comments restating obvious code, tests asserting tautologies, "just-in-case" guards). if a request would add bloat — ceremony without commensurate correctness benefit — push back in your reply rather than mechanically applying it. two-out-of-three is not enough; improving correctness while degrading elegance still degrades the code.
+   - if the request stands, make the code change using your native tools; otherwise reply explaining why
+   - record what was done (or why nothing was done)
 
 4. Quality check:
-   - test changes, then review the diff before committing — verify only intended changes are present, no debug artifacts remain, and the changes are clean enough that a senior engineer would approve without hesitation
+   - test changes, then review the diff before committing — verify only intended changes are present, no debug artifacts remain, no fix turned out to be bloat in context (revert any that did), and the changes are clean enough that a senior engineer would approve without hesitation
    - commit locally via shell (\`git add . && git commit -m "..."\`)
 
 5. Finalize:
@@ -234,7 +235,7 @@ ${learningsStep(t, 6)}`,
    - do NOT pre-shape their output with a finding schema
    - do NOT mention the other lenses (independence is the point — overlapping findings are a strong signal)
 
-4. **aggregate & draft**: merge findings; de-dup overlaps (two lenses catching the same issue = higher-confidence signal); trace each finding yourself before accepting it. drop praise, style preferences, speculative/unverified claims, findings about pre-existing code unrelated to the PR (heuristic: if the finding's root cause lives in lines this PR added or modified, it's in scope; otherwise drop unless the PR plausibly introduced or amplified the regression), and anything not actionable.
+4. **aggregate & draft**: merge findings; de-dup overlaps (two lenses catching the same issue = higher-confidence signal); trace each finding yourself before accepting it. drop praise, style preferences, speculative/unverified claims, findings about pre-existing code unrelated to the PR (heuristic: if the finding's root cause lives in lines this PR added or modified, it's in scope; otherwise drop unless the PR plausibly introduced or amplified the regression), and anything not actionable. also drop **bloat-shaped findings** — proposed fixes that would add defensive checks for cases that can't happen, abstractions used once, comments restating obvious code, tests asserting tautologies, or "just-in-case" guards. subagents are fallible and bias toward recommending changes; the bar for an actionable inline comment is sound + correct + elegant. recommending a change that improves only one of the three (or worse, degrades elegance to nominally improve correctness) makes the codebase worse, not better.
 
    for surviving findings, draft inline comments with NEW line numbers from the diff. every comment must be actionable, 2-3 sentences max. use GitHub permalink format for code references. for impact-analysis findings (stale references after rename/remove), report them in the review body ordered by severity (runtime breakage > incorrect docs > stale comments) rather than as inline comments unless they're anchored to a specific line.
 
@@ -299,7 +300,7 @@ ${learningsStep(t, 6)}`,
    - do NOT pre-shape their output with a finding schema
    - do NOT mention the other lenses (independence is the point)
 
-5. **aggregate, draft, self-critique**: merge findings; de-dup overlaps; trace each finding yourself. drop praise, style preferences, speculative/unverified claims, findings about pre-existing code unrelated to the new commits, anything not actionable, and anything that re-states prior review feedback (heuristic: if the finding's root cause lives in lines the *new commits* added or modified, it's in scope; otherwise drop). To compute "lines the new commits added or modified": if \`incrementalDiffPath\` from step 1 is present, use it directly. Otherwise, take the prior Pullfrog review's \`commit_id\` (returned alongside each entry from \`${t("list_pull_request_reviews")}\` in step 3) and run \`git diff <prior-review-sha>..HEAD\` to isolate the lines added since that review. draft inline comments with NEW line numbers from the full PR diff — every comment must be actionable, 2-3 sentences max.
+5. **aggregate, draft, self-critique**: merge findings; de-dup overlaps; trace each finding yourself. drop praise, style preferences, speculative/unverified claims, findings about pre-existing code unrelated to the new commits, anything not actionable, and anything that re-states prior review feedback (heuristic: if the finding's root cause lives in lines the *new commits* added or modified, it's in scope; otherwise drop). also drop **bloat-shaped findings** — proposed fixes that would add defensive checks for cases that can't happen, abstractions used once, comments restating obvious code, tests asserting tautologies, or "just-in-case" guards. subagents are fallible and bias toward recommending changes; the bar for an actionable inline comment is sound + correct + elegant. recommending a change that improves only one of the three (or degrades elegance to nominally improve correctness) makes the codebase worse, not better. To compute "lines the new commits added or modified": if \`incrementalDiffPath\` from step 1 is present, use it directly. Otherwise, take the prior Pullfrog review's \`commit_id\` (returned alongside each entry from \`${t("list_pull_request_reviews")}\` in step 3) and run \`git diff <prior-review-sha>..HEAD\` to isolate the lines added since that review. draft inline comments with NEW line numbers from the full PR diff — every comment must be actionable, 2-3 sentences max.
 
    then check: which prior review comments were addressed by the new commits? track the addressed ones for step 6b.
 
