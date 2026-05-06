@@ -98,6 +98,24 @@ describe("diff coverage line checker", () => {
     ]);
   });
 
+  it("carries forward coveragePreflightRan from a previous state across checkout refreshes", () => {
+    const previous = createDiffCoverageState({ diffPath, totalLines: 30, toc });
+    previous.coveragePreflightRan = true;
+    previous.coveredRanges = [{ startLine: 5, endLine: 10 }];
+
+    const next = createDiffCoverageState({ diffPath, totalLines: 50, toc, previous });
+
+    expect(next.coveragePreflightRan).toBe(true);
+    // coveredRanges are tied to the previous diff content and must not leak forward
+    expect(next.coveredRanges).toEqual([]);
+    expect(next.totalLines).toBe(50);
+  });
+
+  it("defaults coveragePreflightRan to false when no previous state is provided", () => {
+    const state = createDiffCoverageState({ diffPath, totalLines: 30, toc });
+    expect(state.coveragePreflightRan).toBe(false);
+  });
+
   it("computes per-file unread ranges from tracked reads", () => {
     const state = createDiffCoverageState({
       diffPath,

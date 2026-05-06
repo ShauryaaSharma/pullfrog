@@ -78,13 +78,17 @@ export function createDiffCoverageState(params: {
   diffPath: string;
   totalLines: number;
   toc: string;
+  previous?: DiffCoverageState | undefined;
 }): DiffCoverageState {
   return {
     diffPath: params.diffPath,
     totalLines: params.totalLines,
     tocEntries: parseDiffTocEntries({ toc: params.toc }),
     coveredRanges: [],
-    coveragePreflightRan: false,
+    // carry forward across checkout_pr refreshes so the nudge stays "once per
+    // review session". coveredRanges are intentionally not carried because
+    // line numbers are tied to the previous diff's content.
+    coveragePreflightRan: params.previous?.coveragePreflightRan ?? false,
   };
 }
 

@@ -545,6 +545,7 @@ export function CheckoutPrTool(ctx: ToolContext) {
         diffPath,
         totalLines: countLines({ content: formatResult.content }),
         toc: formatResult.toc,
+        previous: ctx.toolState.diffCoverage,
       });
       log.debug(
         `» diff coverage initialized: diffPath=${diffPath}, totalLines=${ctx.toolState.diffCoverage.totalLines}, tocEntries=${ctx.toolState.diffCoverage.tocEntries.length}`
