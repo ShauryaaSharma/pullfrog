@@ -210,6 +210,7 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
 
   let finalOutput = "";
   let sessionId: string | undefined;
+  let resultErrorSubtype: string | null = null;
   let accumulatedTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   // Claude CLI reports a single end-of-run `total_cost_usd` on the result
   // event. per-message events don't carry cost, so there's nothing to sum —
@@ -367,9 +368,14 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
           tokensLogged = true;
         }
       } else if (subtype === "error_max_turns") {
+        resultErrorSubtype = subtype;
         log.info(`» ${params.label} max turns reached: ${JSON.stringify(event)}`);
       } else if (subtype === "error_during_execution") {
+        resultErrorSubtype = subtype;
         log.info(`» ${params.label} execution error: ${JSON.stringify(event)}`);
+      } else if (subtype.startsWith("error")) {
+        resultErrorSubtype = subtype;
+        log.info(`» ${params.label} result: subtype=${subtype}, data=${JSON.stringify(event)}`);
       } else {
         log.info(`» ${params.label} result: subtype=${subtype}, data=${JSON.stringify(event)}`);
       }
@@ -522,6 +528,16 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
         success: false,
         output: finalOutput || output,
         error: `provider error: ${lastProviderError}`,
+        usage,
+        sessionId,
+      };
+    }
+
+    if (resultErrorSubtype) {
+      return {
+        success: false,
+        output: finalOutput || output,
+        error: `result subtype: ${resultErrorSubtype}`,
         usage,
         sessionId,
       };

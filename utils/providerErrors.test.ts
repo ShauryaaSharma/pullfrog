@@ -1,0 +1,80 @@
+import { detectProviderError } from "./providerErrors.ts";
+
+describe("detectProviderError", () => {
+  describe("false positives previously seen in production", () => {
+    it("returns null for commit SHAs containing 429", () => {
+      expect(detectProviderError("hash=7a46d89f505b36df49b4f54429daffa1a9459b11")).toBeNull();
+      expect(detectProviderError("commit f609cc89e84596ab125d60dac568bfb2ef398396 429")).toBeNull();
+    });
+
+    it("returns null for x-ratelimit-* response headers in 401 error JSON", () => {
+      const stderr = JSON.stringify({
+        error: { name: "APIError", statusCode: 401, message: "Invalid authentication credentials" },
+        headers: {
+          "x-ratelimit-limit-requests": 50,
+          "x-ratelimit-remaining-requests": 49,
+          "x-ratelimit-reset-tokens": "2025-01-01T00:00:00Z",
+        },
+      });
+      expect(detectProviderError(stderr)).toBeNull();
+    });
+
+    it("returns null for INTERNAL_SERVER_ERROR substring", () => {
+      expect(detectProviderError("HTTP/1.1 500 INTERNAL_SERVER_ERROR")).toBeNull();
+      expect(detectProviderError("expected: not INTERNAL_SERVER_ERROR")).toBeNull();
+    });
+
+    it("returns null for INTERNALS substring", () => {
+      expect(detectProviderError("debugging INTERNALS of the parser")).toBeNull();
+    });
+  });
+
+  describe("real provider errors", () => {
+    it("detects 429 only when adjacent to a status key", () => {
+      expect(detectProviderError('{"statusCode": 429}')).toBe("rate limited (429)");
+      expect(detectProviderError('{"status_code": 429, "message": "..."}')).toBe(
+        "rate limited (429)"
+      );
+      expect(detectProviderError("http_status: 429")).toBe("rate limited (429)");
+      expect(detectProviderError("status=429")).toBe("rate limited (429)");
+    });
+
+    it("detects rate_limit_error and rate_limit_exceeded", () => {
+      expect(detectProviderError('{"type":"rate_limit_error"}')).toBe("rate limited");
+      expect(detectProviderError("rate_limit_exceeded")).toBe("rate limited");
+      expect(detectProviderError("plain rate limit reached")).toBe("rate limited");
+    });
+
+    it("detects rate-limit phrasing with trailing inflection", () => {
+      expect(detectProviderError("Error: rate limited by provider")).toBe("rate limited");
+      expect(detectProviderError("rate limits exceeded for this key")).toBe("rate limited");
+    });
+
+    it("detects RESOURCE_EXHAUSTED", () => {
+      expect(detectProviderError('"status": "RESOURCE_EXHAUSTED"')).toBe("quota exhausted");
+    });
+
+    it("detects gRPC INTERNAL status as a whole word", () => {
+      expect(detectProviderError('"status": "INTERNAL"')).toBe("provider internal error");
+    });
+
+    it("detects UNAVAILABLE as a whole word", () => {
+      expect(detectProviderError('"status": "UNAVAILABLE"')).toBe("provider unavailable");
+    });
+
+    it("detects 500 / 503 only when adjacent to a status key", () => {
+      expect(detectProviderError('"statusCode": 500')).toBe("provider 500 error");
+      expect(detectProviderError('"statusCode": 503')).toBe("provider unavailable (503)");
+      expect(detectProviderError("v1.503.0 release notes")).toBeNull();
+    });
+
+    it("detects quota and zero-quota responses", () => {
+      expect(detectProviderError('"message": "quota exceeded"')).toBe("quota error");
+      expect(detectProviderError('{"code":"insufficient_quota"}')).toBe("quota error");
+      expect(detectProviderError('"error":"quota_exceeded"')).toBe("quota error");
+      expect(detectProviderError('{"reason":"quotaExceeded"}')).toBe("quota error");
+      expect(detectProviderError('{"limit": 0, "remaining": 0}')).toBe("zero quota");
+      expect(detectProviderError('"time_limit": 0')).toBeNull();
+    });
+  });
+});

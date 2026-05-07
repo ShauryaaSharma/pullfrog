@@ -254,7 +254,13 @@ interface OpenCodeErrorEvent {
   type: "error";
   timestamp?: string;
   sessionID?: string;
-  error?: { name?: string; message?: string; data?: unknown; [key: string]: unknown };
+  // opencode emits the error message under `error.data.message`, not at the
+  // top level. see anomalyco/opencode packages/opencode/src/cli/cmd/run.ts.
+  error?: {
+    name?: string;
+    data?: { message?: string; [key: string]: unknown };
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -630,6 +636,16 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
         log.debug(withLabel(label, `tool output: ${outputStr}`));
       }
     },
+    error: (event: OpenCodeErrorEvent) => {
+      // opencode emits a `type=error` event when a provider call fails (e.g.
+      // 401 Invalid authentication credentials). the underlying CLI still
+      // exits 0 because the error was returned cleanly by the LLM SDK, so
+      // unless we capture this event the run is reported as success.
+      agentErrorEvent = event;
+      const errorName = event.error?.name || "unknown";
+      const errorMessage = event.error?.data?.message || event.error?.name || JSON.stringify(event);
+      log.info(`» ${params.label} error event: ${errorName}: ${errorMessage}`);
+    },
     result: async (event: OpenCodeResultEvent) => {
       const status = event.status || "unknown";
       const duration = event.stats?.duration_ms || 0;
@@ -663,6 +679,7 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
   const recentStderr: string[] = [];
 
   let lastProviderError: string | null = null;
+  let agentErrorEvent: OpenCodeErrorEvent | null = null;
 
   let output = "";
   let stdoutBuffer = "";
@@ -820,6 +837,19 @@ async function runOpenCode(params: RunParams): Promise<AgentResult> {
         success: false,
         output: finalOutput || output,
         error: `provider error: ${lastProviderError}`,
+        usage,
+      };
+    }
+
+    if (agentErrorEvent) {
+      const errorEvent: OpenCodeErrorEvent = agentErrorEvent;
+      const errorName = errorEvent.error?.name || "agent error";
+      const errorMessage =
+        errorEvent.error?.data?.message || errorEvent.error?.name || JSON.stringify(errorEvent);
+      return {
+        success: false,
+        output: finalOutput || output,
+        error: `${errorName}: ${errorMessage}`,
         usage,
       };
     }
