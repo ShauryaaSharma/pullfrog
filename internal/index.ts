@@ -40,6 +40,10 @@ export {
   stripExistingFooter,
 } from "../utils/buildPullfrogFooter.ts";
 export type { ResourceUsage, UsageSummary } from "../utils/github.ts";
+export {
+  isLeapingIntoActionCommentBody,
+  LEAPING_INTO_ACTION_PREFIX,
+} from "../utils/leapingComment.ts";
 export type {
   CreateProgressCommentTarget,
   ProgressComment,

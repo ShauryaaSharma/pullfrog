@@ -7,7 +7,6 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 const entryPoints = [
   resolve(scriptDir, "../entry.ts"),
-  resolve(scriptDir, "../post.ts"),
   resolve(scriptDir, "../get-installation-token/entry.ts"),
   resolve(scriptDir, "../get-installation-token/post.ts"),
 ];

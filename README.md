@@ -72,16 +72,14 @@ on:
         description: 'Agent prompt'
 
 permissions:
-  id-token: write
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: read
-  checks: read
+  contents: read
 
 jobs:
   pullfrog:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -130,11 +128,7 @@ jobs:
 
     permissions:
       id-token: write
-      contents: write
-      issues: write
-      pull-requests: write
-      actions: read
-      checks: read
+      contents: read
     uses: ./.github/workflows/pullfrog.yml
     with:
       # pass the full event payload as the prompt

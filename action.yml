@@ -36,8 +36,6 @@ outputs:
 runs:
   using: "node24"
   main: "entry.ts"
-  post: "post.ts"
-  post-if: "failure() || cancelled()"
 
 branding:
   icon: "code"

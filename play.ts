@@ -12,7 +12,6 @@ import { log } from "./utils/cli.ts";
 import { runInDocker } from "./utils/docker.ts";
 import { ensureGitHubToken } from "./utils/github.ts";
 import { isInsideDocker } from "./utils/globals.ts";
-import { runPostCleanup } from "./utils/postCleanup.ts";
 import { setupTestRepo } from "./utils/setup.ts";
 
 /**
@@ -78,13 +77,7 @@ export async function run(inputsOrPrompt: Inputs | string): Promise<AgentResult>
       }
     }
 
-    // wrap main() so post cleanup runs even on failure (mirrors action.yml post-if: "failure() || cancelled()")
-    let result: AgentResult;
-    try {
-      result = await main();
-    } finally {
-      await runPostCleanup();
-    }
+    const result: AgentResult = await main();
 
     process.chdir(originalCwd);
 

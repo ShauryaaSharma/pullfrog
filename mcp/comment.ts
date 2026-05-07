@@ -12,18 +12,11 @@ import {
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
-/**
- * The prefix text for the initial "leaping into action" comment.
- * This is used to identify if a comment is still in its initial state
- * and hasn't been updated with progress or error messages.
- */
-export const LEAPING_INTO_ACTION_PREFIX = "Leaping into action";
-
-export function isLeapingIntoActionCommentBody(body: string): boolean {
-  const content = stripExistingFooter(body).trimStart();
-  const firstLine = content.split(/\r?\n/, 1)[0]?.trimEnd() ?? "";
-  return new RegExp(`(^|\\s)${LEAPING_INTO_ACTION_PREFIX}(\\.\\.\\.)?$`).test(firstLine);
-}
+// re-export for backward compat with anything importing the leaping helpers from mcp/comment
+export {
+  isLeapingIntoActionCommentBody,
+  LEAPING_INTO_ACTION_PREFIX,
+} from "../utils/leapingComment.ts";
 
 function buildCommentFooter(ctx: ToolContext, customParts?: string[]): string {
   const runId = ctx.runId;
@@ -447,7 +440,8 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
         body: bodyWithFooter,
       });
 
-      // mark progress as updated so post script doesn't think the run failed
+      // mark progress as updated so error reporting + run-result handling know
+      // a substantive write happened (used by reportErrorToComment / handleAgentResult)
       ctx.toolState.wasUpdated = true;
 
       return {

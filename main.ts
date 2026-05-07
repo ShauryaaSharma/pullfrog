@@ -578,10 +578,11 @@ export async function main(): Promise<MainResult> {
     toolState.todoTracker = todoTracker;
 
     // on cancellation, stop scheduling new tracker writes immediately. without this, a
-    // debounced write queued just before SIGTERM could land at GitHub *after* the post-step
-    // writes its "This run was cancelled" message, clobbering it back to the task list.
-    // we can't await in-flight writes (the process is exiting), but cancelling the timer
-    // shrinks the race window. post-cleanup has its own verify-retry loop for the rest.
+    // debounced write queued just before SIGTERM could land at GitHub *after* the
+    // workflow_run.completed webhook has already replaced the comment with the
+    // "This run was cancelled" body, clobbering it back to the task list. we can't
+    // await in-flight writes (the process is exiting), but cancelling the timer
+    // shrinks the race window.
     onExitSignal(() => {
       todoTracker?.cancel();
     });

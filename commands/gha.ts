@@ -2,8 +2,6 @@ import { dirname } from "node:path";
 import * as core from "@actions/core";
 import arg from "arg";
 import { main } from "../main.ts";
-import { log } from "../utils/cli.ts";
-import { runPostCleanup } from "../utils/postCleanup.ts";
 import { acquireInstallationToken, revokeInstallationToken } from "../utils/token.ts";
 
 // GitHub Actions runs the action entry point with the node24 binary specified
@@ -28,16 +26,6 @@ async function runMain(): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "unknown error occurred";
     core.setFailed(`action failed: ${errorMessage}`);
-  }
-}
-
-async function runPost(): Promise<void> {
-  log.debug(`[post] script started at ${new Date().toISOString()}`);
-  try {
-    await runPostCleanup();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log.error(`[post] unexpected error: ${message}`);
   }
 }
 
@@ -73,7 +61,7 @@ async function tokenPost(): Promise<void> {
 }
 
 function printGhaUsage(params: { stream: typeof console.log; prog: string }): void {
-  params.stream(`usage: ${params.prog} gha [token] [--post]\n`);
+  params.stream(`usage: ${params.prog} gha [subcommand]\n`);
   params.stream("run the github action runtime flow.");
   params.stream("");
   params.stream("subcommands:");
@@ -81,10 +69,31 @@ function printGhaUsage(params: { stream: typeof console.log; prog: string }): vo
   params.stream("");
   params.stream("options:");
   params.stream("  -h, --help   show help");
-  params.stream("  --post       run post-cleanup flow");
+}
+
+function printGhaTokenUsage(params: { stream: typeof console.log; prog: string }): void {
+  params.stream(`usage: ${params.prog} gha token [--post]\n`);
+  params.stream("acquire a github app installation token, or revoke it in the post step.");
+  params.stream("");
+  params.stream("options:");
+  params.stream("  -h, --help   show help");
+  params.stream("  --post       revoke the previously-acquired token (post-step usage only)");
 }
 
 function parseGhaArgs(args: string[]) {
+  return arg(
+    {
+      "--help": Boolean,
+      "-h": "--help",
+    },
+    {
+      argv: args,
+      stopAtPositional: true,
+    }
+  );
+}
+
+function parseGhaTokenArgs(args: string[]) {
   return arg(
     {
       "--help": Boolean,
@@ -118,27 +127,46 @@ export async function runCli(params: GhaCliParams): Promise<void> {
     return;
   }
 
-  const normalizedArgs = ["gha"];
   const positional = parsed._;
+  const subcommand = positional[0];
 
-  if (positional.length > 1) {
-    console.error(`unexpected positional arguments for gha: ${positional.slice(1).join(" ")}\n`);
+  if (!subcommand) {
+    await run(["gha"]);
+    return;
+  }
+
+  if (subcommand !== "token") {
+    console.error(`unknown gha subcommand: ${subcommand}\n`);
     printGhaUsage({ stream: console.error, prog: params.prog });
     process.exit(1);
   }
 
-  if (positional[0] === "token") {
-    normalizedArgs.push("token");
-  } else if (positional[0]) {
-    console.error(`unknown gha subcommand: ${positional[0]}\n`);
-    printGhaUsage({ stream: console.error, prog: params.prog });
+  // gha token [--post]
+  let tokenParsed: ReturnType<typeof parseGhaTokenArgs>;
+  try {
+    tokenParsed = parseGhaTokenArgs(positional.slice(1));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`${message}\n`);
+    printGhaTokenUsage({ stream: console.error, prog: params.prog });
     process.exit(1);
   }
 
-  if (parsed["--post"]) {
+  if (tokenParsed["--help"]) {
+    printGhaTokenUsage({ stream: console.log, prog: params.prog });
+    return;
+  }
+
+  if (tokenParsed._.length > 0) {
+    console.error(`unexpected positional arguments for gha token: ${tokenParsed._.join(" ")}\n`);
+    printGhaTokenUsage({ stream: console.error, prog: params.prog });
+    process.exit(1);
+  }
+
+  const normalizedArgs = ["gha", "token"];
+  if (tokenParsed["--post"]) {
     normalizedArgs.push("--post");
   }
-
   await run(normalizedArgs);
 }
 
@@ -150,8 +178,6 @@ export async function run(args: string[]) {
       } else {
         await tokenMain();
       }
-    } else if (args.includes("--post")) {
-      await runPost();
     } else {
       await runMain();
     }
