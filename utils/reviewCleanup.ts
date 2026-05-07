@@ -88,8 +88,19 @@ async function dispatchFollowUpReReview(ctx: ToolContext, reviewedSha: string): 
   await ctx.octokit.rest.actions.createWorkflowDispatch({
     owner: ctx.repo.owner,
     repo: ctx.repo.name,
-    workflow_id: "pullfrog.yml",
+    workflow_id: getCurrentWorkflowFilename(),
     ref: pr.data.base.repo.default_branch,
     inputs: { prompt: JSON.stringify(payload) },
   });
+}
+
+/**
+ * derive the running workflow's filename from `GITHUB_WORKFLOW_REF`, which has the form
+ * `<owner>/<repo>/.github/workflows/<filename>@<ref>` (e.g. `.../pullfrog.yaml@refs/heads/main`).
+ * falls back to `pullfrog.yml` if the env var is missing or malformed (shouldn't happen in CI).
+ */
+function getCurrentWorkflowFilename(): string {
+  const ref = process.env.GITHUB_WORKFLOW_REF ?? "";
+  const match = ref.match(/\/([^/]+)@/);
+  return match?.[1] ?? "pullfrog.yml";
 }
