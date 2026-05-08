@@ -11,6 +11,7 @@ import {
 } from "../utils/diffCoverage.ts";
 import { fixDoubleEscapedString } from "../utils/fixDoubleEscapedString.ts";
 import { patchWorkflowRunFields } from "../utils/patchWorkflowRunFields.ts";
+import { retry } from "../utils/retry.ts";
 import { deleteProgressComment } from "./comment.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
@@ -20,6 +21,29 @@ function getHttpStatus(err: unknown): number | undefined {
   const status = (err as Record<string, unknown>).status;
   return typeof status === "number" ? status : undefined;
 }
+
+/**
+ * detect GitHub's generic server-side 422 ("An internal error occurred,
+ * please try again.") that sometimes fires on `POST /pulls/{n}/reviews`.
+ *
+ * the body is stable across occurrences and distinct from every other 422
+ * cause we care about (anchor validation, body length, malformed suggestion
+ * blocks) — those all cite the specific problem. treating this as a
+ * transient server error unlocks bounded in-tool retry instead of surfacing
+ * it to the agent with the generic "likely causes (1)(2)(3)" prompt, which
+ * induces whack-a-mole comment dropping on content that was never the issue.
+ */
+export function isTransientReviewError(err: unknown): boolean {
+  if (getHttpStatus(err) !== 422) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /internal error occurred, please try again/i.test(msg);
+}
+
+// backoff schedule for transient GitHub 422 "internal error" responses on the
+// reviews endpoint. 3 attempts total (initial + 2 retries) with 1s/3s delays
+// — most transient GH errors clear within a few seconds, and longer delays
+// push review submission past agent-perceived responsiveness.
+export const TRANSIENT_REVIEW_RETRY_DELAYS_MS = [1_000, 3_000];
 
 type PullFile = RestEndpointMethodTypes["pulls"]["listFiles"]["response"]["data"][number];
 export type CommentableLines = { RIGHT: Set<number>; LEFT: Set<number> };
@@ -483,16 +507,50 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
 
       // no body → single-step createReview (no footer needed)
       // has body → pending + submit so we can build footer with Fix links using review ID
+      //
+      // wrap the submission in `retry` so GitHub's transient 422 "internal
+      // error" body (distinct from anchor / body-length / suggestion 422s,
+      // which all cite the specific cause) clears on its own instead of
+      // surfacing through the generic 422 handler — that framing sent the
+      // agent dropping valid inline comments chasing a non-issue.
+      // `shouldRetry` scopes retries to the transient body only, so real
+      // validation 422s still fail fast.
       let result;
       try {
-        result = body
-          ? await createAndSubmitWithFooter(ctx, params, {
-              body,
-              approved: approved ?? false,
-              hasComments: (params.comments?.length ?? 0) > 0,
-            })
-          : await createReviewWithStrandedRecovery(ctx, params);
+        result = await retry(
+          () =>
+            body
+              ? createAndSubmitWithFooter(ctx, params, {
+                  body,
+                  approved: approved ?? false,
+                  hasComments: (params.comments?.length ?? 0) > 0,
+                })
+              : createReviewWithStrandedRecovery(ctx, params),
+          {
+            delaysMs: TRANSIENT_REVIEW_RETRY_DELAYS_MS,
+            shouldRetry: isTransientReviewError,
+            label: "review submission",
+          }
+        );
       } catch (err: unknown) {
+        // GitHub's transient 422 "internal error" is distinct from anchor /
+        // body-length / suggestion validation failures — framing it with the
+        // generic "likely causes (1)(2)(3)" prompt sends the agent dropping
+        // comments that were never the problem. after bounded in-tool retry
+        // we surface a dedicated message that tells the agent to wait-and-
+        // retry or fall back to a body-only review.
+        if (isTransientReviewError(err)) {
+          const rawMsg = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `GitHub returned a transient 422 "internal error" on the reviews endpoint after ${TRANSIENT_REVIEW_RETRY_DELAYS_MS.length + 1} attempts. ` +
+              `This is a GitHub-side issue, not a problem with your review content. ` +
+              `Do NOT modify or drop inline comments — their content is not the cause. ` +
+              `Wait ~30 seconds and call this tool once more with the SAME arguments. ` +
+              `If it still fails, submit a body-only review (move all inline feedback into \`body\` as text) so nothing is lost. ` +
+              `GitHub said: ${rawMsg}`,
+            { cause: err }
+          );
+        }
         if (getHttpStatus(err) !== 422 || !params.comments?.length) throw err;
 
         const details = params.comments.map((c) => {

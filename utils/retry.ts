@@ -4,6 +4,12 @@ import { log } from "./cli.ts";
 export type RetryOptions = {
   maxAttempts?: number;
   delayMs?: number;
+  /**
+   * explicit delay schedule — one entry per retry (length N ⇒ N+1 attempts).
+   * when set, overrides `maxAttempts` and `delayMs`. e.g. `[1_000, 3_000]`
+   * means up to 3 attempts, sleeping 1s before retry 2 and 3s before retry 3.
+   */
+  delaysMs?: readonly number[];
   shouldRetry?: (error: unknown) => boolean;
   label?: string;
 };
@@ -20,10 +26,15 @@ const defaultShouldRetry = (error: unknown): boolean => {
 };
 
 export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const maxAttempts = options.maxAttempts ?? 3;
-  const delayMs = options.delayMs ?? 1000;
   const shouldRetry = options.shouldRetry ?? defaultShouldRetry;
   const label = options.label ?? "operation";
+  const delays = options.delaysMs
+    ? Array.from(options.delaysMs)
+    : Array.from(
+        { length: (options.maxAttempts ?? 3) - 1 },
+        (_, i) => (options.delayMs ?? 1000) * (i + 1)
+      );
+  const maxAttempts = delays.length + 1;
 
   let lastError: unknown;
 
@@ -37,7 +48,7 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
         throw error;
       }
 
-      const delay = delayMs * attempt;
+      const delay = delays[attempt - 1]!;
       log.info(`» ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
       await sleep(delay);
     }
