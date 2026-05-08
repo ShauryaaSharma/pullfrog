@@ -22,6 +22,7 @@ import {
 import { resolveAgent, resolveModel } from "./utils/agent.ts";
 import { apiFetch } from "./utils/apiFetch.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
+import { isLocalApiUrl } from "./utils/apiUrl.ts";
 import { resolveBody } from "./utils/body.ts";
 import { formatUsageSummary, log, writeSummary } from "./utils/cli.ts";
 import { recordDiffReadFromToolUse } from "./utils/diffCoverage.ts";
@@ -280,18 +281,18 @@ function formatTransientErrorSummary(error: TransientError, owner: string): stri
   ].join("\n");
 }
 
-async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<string | null> {
+async function mintProxyKey(ctx: {
+  oidcCredentials: OidcCredentials | null;
+  repo: { owner: string; name: string };
+}): Promise<string | null> {
   try {
-    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = ctx.oidcCredentials.requestUrl;
-    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = ctx.oidcCredentials.requestToken;
-    const oidcToken = await core.getIDToken("pullfrog-api");
-    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
-    delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+    const headers = await buildProxyTokenHeaders(ctx);
+    if (!headers) return null;
 
     const response = await apiFetch({
       path: "/api/proxy-token",
       method: "POST",
-      headers: { Authorization: `Bearer ${oidcToken}` },
+      headers,
     });
 
     if (response.status === 402) {
@@ -337,12 +338,44 @@ async function mintProxyKey(ctx: { oidcCredentials: OidcCredentials }): Promise<
   }
 }
 
+/**
+ * choose how to authenticate the `/api/proxy-token` request:
+ *
+ * - production: mint a fresh OIDC token via `core.getIDToken` and send as
+ *   `Authorization: Bearer …` (the server verifies it cryptographically).
+ * - local dev (no OIDC + `API_URL` is localhost): send `x-dev-repo:
+ *   owner/repo` instead. the server-side route only honors this header
+ *   when `NODE_ENV === "development"`, so prod is never reachable through
+ *   this branch even if the action is misconfigured.
+ *
+ * returns null when neither path is available — caller treats as soft skip.
+ */
+async function buildProxyTokenHeaders(ctx: {
+  oidcCredentials: OidcCredentials | null;
+  repo: { owner: string; name: string };
+}): Promise<Record<string, string> | null> {
+  if (ctx.oidcCredentials) {
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = ctx.oidcCredentials.requestUrl;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = ctx.oidcCredentials.requestToken;
+    const oidcToken = await core.getIDToken("pullfrog-api");
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+    return { Authorization: `Bearer ${oidcToken}` };
+  }
+  if (isLocalApiUrl()) {
+    log.info(`» proxy: dev bypass (x-dev-repo) for ${ctx.repo.owner}/${ctx.repo.name}`);
+    return { "x-dev-repo": `${ctx.repo.owner}/${ctx.repo.name}` };
+  }
+  return null;
+}
+
 async function resolveProxyModel(ctx: {
   payload: ResolvedPayload;
   oss: boolean;
   plan: AccountPlan;
   proxyModel?: string | undefined;
   oidcCredentials: OidcCredentials | null;
+  repo: { owner: string; name: string };
 }): Promise<void> {
   // env override = BYOK escape hatch, don't proxy
   if (process.env.PULLFROG_MODEL?.trim()) return;
@@ -350,12 +383,15 @@ async function resolveProxyModel(ctx: {
   const needsProxy = isInfraCovered({ isOss: ctx.oss, plan: ctx.plan }) && ctx.proxyModel;
   if (!needsProxy) return;
 
-  if (!ctx.oidcCredentials) {
+  // dev affordance: when talking to a localhost API, the server-side
+  // x-dev-repo bypass replaces OIDC verification, so a play run can
+  // exercise the proxy/router/oss path without GitHub Actions OIDC.
+  if (!ctx.oidcCredentials && !isLocalApiUrl()) {
     log.warning("» proxy requested but no OIDC credentials available — skipping");
     return;
   }
 
-  const key = await mintProxyKey({ oidcCredentials: ctx.oidcCredentials });
+  const key = await mintProxyKey({ oidcCredentials: ctx.oidcCredentials, repo: ctx.repo });
   if (!key) return;
 
   process.env.OPENROUTER_API_KEY = key;
@@ -573,6 +609,7 @@ export async function main(): Promise<MainResult> {
       plan: runContext.plan,
       proxyModel: runContext.proxyModel,
       oidcCredentials,
+      repo: runContext.repo,
     });
   } catch (error) {
     if (error instanceof BillingError) {
