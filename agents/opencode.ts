@@ -56,19 +56,23 @@ type OpenCodeConfig = {
   agent?: Record<string, unknown>;
   model?: string;
   enabled_providers?: string[];
-  /**
-   * OpenCode's `limit.output` controls the per-inference `max_tokens` the agent
-   * reserves with the upstream model. OpenCode defaults to 32_000 (sized for
-   * long-running TUI sessions where a human user might want big outputs).
-   * Pullfrog runs are headless and short — typical outputs are 1-3K tokens —
-   * so we override to a much smaller value. This drastically reduces the
-   * upfront budget reservation OpenRouter requires per call, which is what
-   * lets low-wallet runs actually start.
-   */
-  limit?: { output?: number };
   [key: string]: unknown;
 };
 
+/**
+ * Per-inference `max_tokens` reservation the agent sends to the upstream
+ * model. OpenCode's default is 32_000 (sized for long-running TUI sessions
+ * where a human user might want big outputs). Pullfrog runs are headless and
+ * short — typical outputs are 1-3K tokens — so we cap at 5_000. This
+ * drastically reduces the upfront budget reservation OpenRouter requires per
+ * call (~$0.38 vs ~$2.40 for Opus), which is what lets low-wallet runs
+ * actually start.
+ *
+ * Plumbed via `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` env var rather than the
+ * config JSON. OpenCode's `OUTPUT_TOKEN_MAX` (session/llm.ts) is sourced
+ * exclusively from this env var; top-level `limit.output` in the config
+ * has no read site and is silently dropped on merge.
+ */
 const PULLFROG_OPENCODE_OUTPUT_LIMIT = 5000;
 
 function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): string {
@@ -85,7 +89,6 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       [pullfrogMcpName]: { type: "remote", url: ctx.mcpServerUrl },
     },
     agent: buildReviewerAgentConfig(),
-    limit: { output: PULLFROG_OPENCODE_OUTPUT_LIMIT },
   };
 
   if (model) {
@@ -942,6 +945,7 @@ export const opencode = agent({
       ...homeEnv,
       OPENCODE_CONFIG_CONTENT: buildSecurityConfig(ctx, model),
       OPENCODE_PERMISSION: permissionOverride,
+      OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: PULLFROG_OPENCODE_OUTPUT_LIMIT.toString(),
       GOOGLE_GENERATIVE_AI_API_KEY:
         process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY,
     };

@@ -51,8 +51,13 @@ export function detectProviderError(text: string): string | null {
  *   `APIError: This request requires more credits, or fewer max_tokens.
  *    You requested up to 32000 tokens, but can only afford 22800.`
  */
+// `/s` (dotAll) lets `.*?` cross newlines so we still detect the error if any
+// upstream layer reformats the message onto multiple lines. Without it, a
+// single inserted `\n` would silently bypass the BillingError reclassification
+// and the user would see the generic `❌ Pullfrog failed` dump instead of the
+// actionable top-up CTA.
 const ROUTER_KEYLIMIT_EXHAUSTED_PATTERN =
-  /requires more credits.*?fewer max_tokens|requested up to \d+ tokens.*?can only afford/i;
+  /requires more credits.*?fewer max_tokens|requested up to \d+ tokens.*?can only afford/is;
 
 export function isRouterKeylimitExhaustedError(text: string): boolean {
   return ROUTER_KEYLIMIT_EXHAUSTED_PATTERN.test(text);

@@ -113,4 +113,15 @@ describe("isRouterKeylimitExhaustedError", () => {
       false
     );
   });
+
+  it("matches across newlines (defends against upstream wrapping/reformatting)", () => {
+    expect(
+      isRouterKeylimitExhaustedError(
+        "APIError: This request requires more credits, or\nfewer max_tokens. You requested up to 32000 tokens"
+      )
+    ).toBe(true);
+    expect(
+      isRouterKeylimitExhaustedError("You requested up to 32000 tokens,\nbut can only afford 22800")
+    ).toBe(true);
+  });
 });
