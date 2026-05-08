@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { type } from "arktype";
 import { fileTypeFromBuffer } from "file-type";
 import { apiFetch } from "../utils/apiFetch.ts";
+import { log } from "../utils/cli.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -64,6 +65,8 @@ export function UploadFileTool(ctx: ToolContext) {
       if (!uploadResponse.ok) {
         throw new Error(`failed to upload file: ${uploadResponse.statusText}`);
       }
+
+      log.info(`» uploaded file ${publicUrl}`);
 
       return { success: true, publicUrl, filename, contentLength, contentType };
     }),

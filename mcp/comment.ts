@@ -78,6 +78,7 @@ export function CreateCommentTool(ctx: ToolContext) {
       });
 
       ctx.toolState.wasUpdated = true;
+      log.info(`» created comment ${result.data.id}`);
 
       if (commentType === "Plan") {
         if (result.data.node_id) {
@@ -94,6 +95,7 @@ export function CreateCommentTool(ctx: ToolContext) {
           comment_id: result.data.id,
           body: bodyWithPlanLink,
         });
+        log.info(`» updated comment ${updateResult.data.id}`);
 
         return {
           success: true,
@@ -132,6 +134,7 @@ export function EditCommentTool(ctx: ToolContext) {
         comment_id: commentId,
         body: bodyWithFooter,
       });
+      log.info(`» updated comment ${result.data.id}`);
 
       return {
         success: true,
@@ -339,6 +342,10 @@ export function ReportProgressTool(ctx: ToolContext) {
         };
       }
 
+      if (result.commentId !== undefined) {
+        log.info(`» ${result.action} comment ${result.commentId}`);
+      }
+
       if (!params.target_plan_comment) {
         ctx.toolState.finalSummaryWritten = true;
       }
@@ -407,6 +414,7 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
         comment_id,
         body: bodyWithFooter,
       });
+      log.info(`» created review comment ${result.data.id} (in reply to ${comment_id})`);
 
       // mark progress as updated so error reporting + run-result handling know
       // a substantive write happened (used by reportErrorToComment / handleAgentResult)

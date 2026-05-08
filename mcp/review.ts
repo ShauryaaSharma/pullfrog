@@ -584,6 +584,7 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       }
       const reviewId = result.data.id;
       const reviewNodeId = result.data.node_id;
+      log.info(`» created review ${reviewId} on pull request #${pull_number}`);
 
       // reviewedSha = what the agent actually reviewed (checkout SHA), not the
       // submission anchor (current HEAD). this ensures postReviewCleanup dispatches

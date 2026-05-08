@@ -735,7 +735,7 @@ export function ResolveReviewThreadTool(ctx: ToolContext) {
         });
 
         const thread = response.resolveReviewThread.thread;
-        log.debug(`resolved thread ${thread.id}, isResolved=${thread.isResolved}`);
+        log.info(`» resolved review thread ${thread.id}`);
 
         return {
           thread_id: thread.id,

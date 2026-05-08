@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import { log } from "../utils/cli.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -20,6 +21,7 @@ export function AddLabelsTool(ctx: ToolContext) {
         issue_number,
         labels,
       });
+      log.info(`» added labels [${labels.join(", ")}] to issue #${issue_number}`);
 
       return {
         success: true,

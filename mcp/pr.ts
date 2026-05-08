@@ -48,6 +48,7 @@ export function UpdatePullRequestBodyTool(ctx: ToolContext) {
         pull_number: params.pull_number,
         body: bodyWithFooter,
       });
+      log.info(`» updated pull request #${result.data.number}`);
 
       ctx.toolState.wasUpdated = true;
 
@@ -80,6 +81,7 @@ export function CreatePullRequestTool(ctx: ToolContext) {
         base: params.base,
         draft: params.draft ?? false,
       });
+      log.info(`» created pull request #${result.data.number} (id ${result.data.id})`);
 
       // best-effort: request review from the user who triggered the workflow
       const reviewer = ctx.payload.triggerer;

@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import { log } from "../utils/cli.ts";
 import { fixDoubleEscapedString } from "../utils/fixDoubleEscapedString.ts";
 import { patchWorkflowRunFields } from "../utils/patchWorkflowRunFields.ts";
 import type { ToolContext } from "./server.ts";
@@ -31,6 +32,8 @@ export function IssueTool(ctx: ToolContext) {
         labels: params.labels ?? [],
         assignees: params.assignees ?? [],
       });
+
+      log.info(`» created issue #${result.data.number} (id ${result.data.id})`);
 
       const nodeId = result.data.node_id;
       if (typeof nodeId === "string" && nodeId.length > 0) {

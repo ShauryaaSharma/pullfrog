@@ -351,6 +351,11 @@ export function PushBranchTool(ctx: ToolContext) {
         throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
       }
 
+      const pushedSha = $("git", ["rev-parse", "HEAD"], { log: false }).trim();
+      log.info(
+        `» pushed branch ${branch} to ${pushDest.remoteName}/${pushDest.remoteBranch} (sha ${pushedSha})`
+      );
+
       return {
         success: true,
         branch,
@@ -595,6 +600,7 @@ export function DeleteBranchTool(ctx: ToolContext) {
       await $git("push", ["origin", "--delete", `refs/heads/${params.branchName}`], {
         token: ctx.gitToken,
       });
+      log.info(`» deleted branch ${params.branchName}`);
       return { success: true, deleted: params.branchName };
     }),
   });
@@ -625,6 +631,7 @@ export function PushTagsTool(ctx: ToolContext) {
       await $git("push", pushArgs, {
         token: ctx.gitToken,
       });
+      log.info(`» pushed tag ${params.tag}`);
       return { success: true, tag: params.tag };
     }),
   });
