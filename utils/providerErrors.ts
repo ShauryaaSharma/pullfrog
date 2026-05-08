@@ -36,3 +36,24 @@ export function detectProviderError(text: string): string | null {
   }
   return null;
 }
+
+/**
+ * OpenRouter's response when the per-run key's remaining budget can't cover
+ * the agent's `max_tokens` reservation. Distinct from a generic provider error
+ * because it's a Pullfrog billing concern, not an upstream outage — the user's
+ * Router wallet ran out (or the key budget was undersized at mint time and the
+ * agent ran out of headroom partway through).
+ *
+ * Match must be specific to this exact OpenRouter error class. Generic "credits"
+ * or "limit" text shows up in unrelated errors and would mis-classify them.
+ *
+ * Sample:
+ *   `APIError: This request requires more credits, or fewer max_tokens.
+ *    You requested up to 32000 tokens, but can only afford 22800.`
+ */
+const ROUTER_KEYLIMIT_EXHAUSTED_PATTERN =
+  /requires more credits.*?fewer max_tokens|requested up to \d+ tokens.*?can only afford/i;
+
+export function isRouterKeylimitExhaustedError(text: string): boolean {
+  return ROUTER_KEYLIMIT_EXHAUSTED_PATTERN.test(text);
+}

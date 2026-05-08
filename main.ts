@@ -35,6 +35,7 @@ import { executeLifecycleHook } from "./utils/lifecycle.ts";
 import { normalizeEnv } from "./utils/normalizeEnv.ts";
 import { aggregateUsage, patchWorkflowRunFields } from "./utils/patchWorkflowRunFields.ts";
 import { resolvePayload, resolvePromptInput } from "./utils/payload.ts";
+import { isRouterKeylimitExhaustedError } from "./utils/providerErrors.ts";
 import { readSummaryFile, seedSummaryFile } from "./utils/prSummary.ts";
 import { postReviewCleanup } from "./utils/reviewCleanup.ts";
 import { handleAgentResult } from "./utils/run.ts";
@@ -186,6 +187,14 @@ function billingConsoleUrl(owner: string, anchor: "billing" | "model-access"): s
  *   - `router_requires_card`: user is on Router mode with no card AND no
  *     wallet balance. Lead with the carrot ($20 free credit), link to
  *     `#model-access` where the Add Card flow lives.
+ *   - `router_balance_exhausted`: user has a card on file but auto-reload is
+ *     disabled and they've spent past their $5 overdraft buffer. Frame as
+ *     "balance ran out" and surface both remediation paths (top up, or flip
+ *     on auto-reload).
+ *   - `router_keylimit_exhausted`: OpenRouter rejected mid-run because the
+ *     per-run key budget was exhausted while the agent was working. The
+ *     wallet is now negative; same remediation as `router_balance_exhausted`
+ *     but framed for the after-the-fact case ("this run was cut short").
  *   - `needsReauthentication`: issuer requires 3DS on every off-session
  *     charge. Re-adding the card won't help — the only escape is a manual
  *     top-up where 3DS runs interactively in Stripe Checkout.
@@ -202,6 +211,26 @@ function formatBillingErrorSummary(error: BillingError, owner: string): string {
       "Router proxies OpenRouter at raw cost — no platform markup, and your first $20 of usage is on us.",
       "",
       `[Add a card →](${billingConsoleUrl(owner, "model-access")})`,
+    ].join("\n");
+  }
+
+  if (error.code === "router_balance_exhausted") {
+    return [
+      "**Your Pullfrog Router balance is exhausted.**",
+      "",
+      "You have a card on file but auto-reload is disabled, so runs paused once your balance went past the overdraft buffer.",
+      "",
+      `[Top up balance →](${billingConsoleUrl(owner, "billing")}) · [Enable auto-reload →](${billingConsoleUrl(owner, "model-access")})`,
+    ].join("\n");
+  }
+
+  if (error.code === "router_keylimit_exhausted") {
+    return [
+      "**This run was cut short — your Pullfrog Router balance ran out mid-run.**",
+      "",
+      "OpenRouter stopped the agent because the per-run budget was exhausted. Your wallet is now negative; top up or enable auto-reload to keep runs flowing.",
+      "",
+      `[Top up balance →](${billingConsoleUrl(owner, "billing")}) · [Enable auto-reload →](${billingConsoleUrl(owner, "model-access")})`,
     ].join("\n");
   }
 
@@ -887,16 +916,32 @@ export async function main(): Promise<MainResult> {
     killTrackedChildren();
     log.error(errorMessage);
 
+    // Reclassify OpenRouter "key budget exhausted" mid-run errors as
+    // BillingError. The agent runtime surfaces this as a generic APIError,
+    // but it's a Pullfrog billing concern — the user's Router wallet ran
+    // out partway through the run. Route through the same formatBillingErrorSummary
+    // path as proxy-token 402s so the user gets actionable copy + a top-up
+    // CTA on both the job summary and the PR progress comment, instead of
+    // a generic "❌ Pullfrog failed" stack-trace dump.
+    const billingError = isRouterKeylimitExhaustedError(errorMessage)
+      ? new BillingError(errorMessage, { code: "router_keylimit_exhausted" })
+      : null;
+
     // best-effort summary — write the error so it's visible in the Actions summary tab
     try {
-      const errorSummary = `### ❌ Pullfrog failed\n\n\`\`\`\n${errorMessage}\n\`\`\``;
+      const errorSummary = billingError
+        ? formatBillingErrorSummary(billingError, runContext.repo.owner)
+        : `### ❌ Pullfrog failed\n\n\`\`\`\n${errorMessage}\n\`\`\``;
       const usageSummary = formatUsageSummary(toolState.usageEntries);
       const parts = [errorSummary, toolState.lastProgressBody, usageSummary].filter(Boolean);
       await writeSummary(parts.join("\n\n"));
     } catch {}
 
     try {
-      await reportErrorToComment({ toolState, error: errorMessage });
+      const commentBody = billingError
+        ? formatBillingErrorSummary(billingError, runContext.repo.owner)
+        : errorMessage;
+      await reportErrorToComment({ toolState, error: commentBody });
     } catch {
       // error reporting failed, but don't let it mask the original error
     }

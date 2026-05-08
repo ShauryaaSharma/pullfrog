@@ -56,8 +56,20 @@ type OpenCodeConfig = {
   agent?: Record<string, unknown>;
   model?: string;
   enabled_providers?: string[];
+  /**
+   * OpenCode's `limit.output` controls the per-inference `max_tokens` the agent
+   * reserves with the upstream model. OpenCode defaults to 32_000 (sized for
+   * long-running TUI sessions where a human user might want big outputs).
+   * Pullfrog runs are headless and short — typical outputs are 1-3K tokens —
+   * so we override to a much smaller value. This drastically reduces the
+   * upfront budget reservation OpenRouter requires per call, which is what
+   * lets low-wallet runs actually start.
+   */
+  limit?: { output?: number };
   [key: string]: unknown;
 };
+
+const PULLFROG_OPENCODE_OUTPUT_LIMIT = 5000;
 
 function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): string {
   const config: OpenCodeConfig = {
@@ -73,6 +85,7 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       [pullfrogMcpName]: { type: "remote", url: ctx.mcpServerUrl },
     },
     agent: buildReviewerAgentConfig(),
+    limit: { output: PULLFROG_OPENCODE_OUTPUT_LIMIT },
   };
 
   if (model) {

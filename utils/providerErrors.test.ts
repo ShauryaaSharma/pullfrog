@@ -1,4 +1,4 @@
-import { detectProviderError } from "./providerErrors.ts";
+import { detectProviderError, isRouterKeylimitExhaustedError } from "./providerErrors.ts";
 
 describe("detectProviderError", () => {
   describe("false positives previously seen in production", () => {
@@ -76,5 +76,41 @@ describe("detectProviderError", () => {
       expect(detectProviderError('{"limit": 0, "remaining": 0}')).toBe("zero quota");
       expect(detectProviderError('"time_limit": 0')).toBeNull();
     });
+  });
+});
+
+describe("isRouterKeylimitExhaustedError", () => {
+  it("matches the canonical OpenRouter mid-run error", () => {
+    expect(
+      isRouterKeylimitExhaustedError(
+        "APIError: This request requires more credits, or fewer max_tokens. " +
+          "You requested up to 32000 tokens, but can only afford 22800. " +
+          "To increase, visit https://openrouter.ai/settings/keys and create a key with a higher total limit"
+      )
+    ).toBe(true);
+  });
+
+  it("matches the 'requires more credits' phrasing on its own", () => {
+    expect(
+      isRouterKeylimitExhaustedError("This request requires more credits, or fewer max_tokens.")
+    ).toBe(true);
+  });
+
+  it("matches the 'requested up to ... can only afford' phrasing on its own", () => {
+    expect(
+      isRouterKeylimitExhaustedError("You requested up to 8000 tokens but can only afford 1234")
+    ).toBe(true);
+  });
+
+  it("does not match generic out-of-credit text", () => {
+    expect(isRouterKeylimitExhaustedError("Your account has insufficient credits")).toBe(false);
+    expect(isRouterKeylimitExhaustedError("rate_limit_exceeded")).toBe(false);
+    expect(isRouterKeylimitExhaustedError('{"limit": 0}')).toBe(false);
+  });
+
+  it("does not match unrelated mentions of max_tokens", () => {
+    expect(isRouterKeylimitExhaustedError("max_tokens parameter must be a positive integer")).toBe(
+      false
+    );
   });
 });
