@@ -146,6 +146,15 @@ interface ClaudeUserEvent {
 interface ClaudeResultEvent {
   type: "result";
   subtype?: string;
+  // claude CLI sets `is_error: true` (alongside `subtype: "success"`) when
+  // an upstream provider fails mid-stream. `api_error_status` carries the
+  // provider HTTP status (e.g. 401 for invalid API key). per the official
+  // SDK types, `api_error_status` is `number | null`, and the `error_*`
+  // subtypes carry their actionable payload in `errors: string[]` instead
+  // of `result`.
+  is_error?: boolean;
+  api_error_status?: number | null;
+  errors?: string[];
   result?: string;
   session_id?: string;
   num_turns?: number;
@@ -203,7 +212,25 @@ type RunParams = {
 
 type ClaudeRunResult = AgentResult & { sessionId?: string | undefined };
 
-async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
+/**
+ * Return the tail of `text` capped at `maxCodeUnits` UTF-16 code units,
+ * dropping any partial first line. used in the exit-non-zero stdout fallback
+ * so we never surface a truncated NDJSON event to operators —
+ * `result.stdout.slice(-2048)` would otherwise cut mid-line and produce a
+ * syntactically broken JSON fragment. code units rather than bytes because
+ * `String.prototype.slice` operates on UTF-16 units; for multi-byte UTF-8
+ * content the effective byte budget can be up to 4× the nominal limit.
+ */
+function tailLines(text: string, maxCodeUnits: number): string {
+  if (text.length <= maxCodeUnits) return text;
+  const tail = text.slice(-maxCodeUnits);
+  const firstNewline = tail.indexOf("\n");
+  // if no newline in window or it's at the very start, return as-is;
+  // otherwise drop the partial first line.
+  return firstNewline > 0 && firstNewline < tail.length - 1 ? tail.slice(firstNewline + 1) : tail;
+}
+
+export async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
   const startTime = performance.now();
   let eventCount = 0;
   const thinkingTimer = new ThinkingTimer();
@@ -211,6 +238,22 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
   let finalOutput = "";
   let sessionId: string | undefined;
   let resultErrorSubtype: string | null = null;
+  // captures the structured error string from a result event with
+  // `is_error: true` (e.g. mid-stream provider auth failures the CLI
+  // surfaces as `subtype: "success"` synthetic-stop events, or the
+  // `errors[]` array from `error_*` subtypes). preferred over raw
+  // stdout/stderr in the exit-non-zero path so the GitHub Actions
+  // `##[error]` line shows the actionable message instead of an 8KB+
+  // NDJSON dump.
+  let lastResultError: string | null = null;
+  // set only for synthetic-stop `subtype: "success"` + `is_error: true`
+  // events, where `accumulatedTokens` from prior `assistant` events is
+  // stale and logging it would mislead operators into thinking billable
+  // tokens were spent on a successful turn. deliberately NOT set for
+  // `error_max_turns` / `error_during_execution` / `error_*` subtypes
+  // because those runs genuinely consumed tokens and operators need
+  // billing visibility for them.
+  let syntheticStopFailure = false;
   let accumulatedTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   // Claude CLI reports a single end-of-run `total_cost_usd` on the result
   // event. per-message events don't carry cost, so there's nothing to sum —
@@ -335,6 +378,27 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
       const subtype = event.subtype || "unknown";
       const numTurns = event.num_turns || 0;
 
+      // claude CLI emits synthetic-stop result events with `subtype: "success"`
+      // but `is_error: true` when an upstream provider fails mid-stream (e.g.
+      // 401 from anthropic). short-circuit before the usage/token-table path
+      // so we don't log a usage table for a failed attempt and so downstream
+      // (`resultErrorSubtype` branch) surfaces the structured error. gated on
+      // `subtype === "success"` because the `error_*` subtypes also set
+      // `is_error: true` but carry their payload in `errors: string[]` and
+      // are handled by the dedicated branches below.
+      if (event.is_error === true && subtype === "success") {
+        const apiStatus = event.api_error_status;
+        lastResultError =
+          event.result?.trim() ||
+          `claude reported is_error=true with no result text (api_error_status=${apiStatus ?? "unknown"})`;
+        resultErrorSubtype = subtype;
+        syntheticStopFailure = true;
+        log.info(
+          `» ${params.label} result error: subtype=${subtype}, api_error_status=${apiStatus ?? "unknown"}, message=${lastResultError}`
+        );
+        return;
+      }
+
       if (subtype === "success") {
         // extract detailed usage from result event (most accurate source).
         // note: `input` here is non-cached input tokens only, matching the
@@ -369,12 +433,15 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
         }
       } else if (subtype === "error_max_turns") {
         resultErrorSubtype = subtype;
+        lastResultError = event.errors?.join("\n").trim() || null;
         log.info(`» ${params.label} max turns reached: ${JSON.stringify(event)}`);
       } else if (subtype === "error_during_execution") {
         resultErrorSubtype = subtype;
+        lastResultError = event.errors?.join("\n").trim() || null;
         log.info(`» ${params.label} execution error: ${JSON.stringify(event)}`);
       } else if (subtype.startsWith("error")) {
         resultErrorSubtype = subtype;
+        lastResultError = event.errors?.join("\n").trim() || null;
         log.info(`» ${params.label} result: subtype=${subtype}, data=${JSON.stringify(event)}`);
       } else {
         log.info(`» ${params.label} result: subtype=${subtype}, data=${JSON.stringify(event)}`);
@@ -496,8 +563,16 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
       if (stderrContext) log.info(`» last stderr output:\n${stderrContext}`);
     }
 
+    // skip the fallback token table only for the synthetic-stop
+    // `subtype: "success"` + `is_error: true` case: `accumulatedTokens` from
+    // prior `assistant` events is stale there and logging it would mislead
+    // operators into thinking billable tokens were spent on a successful turn.
+    // `error_max_turns` / `error_during_execution` / `error_*` subtypes
+    // represent runs that genuinely consumed tokens, so they still get the
+    // table for billing visibility.
     if (
       !tokensLogged &&
+      !syntheticStopFailure &&
       (accumulatedTokens.input > 0 ||
         accumulatedTokens.output > 0 ||
         accumulatedTokens.cacheRead > 0 ||
@@ -511,9 +586,17 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
 
     if (result.exitCode !== 0) {
       const errorContext = lastProviderError ? ` (${lastProviderError})` : "";
+      // prefer the structured `lastResultError` (parsed from a result event
+      // with `is_error: true`) over raw stdout. raw stdout is the full NDJSON
+      // event stream — dumping it into a GitHub Actions `##[error]` line both
+      // hides the actionable provider message and pollutes the run log. cap
+      // the stdout fallback to the last 2KB so it stays readable when neither
+      // a structured error nor stderr is available.
+      const truncatedStdout = result.stdout ? tailLines(result.stdout, 2048) : "";
       const errorMessage =
+        lastResultError ||
         result.stderr ||
-        result.stdout ||
+        truncatedStdout ||
         `unknown error - no output from Claude CLI${errorContext}`;
       log.error(
         `${params.label} exited with code ${result.exitCode}${errorContext}: ${errorMessage}`
@@ -543,7 +626,7 @@ async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
       return {
         success: false,
         output: finalOutput || output,
-        error: `result subtype: ${resultErrorSubtype}`,
+        error: lastResultError || `result subtype: ${resultErrorSubtype}`,
         usage,
         sessionId,
       };
