@@ -398,14 +398,74 @@ export const ReplyToReviewComment = type({
   ),
 });
 
+/**
+ * decision returned by `duplicateReplyDecision` when a session has already
+ * posted an identical reply to the same parent review comment.
+ */
+export interface DuplicateReplyDecision {
+  kind: "already-replied";
+  commentId: number;
+  url: string | undefined;
+  reason: string;
+}
+
+/**
+ * decide whether a second reply_to_review_comment call in the same session
+ * is a duplicate of an earlier reply to the same parent comment.
+ *
+ * the agent is instructed to call reply_to_review_comment exactly once per
+ * parent comment per AddressReviews session, but in practice it sometimes
+ * emits the same call twice. PR #610 reproduced this with Kimi K2:
+ * identical body posted 3 seconds apart, only one tool_use event in the
+ * agent log. the second post is always redundant and clutters the PR thread.
+ *
+ * we key on (comment_id, bodyWithFooter) so a legitimate follow-up reply
+ * with different content still goes through. within a single run the
+ * footer is constant (workflow run + model + jobId), so byte-equal bodies
+ * catch the stutter without blocking real follow-ups.
+ *
+ * mirrors the shape of `duplicateReviewDecision` in mcp/review.ts.
+ */
+export function duplicateReplyDecision(params: {
+  existing: { commentId: number; url: string | undefined; bodyWithFooter: string } | undefined;
+  bodyWithFooter: string;
+}): DuplicateReplyDecision | null {
+  const existing = params.existing;
+  if (!existing) return null;
+  if (existing.bodyWithFooter !== params.bodyWithFooter) return null;
+  return {
+    kind: "already-replied",
+    commentId: existing.commentId,
+    url: existing.url,
+    reason: `reply ${existing.commentId} with identical body was already posted in this session; ignoring duplicate call`,
+  };
+}
+
 export function ReplyToReviewCommentTool(ctx: ToolContext) {
   return tool({
     name: "reply_to_review_comment",
     description:
-      "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). Call this for EACH comment you address in AddressReviews mode. Keep replies extremely brief (1 sentence max).",
+      "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). Call exactly ONCE per parent comment you address in AddressReviews mode — duplicate calls with the same body are a no-op. Keep replies extremely brief (1 sentence max).",
     parameters: ReplyToReviewComment,
     execute: execute(async ({ pull_number, comment_id, body }) => {
       const bodyWithFooter = addFooter(ctx, body);
+
+      // guard against duplicate reply submissions in the same session.
+      // see duplicateReplyDecision for the rationale.
+      const dup = duplicateReplyDecision({
+        existing: ctx.toolState.reviewReplies?.get(comment_id),
+        bodyWithFooter,
+      });
+      if (dup) {
+        log.info(`skipping duplicate review reply: ${dup.reason}`);
+        return {
+          success: true,
+          skipped: true,
+          reason: dup.reason,
+          commentId: dup.commentId,
+          url: dup.url,
+        };
+      }
 
       const result = await ctx.octokit.rest.pulls.createReplyForReviewComment({
         owner: ctx.repo.owner,
@@ -419,6 +479,14 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
       // mark progress as updated so error reporting + run-result handling know
       // a substantive write happened (used by reportErrorToComment / handleAgentResult)
       ctx.toolState.wasUpdated = true;
+
+      // record this reply for in-session dedupe of subsequent identical calls.
+      ctx.toolState.reviewReplies ??= new Map();
+      ctx.toolState.reviewReplies.set(comment_id, {
+        commentId: result.data.id,
+        url: result.data.html_url,
+        bodyWithFooter,
+      });
 
       return {
         success: true,

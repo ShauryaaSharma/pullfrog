@@ -147,7 +147,7 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
 5. Finalize:
    - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
-   - reply to each comment using \`${t("reply_to_review_comment")}\`
+   - reply to each comment **exactly once** using \`${t("reply_to_review_comment")}\` — do not re-emit the same call (the runtime dedupes identical bodies and the second call is wasted)
    - resolve addressed threads via \`${t("resolve_review_thread")}\`
    - call \`${t("report_progress")}\` with a brief summary (or the exact push error if push failed)`,
     },

@@ -131,6 +131,15 @@ export interface ToolState {
     nodeId: string;
     reviewedSha: string | undefined;
   };
+  // dedupe key: parent review comment_id → most-recent reply written this
+  // session by reply_to_review_comment. used by duplicateReplyDecision to
+  // skip identical-body re-emissions of the same call (PR #610 root cause).
+  // body-keyed (not just id-keyed) so legitimate follow-up replies with
+  // different content still go through.
+  reviewReplies?: Map<
+    number,
+    { commentId: number; url: string | undefined; bodyWithFooter: string }
+  >;
   dependencyInstallation?: {
     status: "not_started" | "in_progress" | "completed" | "failed";
     promise: Promise<PrepResult[]> | undefined;
