@@ -243,10 +243,14 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
    The review body is structured as: \`[optional alert blockquote]\` → \`[PR summary using the default format below]\`. Inline comments are passed via the \`comments\` parameter, not in the body.
 
-   - **critical issues** (blocks merge — bugs, security, data loss):
+   GitHub alert blockquotes (\`> [!CAUTION]\`, \`> [!IMPORTANT]\`) are loud — they render as full-width colored callouts that dominate the review and create alert fatigue when overused. Use them judiciously: reserve them for findings the author genuinely must act on. A single JSDoc nit, a "rough edge" observation, a "consider also" suggestion, or a summary of what changed do NOT warrant a callout — open with the PR summary instead. If you find yourself reaching for \`[!IMPORTANT]\` to wrap something the author can defer or ignore without consequence, drop the alert.
+
+   - **critical issues** (blocks merge — bugs, security, data loss, broken core flows):
      \`approved: false\`. Body opens with \`> [!CAUTION]\\n> This PR introduces ...\`, followed by the PR summary. Include all inline comments via \`comments\`.
-   - **recommended changes** (non-critical):
-     \`approved: false\`. Body opens with \`> [!IMPORTANT]\\n> Consider ...\`, followed by the PR summary. Include all inline comments via \`comments\`.
+   - **must-address non-critical findings** (real consequences if shipped — incorrect behavior in non-critical paths, missing validation on user input, regressions the author should fix before merge):
+     \`approved: false\`. Body opens with \`> [!IMPORTANT]\\n> ...\`, followed by the PR summary. Reserve this tier for findings with concrete fallout — do NOT use \`[!IMPORTANT]\` for nits, style preferences, or "consider also" suggestions. Include all inline comments via \`comments\`.
+   - **minor suggestions only** (single-line nits, doc/comment polish, defer-able observations, "rough edges"):
+     \`approved: false\`. NO alert blockquote. Body opens directly with the PR summary. Include all inline comments via \`comments\`.
    - **no actionable issues**:
      \`approved: true\`. Body opens with \`No new issues found.\` followed by the PR summary.
 
@@ -304,11 +308,16 @@ ${PR_SUMMARY_FORMAT}`,
 
 6. **build the review body** — a single "Reviewed changes" section: summarize at the logical-change level, not per-file. each bullet starts with a past-tense verb (e.g. \`- Extracted shared CLI runtime into a single module\`, \`- Renamed package to pullfrog\`). avoid file paths unless they add clarity. if the changes can be described in one sentence, use one sentence — no bullets needed. do NOT include a separate "Prior review feedback" checklist; that's tracked in the rolling PR summary snapshot for the next agent run, and surfacing it in the user-facing body is noise (changes that addressed prior feedback are already covered by the Reviewed-changes bullets). in some cases you may receive a complete diff for the whole pull request instead of an incremental one — when this happens, you will need to determine what changes have happened since Pullfrog's most recent review.
 
-7. Submit — every run must end with EXACTLY ONE of \`${t("create_pull_request_review")}\` (substantive review) or \`${t("report_progress")}\` (no-review acknowledgement). do NOT call \`create_issue_comment\` for review output. Follow these rules:
+7. Submit — every run must end with EXACTLY ONE of \`${t("create_pull_request_review")}\` (substantive review) or \`${t("report_progress")}\` (no-review acknowledgement). do NOT call \`create_issue_comment\` for review output.
+
+   GitHub alert blockquotes (\`> [!CAUTION]\`, \`> [!IMPORTANT]\`) are loud — they render as full-width colored callouts that dominate the review and create alert fatigue when overused. Use them judiciously: reserve them for findings the author genuinely must act on. A single JSDoc nit, a "rough edge" observation, a "consider also" suggestion, or a summary of what changed do NOT warrant a callout — open with the Reviewed-changes summary instead. If you find yourself reaching for \`[!IMPORTANT]\` to wrap something the author can defer or ignore without consequence, drop the alert.
+
+   Follow these rules:
    - note: the first create_pull_request_review submission may error with a one-time diff-coverage nudge listing unread TOC regions. retry the same call to proceed — optionally after reading the listed ranges. the pre-flight will not block again this session.
    - IF NO NEW ISSUES, NON-SUBSTANTIVE CHANGES ONLY (trivial formatting, import reordering, comment tweaks): do NOT submit a review. Instead call \`${t("report_progress")}\` with a 1-2 sentence note explaining no review was warranted (e.g. "No new issues. Changes since last review are formatting-only."). this leaves a visible signal that the run completed.
-   - ELSE IF NEW CRITICAL ISSUES (blocks merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with a GitHub alert blockquote (e.g. \`> [!CAUTION]\\n> This PR introduces ...\`), then the Reviewed-changes summary.
-   - ELSE IF NEW RECOMMENDED CHANGES (non-critical): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!IMPORTANT]\\n> ...\` alert, then the Reviewed-changes summary.
+   - ELSE IF NEW CRITICAL ISSUES (blocks merge — bugs, security, data loss, broken core flows): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!CAUTION]\\n> This PR introduces ...\`, then the Reviewed-changes summary.
+   - ELSE IF NEW MUST-ADDRESS NON-CRITICAL FINDINGS (real consequences if shipped — incorrect behavior, missing validation, regressions the author should fix before merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!IMPORTANT]\\n> ...\`, then the Reviewed-changes summary. Do NOT use this tier for nits, style preferences, or "consider also" suggestions.
+   - ELSE IF NEW MINOR SUGGESTIONS ONLY (single-line nits, doc/comment polish, defer-able observations, "rough edges"): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens directly with \`Reviewed the following changes:\\n\` (NO alert blockquote), then the Reviewed-changes summary.
    - ELSE IF NO NEW ISSUES, SUBSTANTIVE CHANGES (new functionality, behavior changes, or fixes to prior review feedback): call \`${t("create_pull_request_review")}\` to create a PR review. If all previous reviews have been properly addressed and no new issues were discovered, you can set \`approved: true\`. body opens with \`No new issues. Reviewed the following changes:\\n\`, then the Reviewed-changes summary.`,
     },
     {
