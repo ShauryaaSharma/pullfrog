@@ -125,7 +125,7 @@ export function buildUnsubmittedReviewPrompt(mode: "Review" | "IncrementalReview
     return [
       `MISSING REVIEW OUTPUT — you selected Review mode but stopped without calling \`create_pull_request_review\`. the user has no visible signal that this run produced anything; the progress comment will be deleted on exit and no review will appear on the PR.`,
       "",
-      "call `create_pull_request_review` now with your aggregated review (body + inline comments). if you found no actionable issues, submit with `approved: true` and a body opening with `No new issues found.` per the mode prompt — Review mode does not have a no-submit exit. the first call may error once with a diff-coverage nudge — retry the same call to proceed.",
+      "call `create_pull_request_review` now with your aggregated review (body + inline comments). pick the tier per the mode prompt — Review mode has no no-submit exit, so even informational `> [!NOTE]` reviews and `No new issues found.` reviews must be submitted (both use `approved: true`). the first call may error once with a diff-coverage nudge — retry the same call to proceed.",
       "",
       "do NOT stop again until `create_pull_request_review` has been called successfully.",
     ].join("\n");

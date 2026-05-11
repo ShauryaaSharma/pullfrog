@@ -314,7 +314,7 @@ export const CreatePullRequestReview = type({
     .optional(),
   approved: type.boolean
     .describe(
-      "Set to true to submit as an approval. ONLY when the review contains no actionable feedback — neither inline comments nor actionable content in the body. Defaults to false (comment-only review). Rejections are not supported."
+      "Set to true to submit as an approval. Use for both 'no issues found' and informational `> [!NOTE]` reviews where the PR is mergeable as-is and nothing in the body warrants code changes — approving also suppresses the Fix-button footer affordance so users don't dispatch a fix run on non-actionable feedback. Reserve approved: false for `> [!IMPORTANT]` (recommended changes) and `> [!CAUTION]` (critical) reviews. Defaults to false (comment-only review). Rejections are not supported."
     )
     .optional(),
   commit_id: type.string
@@ -842,6 +842,9 @@ async function createAndSubmitWithFooter(
   // API_URL is misconfigured, and future footer-building changes could
   // introduce new throw paths. keep the whole body wrapped.
   try {
+    // Fix buttons are suppressed on approving reviews — those are mergeable
+    // by definition (either "no issues found" or `> [!NOTE]` informational
+    // observations), so dispatching a fix run would be a UX trap.
     const customParts: string[] = [];
     if (!opts.approved) {
       const apiUrl = getApiUrl();
