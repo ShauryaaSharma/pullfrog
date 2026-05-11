@@ -1,4 +1,4 @@
-import type { ToolState } from "../mcp/server.ts";
+import type { ToolState } from "../toolState.ts";
 import { getApiUrl } from "./apiUrl.ts";
 import { buildPullfrogFooter } from "./buildPullfrogFooter.ts";
 import { createOctokit, parseRepoContext } from "./github.ts";

@@ -1,6 +1,6 @@
 import type { AgentResult } from "../agents/shared.ts";
 import type { MainResult } from "../main.ts";
-import type { ToolState } from "../mcp/server.ts";
+import type { ToolState } from "../toolState.ts";
 import { log } from "./cli.ts";
 import { reportErrorToComment } from "./errorReport.ts";
 

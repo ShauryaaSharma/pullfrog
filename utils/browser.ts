@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ToolState } from "../mcp/server.ts";
+import type { ToolState } from "../toolState.ts";
 import { log } from "./cli.ts";
 import { filterEnv } from "./secrets.ts";
 import { getDevDependencyVersion } from "./version.ts";

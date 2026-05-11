@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { LIFECYCLE_HOOK_TIMEOUT_MS } from "../lifecycle.ts";
+import type { ToolState } from "../toolState.ts";
 import { log } from "../utils/cli.ts";
 import {
   SPAWN_ACTIVITY_TIMEOUT_CODE,
@@ -9,6 +10,7 @@ import {
 } from "../utils/subprocess.ts";
 import {
   type AgentResult,
+  type AgentRunContext,
   type AgentUsage,
   buildCommitPrompt,
   getGitStatus,
@@ -18,6 +20,23 @@ import {
   type PostRunIssues,
   type StopHookFailure,
 } from "./shared.ts";
+
+/**
+ * derive "agent picked a review mode but never produced visible output" from
+ * the literal facts on `toolState`. returns the selected mode when the gate
+ * should fire, `null` otherwise — pure read, no side effects, safe to invoke
+ * after every agent attempt.
+ *
+ * the gate is anchored to `hadProgressComment` so silent runs (non-issue
+ * events, dispatcher skipped seeding) don't fire a nudge there's no UI for.
+ */
+export function getUnsubmittedReview(toolState: ToolState): "Review" | "IncrementalReview" | null {
+  const mode = toolState.selectedMode;
+  if (mode !== "Review" && mode !== "IncrementalReview") return null;
+  if (toolState.review || toolState.finalSummaryWritten) return null;
+  if (!toolState.hadProgressComment) return null;
+  return mode;
+}
 
 /**
  * hook output can flow into two size-sensitive places: the LLM resume prompt
@@ -144,37 +163,34 @@ export function buildUnsubmittedReviewPrompt(mode: "Review" | "IncrementalReview
 /**
  * check the post-run gates: did the stop hook pass, is the working tree
  * clean, and (when applicable) did the agent touch the rolling PR summary
- * snapshot? returns everything that still needs nudging so the caller can
- * render a single combined resume prompt.
+ * snapshot or produce review output? returns everything that still needs
+ * nudging so the caller can render a single combined resume prompt.
  *
- * the summary-stale check is skipped when `summaryFilePath` / `summarySeed`
- * are not provided; this is the common case (non-PR runs, runs where the
- * dispatcher didn't request snapshot generation, runs where the seed step
- * failed). loop callers also pass these as undefined after the agent has
- * already been nudged once, to avoid burning the retry budget on a soft
- * non-blocking gate.
+ * reads run state directly off `ctx.toolState` so each invocation sees the
+ * latest mutations from MCP tool calls. `skipSummaryStale` lets the loop
+ * suppress the summary-stale check after the one-shot nudge has been
+ * delivered (re-firing it would burn the retry budget on a soft gate the
+ * agent has already decided not to act on).
  */
-export async function collectPostRunIssues(params: {
-  stopScript: string | null | undefined;
-  summaryFilePath?: string | undefined;
-  summarySeed?: string | undefined;
-  getUnsubmittedReview?: (() => "Review" | "IncrementalReview" | null) | undefined;
-}): Promise<PostRunIssues> {
+export async function collectPostRunIssues(
+  ctx: AgentRunContext,
+  options: { skipSummaryStale?: boolean } = {}
+): Promise<PostRunIssues> {
   const issues: PostRunIssues = {};
-  if (params.stopScript) {
-    const failure = await executeStopHook(params.stopScript);
+  if (ctx.stopScript) {
+    const failure = await executeStopHook(ctx.stopScript);
     if (failure) issues.stopHook = failure;
   }
   const status = getGitStatus();
   if (status) issues.dirtyTree = status;
-  if (params.summaryFilePath && params.summarySeed !== undefined) {
-    const stale = await isSummaryUnchanged(params.summaryFilePath, params.summarySeed);
-    if (stale) issues.summaryStale = { filePath: params.summaryFilePath };
+  const summaryFilePath = ctx.toolState.summaryFilePath;
+  const summarySeed = ctx.toolState.summarySeed;
+  if (!options.skipSummaryStale && summaryFilePath && summarySeed !== undefined) {
+    const stale = await isSummaryUnchanged(summaryFilePath, summarySeed);
+    if (stale) issues.summaryStale = { filePath: summaryFilePath };
   }
-  if (params.getUnsubmittedReview) {
-    const mode = params.getUnsubmittedReview();
-    if (mode) issues.unsubmittedReview = mode;
-  }
+  const unsubmittedMode = getUnsubmittedReview(ctx.toolState);
+  if (unsubmittedMode) issues.unsubmittedReview = unsubmittedMode;
   return issues;
 }
 
@@ -242,19 +258,9 @@ export function buildLearningsReflectionPrompt(filePath: string): string {
  * behavior: they're logged but don't fail the run.
  */
 export async function runPostRunRetryLoop<R extends AgentResult>(params: {
+  ctx: AgentRunContext;
   initialResult: R;
   initialUsage: AgentUsage | undefined;
-  stopScript: string | null | undefined;
-  /** absolute path to the seeded PR summary file. when set together with
-   * `summarySeed`, the loop checks after each agent attempt whether the
-   * file has been edited; if not, it nudges the agent ONCE via a resume
-   * turn (subsequent iterations skip the check so we don't keep burning
-   * retries on a soft gate when the agent has decided no edit is warranted). */
-  summaryFilePath?: string | undefined;
-  /** exact bytes of the seeded summary file used for the unchanged-check. */
-  summarySeed?: string | undefined;
-  /** see {@link AgentRunContext.getUnsubmittedReview}. */
-  getUnsubmittedReview?: (() => "Review" | "IncrementalReview" | null) | undefined;
   resume: (context: { prompt: string; previousResult: R }) => Promise<R>;
   canResume?: ((result: R) => boolean) | undefined;
   reflectionPrompt?: string | undefined;
@@ -264,20 +270,16 @@ export async function runPostRunRetryLoop<R extends AgentResult>(params: {
   let finalIssues: PostRunIssues = {};
   let gateResumeCount = 0;
   let pendingReflection = params.reflectionPrompt;
-  // nudge for an untouched summary file fires AT MOST ONCE per run. after
-  // we've delivered the prompt, subsequent gate checks pass undefined so
-  // the loop doesn't keep flagging the same condition — the agent may have
-  // legitimately decided no edit is warranted, and re-prompting would
-  // burn the retry budget without adding signal.
+  // nudge for an untouched summary file fires AT MOST ONCE per run. once
+  // delivered, subsequent collectPostRunIssues calls skip the check — the
+  // agent may have legitimately decided no edit is warranted, and
+  // re-prompting would burn the retry budget without adding signal.
   let summaryStaleNudged = false;
 
   while (gateResumeCount < MAX_POST_RUN_RETRIES) {
     if (!result.success) break;
-    const issues = await collectPostRunIssues({
-      stopScript: params.stopScript,
-      summaryFilePath: summaryStaleNudged ? undefined : params.summaryFilePath,
-      summarySeed: summaryStaleNudged ? undefined : params.summarySeed,
-      getUnsubmittedReview: params.getUnsubmittedReview,
+    const issues = await collectPostRunIssues(params.ctx, {
+      skipSummaryStale: summaryStaleNudged,
     });
     if (issues.summaryStale) summaryStaleNudged = true;
     finalIssues = issues;
@@ -367,10 +369,7 @@ export async function runPostRunRetryLoop<R extends AgentResult>(params: {
     // NOT re-checked here: we already delivered the one-shot nudge, and
     // a still-unchanged file at this point is the agent's deliberate
     // choice.
-    finalIssues = await collectPostRunIssues({
-      stopScript: params.stopScript,
-      getUnsubmittedReview: params.getUnsubmittedReview,
-    });
+    finalIssues = await collectPostRunIssues(params.ctx, { skipSummaryStale: true });
   }
 
   if (result.success && finalIssues.stopHook) {

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { AgentId } from "../external.ts";
+import type { ToolState } from "../toolState.ts";
 import { log } from "../utils/cli.ts";
 import type { ResolvedInstructions } from "../utils/instructions.ts";
 import type { ResolvedPayload } from "../utils/payload.ts";
@@ -59,9 +60,10 @@ export interface PostRunIssues {
    * over toolState shows neither a `create_pull_request_review` submission
    * nor a final `report_progress` write happened. derived inline from
    * `toolState.selectedMode` + `toolState.review` + `toolState.finalSummaryWritten`
-   * — no parallel toolState flag is stored. carries the mode name so the
-   * resume prompt can reference it. handled like `stopHook`: nudge via
-   * resume, hard-fail if still unsatisfied after `MAX_POST_RUN_RETRIES`.
+   * via {@link getUnsubmittedReview} — no parallel toolState flag is stored.
+   * carries the mode name so the resume prompt can reference it. handled like
+   * `stopHook`: nudge via resume, hard-fail if still unsatisfied after
+   * `MAX_POST_RUN_RETRIES`.
    */
   unsubmittedReview?: "Review" | "IncrementalReview";
 }
@@ -115,7 +117,14 @@ export interface AgentResult {
 }
 
 /**
- * Minimal context passed to agent.run()
+ * Context passed to agent.run() and threaded through the post-run loop.
+ *
+ * design rule: this is the single object that flows through the harness and
+ * downstream utilities by reference. derived predicates (e.g.
+ * `getUnsubmittedReview`), tmpfile paths, and seed bytes live on
+ * `toolState` — read them at the call site, do not duplicate them onto this
+ * interface. utilities that need run state should accept `ctx` whole, not
+ * destructure a narrow subset.
  */
 export interface AgentRunContext {
   payload: ResolvedPayload;
@@ -131,26 +140,13 @@ export interface AgentRunContext {
    */
   stopScript?: string | null | undefined;
   /**
-   * absolute path to the rolling PR summary tmpfile, when one was seeded
-   * for this run (Review / IncrementalReview / pr-summary Task). enables
-   * a post-run sanity nudge that prompts the agent if the file is still
-   * byte-identical to its seed.
+   * mutable per-run state shared with the MCP server (by reference). post-run
+   * gates read fresh values from it after each agent attempt — `summaryFilePath`,
+   * `summarySeed`, `selectedMode`, `review`, `finalSummaryWritten`,
+   * `hadProgressComment` are all consulted by `collectPostRunIssues`. see
+   * `action/toolState.ts` for the literal-state design rule.
    */
-  summaryFilePath?: string | undefined;
-  /**
-   * exact bytes of the seeded summary file. compared against the current
-   * file content after each agent attempt to detect "agent forgot to edit
-   * the summary" — particularly common with smaller models that lose
-   * track of multi-step instructions.
-   */
-  summarySeed?: string | undefined;
-  /**
-   * absolute path to the rolling repo-level learnings tmpfile. seeded for
-   * every run from `Repo.learnings`. used by the post-run reflection turn
-   * so the prompt can point the agent at a concrete path to edit; the
-   * file's content is read back and persisted by main.ts after the run.
-   */
-  learningsFilePath?: string | undefined;
+  toolState: ToolState;
   /**
    * called synchronously when the agent subprocess is killed for inner
    * activity timeout. lets main.ts tear down shared resources (MCP HTTP
@@ -158,15 +154,6 @@ export interface AgentRunContext {
    */
   onActivityTimeout?: (() => void) | undefined;
   onToolUse?: ((event: AgentToolUseEvent) => void) | undefined;
-  /**
-   * post-run check derived from toolState: returns the selected mode when
-   * the agent picked Review / IncrementalReview but neither submitted a
-   * review nor wrote a final progress comment, otherwise `null`. main.ts
-   * supplies the closure so the agent harness has no direct toolState
-   * dependency; the closure fires synchronously after each agent attempt
-   * so it sees the latest mutations from any MCP tool calls.
-   */
-  getUnsubmittedReview?: (() => "Review" | "IncrementalReview" | null) | undefined;
 }
 
 export interface Agent {

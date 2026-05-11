@@ -1145,14 +1145,11 @@ export const opencode = agent({
     // the reflection prompt fires once after gates go clean, as a dedicated
     // turn that nudges the agent to persist learnings.
     return runPostRunRetryLoop({
+      ctx,
       initialResult: result,
       initialUsage: result.usage,
-      stopScript: ctx.stopScript,
-      summaryFilePath: ctx.summaryFilePath,
-      summarySeed: ctx.summarySeed,
-      getUnsubmittedReview: ctx.getUnsubmittedReview,
-      reflectionPrompt: ctx.learningsFilePath
-        ? buildLearningsReflectionPrompt(ctx.learningsFilePath)
+      reflectionPrompt: ctx.toolState.learningsFilePath
+        ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
         : undefined,
       resume: async (c) =>
         runOpenCode({

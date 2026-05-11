@@ -1,6 +1,7 @@
 import type { RestEndpointMethodTypes } from "@octokit/rest";
 import { type } from "arktype";
 import { formatMcpToolRef } from "../external.ts";
+import type { CommentableLines } from "../toolState.ts";
 import { getApiUrl } from "../utils/apiUrl.ts";
 import { buildPullfrogFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/cli.ts";
@@ -15,6 +16,8 @@ import { retry } from "../utils/retry.ts";
 import { deleteProgressComment } from "./comment.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
+
+export type { CommentableLines };
 
 function getHttpStatus(err: unknown): number | undefined {
   if (typeof err !== "object" || err === null) return undefined;
@@ -46,7 +49,6 @@ export function isTransientReviewError(err: unknown): boolean {
 export const TRANSIENT_REVIEW_RETRY_DELAYS_MS = [1_000, 3_000];
 
 type PullFile = RestEndpointMethodTypes["pulls"]["listFiles"]["response"]["data"][number];
-export type CommentableLines = { RIGHT: Set<number>; LEFT: Set<number> };
 
 /**
  * parse a PR file's patch to determine which line numbers on each side are

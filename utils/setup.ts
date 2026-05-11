@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ShellPermission } from "../external.ts";
-import type { ToolState } from "../mcp/server.ts";
+import type { ToolState } from "../toolState.ts";
 import { log } from "./cli.ts";
 import type { OctokitWithPlugins } from "./github.ts";
 import { isInsideDocker } from "./globals.ts";

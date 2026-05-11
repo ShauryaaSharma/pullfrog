@@ -6,13 +6,9 @@ import { join } from "node:path";
 import * as core from "@actions/core";
 import { deleteProgressComment, reportProgress } from "./mcp/comment.ts";
 import { startInstallation } from "./mcp/dependencies.ts";
-import {
-  initToolState,
-  startMcpHttpServer,
-  type ToolContext,
-  type ToolState,
-} from "./mcp/server.ts";
+import { startMcpHttpServer, type ToolContext } from "./mcp/server.ts";
 import { computeModes } from "./modes.ts";
+import { initToolState, type ToolState } from "./toolState.ts";
 import {
   type ActivityTimeout,
   createProcessOutputActivityTimeout,
@@ -929,22 +925,7 @@ export async function main(): Promise<MainResult> {
       instructions,
       todoTracker,
       stopScript: runContext.repoSettings.stopScript,
-      summaryFilePath: toolState.summaryFilePath,
-      summarySeed: toolState.summarySeed,
-      learningsFilePath: toolState.learningsFilePath,
-      // post-run gate: derive "review mode finished without producing
-      // anything visible" inline from toolState. no parallel toolState flag —
-      // the absence of `review` and `finalSummaryWritten` is the signal.
-      // skipped when there's no progress comment to anchor the failure to
-      // (e.g. silent runs / non-issue events) so the gate doesn't fire
-      // on runs where there's nothing to display anyway.
-      getUnsubmittedReview: () => {
-        const mode = toolState.selectedMode;
-        if (mode !== "Review" && mode !== "IncrementalReview") return null;
-        if (toolState.review || toolState.finalSummaryWritten) return null;
-        if (!toolState.hadProgressComment) return null;
-        return mode;
-      },
+      toolState,
       onActivityTimeout: onInnerActivityTimeout,
       onToolUse: (event) => {
         const wasTracked = recordDiffReadFromToolUse({

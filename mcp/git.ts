@@ -1,10 +1,11 @@
 import { regex } from "arkregex";
 import { type } from "arktype";
+import type { StoredPushDest } from "../toolState.ts";
 import { log } from "../utils/cli.ts";
 import { $git } from "../utils/gitAuth.ts";
 import { executeLifecycleHook } from "../utils/lifecycle.ts";
 import { $ } from "../utils/shell.ts";
-import type { StoredPushDest, ToolContext } from "./server.ts";
+import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
 type PushDestination = {
