@@ -65,6 +65,7 @@ type OpenCodeConfig = {
   permission?: Record<string, unknown>;
   provider?: Record<string, unknown>;
   agent?: Record<string, unknown>;
+  experimental?: Record<string, unknown>;
   model?: string;
   enabled_providers?: string[];
   [key: string]: unknown;
@@ -120,6 +121,15 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       [pullfrogMcpName]: { type: "remote", url: ctx.mcpServerUrl },
     },
     agent: buildReviewerAgentConfig(),
+    // opt into opencode's experimental `batch` tool (added in
+    // anomalyco/opencode PR #2983, opt-in via `experimental.batch_tool`). it
+    // exposes a single `batch` tool that runs 1-25 independent tool calls
+    // (read/grep/glob/bash/etc.) concurrently in one assistant turn, which
+    // collapses the dominant grep→20×read pattern into a single round trip.
+    // edits are explicitly disallowed inside the batch upstream. paired with
+    // the "Parallel tool execution" guidance in utils/instructions.ts so the
+    // model actually reaches for it. see wiki/prompt.md.
+    experimental: { batch_tool: true },
     provider: {
       google: {
         models: Object.fromEntries(

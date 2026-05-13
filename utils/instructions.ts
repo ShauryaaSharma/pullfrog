@@ -283,6 +283,21 @@ ${getStandaloneModeInstructions(ctx.payload.event.trigger, t, ctx.outputSchema)}
 
 Trust the tools — do not repeatedly verify file contents or git status after operations. If a tool reports success, proceed to the next step. Only verify if you encounter an actual error. Exception: right before \`${t("push_branch")}\`, ensure the working tree is clean — that tool rejects dirty trees, and tests you ran earlier often leave untracked output.
 
+### Parallel tool execution
+
+For maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously in a single assistant turn rather than sequentially. The dominant failure mode is grep → read → read → read → read across separate turns when one round trip would do. Always parallelize when calls are independent:
+- reading multiple files (especially after a grep returns candidates)
+- multiple greps with different patterns
+- glob + grep + read combos
+- listing multiple directories
+- inspecting multiple MCP tools or resources
+
+Do NOT parallelize operations that depend on prior output (e.g. create a file then read it), or ordered stateful mutations. Edits are not parallelizable — sequence those normally.${
+    ctx.agentId === "opencode"
+      ? `\n\nOn OpenCode you also have a \`batch\` tool that bundles 1-25 independent calls into one wrapper call. Reach for it whenever you have >=2 independent calls. Native parallel tool_use and \`batch\` both achieve one round trip instead of N — use whichever your provider supports best.`
+      : `\n\nEmit multiple \`tool_use\` blocks in the same assistant message for independent calls — the runtime executes them concurrently. Do not wait for one tool result before issuing the next independent call.`
+  }
+
 ### Command execution
 
 Never use \`sleep\` to wait for commands to complete. Commands run synchronously — when the shell tool returns, the command has finished.
