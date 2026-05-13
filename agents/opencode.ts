@@ -174,10 +174,14 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
  * Non-mutative + non-recursive — enforced by the prose system prompt in
  * reviewer.ts.
  *
- * Per-subagent `model:` override downshifts to a cheaper sibling when the
- * orchestrator runs on Anthropic or OpenAI (see deriveSubagentModels).
- * Other providers (xai, deepseek, gemini, etc.) inherit the orchestrator's
- * model since their tier structure is less standard.
+ * Per-subagent `model:` override is driven by the registry in
+ * `action/models.ts` via each alias's `subagentModel` field — see
+ * `deriveSubagentModels` for the reverse-lookup. Currently wired:
+ * Anthropic opus → sonnet, OpenAI gpt-pro → gpt and gpt → gpt-5.4,
+ * Google gemini-pro → gemini-flash. Other providers (xai, deepseek,
+ * moonshot) and already-cheap tiers inherit (no override) — either the
+ * absolute savings are too small to justify or there's no clean
+ * cheaper-but-capable sibling.
  */
 function buildReviewerAgentConfig(orchestratorModel: string | undefined): Record<string, unknown> {
   const overrides = deriveSubagentModels(orchestratorModel);
@@ -226,9 +230,12 @@ function autoSelectModel(cliPath: string): string | undefined {
   const availableSet = new Set(availableModels);
   if (availableSet.size > 0) {
     log.debug(`» opencode models (${availableSet.size}): ${availableModels.join(", ")}`);
+    // skip hidden aliases (internal subagent-tier targets like opencode/gpt-5.4) —
+    // they should never surface as a user-facing orchestrator pick. mirrors the
+    // selectable-list filter in components/ModelSelector.tsx and action/commands/init.ts.
     const match =
-      modelAliases.find((a) => a.preferred && availableSet.has(a.resolve)) ??
-      modelAliases.find((a) => availableSet.has(a.resolve));
+      modelAliases.find((a) => !a.hidden && a.preferred && availableSet.has(a.resolve)) ??
+      modelAliases.find((a) => !a.hidden && availableSet.has(a.resolve));
     if (match) {
       log.info(
         `» model: ${match.resolve} (auto-selected${match.preferred ? " — preferred" : ""} curated match)`
