@@ -30,7 +30,9 @@ export function PullRequestInfoTool(ctx: ToolContext) {
   return tool({
     name: "get_pull_request",
     description:
-      "Retrieve PR metadata (title, body, state, branches, author, labels, linked issues). To checkout a PR branch locally, use checkout_pr instead.",
+      "Retrieve PR metadata (title, body, state, branches, author, labels, linked issues). " +
+      "Example: `get_pull_request({ pull_number: 1234 })`. " +
+      "To checkout a PR branch locally, use checkout_pr instead.",
     parameters: PullRequestInfo,
     execute: execute(async ({ pull_number }) => {
       // fetch REST and GraphQL in parallel

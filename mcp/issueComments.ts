@@ -10,7 +10,8 @@ export function GetIssueCommentsTool(ctx: ToolContext) {
   return tool({
     name: "get_issue_comments",
     description:
-      "Get all comments for a GitHub issue. Returns all comments including the issue body and all subsequent discussion comments.",
+      "Get all comments for a GitHub issue. Returns all comments including the issue body and all subsequent discussion comments. " +
+      "Example: `get_issue_comments({ issue_number: 1234 })`.",
     parameters: GetIssueComments,
     execute: execute(async ({ issue_number }) => {
       // set issue context

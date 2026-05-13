@@ -218,11 +218,11 @@ export function PushBranchTool(ctx: ToolContext) {
     name: "push_branch",
     description:
       "Push the current branch to the remote repository. Omit branchName to push the current branch (recommended). " +
+      'Example: `push_branch({})` to push the current branch. Example: `push_branch({ branchName: "pr-1" })` to push a specific local branch. ' +
       "If specifying branchName, use the LOCAL branch name (e.g., 'pr-1'), not the remote branch name. " +
       "The correct remote and remote branch are determined automatically from branch config set by checkout_pr. " +
       "Requires a clean working tree. Runs the repository prepush hook (if configured) before the network push — hook failure means tests/lint or similar in that script failed, not necessarily a Pullfrog timeout. " +
-      "Never force push unless explicitly requested. Pushes to the default branch are blocked in restricted mode. " +
-      "If the response reports a timeout, the underlying push may have actually succeeded — verify with `git log origin/<branch>` (or this tool with command 'log') before retrying, otherwise you'll push a duplicate.",
+      "Never force push unless explicitly requested. Pushes to the default branch are blocked in restricted mode.",
     parameters: PushBranch,
     execute: execute(async ({ branchName, force }) => {
       // permission check
@@ -445,19 +445,17 @@ const subcommandPattern = regex("^[a-z][a-z0-9-]*$");
 
 const Git = type({
   command: type(subcommandPattern).describe("Git command (e.g., 'status', 'log', 'diff')"),
-  args: type.string
-    .array()
-    .describe(
-      'Additional arguments for the git command, as a JSON array of strings (NOT a single string). e.g. args: ["HEAD"], args: ["--oneline", "-20"]. Passing a single string fails validation.'
-    )
-    .optional(),
+  args: type.string.array().describe("Additional arguments for the git command").optional(),
 });
 
 export function GitTool(ctx: ToolContext) {
   return tool({
     name: "git",
     description:
-      "Run git commands. For push/fetch, use the dedicated MCP tools (push_branch, git_fetch). " +
+      "Run a git subcommand. `command` is a single subcommand; flags and positional args go in `args`. " +
+      'Example: `git({ command: "log", args: ["--oneline", "-n", "20"] })`. ' +
+      'Example: `git({ command: "diff", args: ["origin/main..HEAD"] })`. ' +
+      "For push/fetch, use the dedicated MCP tools (push_branch, git_fetch). " +
       "git pull is not available — use git_fetch then this tool with command 'merge'.",
     parameters: Git,
     execute: execute(async (params) => {
@@ -529,7 +527,9 @@ const DEEPEN_RETRY_DEPTH = 1000;
 export function GitFetchTool(ctx: ToolContext) {
   return tool({
     name: "git_fetch",
-    description: "Fetch refs from remote repository. Use this instead of git fetch directly.",
+    description:
+      "Fetch refs from remote repository. Use this instead of git fetch directly. " +
+      'Example: `git_fetch({ ref: "main" })`. With depth: `git_fetch({ ref: "pull/1234/head", depth: 1 })`.',
     parameters: GitFetch,
     execute: execute(async (params) => {
       rejectIfLeadingDash(params.ref, "ref");

@@ -189,6 +189,8 @@ export function ShellTool(ctx: ToolContext) {
     name: "shell",
     description: `Execute shell commands securely. Environment is filtered to remove API keys and secrets.
 
+Example: \`shell({ command: "pnpm test", description: "run the test suite" })\`.
+
 Use this tool to:
 - Run shell commands (ls, cat, grep, find, etc.)
 - Execute build tools (npm, pnpm, cargo, make, etc.)

@@ -65,7 +65,9 @@ export function CreateCommentTool(ctx: ToolContext) {
   return tool({
     name: "create_issue_comment",
     description:
-      "Create a comment on a GitHub issue or PR. For progress/plan updates on the current run use report_progress instead. Use type: 'Plan' for plan comments.",
+      "Create a comment on a GitHub issue or PR. " +
+      'Example: `create_issue_comment({ issueNumber: 1234, body: "Thanks for the report." })`. ' +
+      "For progress/plan updates on the current run use report_progress instead. Use type: 'Plan' for plan comments.",
     parameters: Comment,
     execute: execute(async ({ issueNumber, body, type: commentType }) => {
       const bodyWithFooter = addFooter(ctx, body);
@@ -310,7 +312,9 @@ export function ReportProgressTool(ctx: ToolContext) {
   return tool({
     name: "report_progress",
     description:
-      "Share progress on the associated GitHub issue/PR. The first call creates a comment; subsequent calls update it in place. Call this at the end of every run with a brief final summary (1-3 sentences) unless the mode guidance instructs otherwise. The current task list is automatically appended in a collapsible section — do not restate individual steps.",
+      "Share progress on the associated GitHub issue/PR. The first call creates a comment; subsequent calls update it in place. " +
+      'Example: `report_progress({ body: "Implemented the auth check and added tests." })`. ' +
+      "Call this at the end of every run with a brief final summary (1-3 sentences) unless the mode guidance instructs otherwise. The current task list is automatically appended in a collapsible section — do not restate individual steps.",
     parameters: ReportProgress,
     execute: execute(async (params) => {
       let body = params.body;
@@ -445,7 +449,9 @@ export function ReplyToReviewCommentTool(ctx: ToolContext) {
   return tool({
     name: "reply_to_review_comment",
     description:
-      "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). Call exactly ONCE per parent comment you address in AddressReviews mode — duplicate calls with the same body are a no-op. Keep replies extremely brief (1 sentence max).",
+      "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). " +
+      'Example: `reply_to_review_comment({ pull_number: 1234, comment_id: 567890, body: "Fixed by adding a null check." })`. ' +
+      "Call exactly ONCE per parent comment you address in AddressReviews mode — duplicate calls with the same body are a no-op. Keep replies extremely brief (1 sentence max).",
     parameters: ReplyToReviewComment,
     execute: execute(async ({ pull_number, comment_id, body }) => {
       const bodyWithFooter = addFooter(ctx, body);

@@ -9,7 +9,9 @@ export const IssueInfo = type({
 export function IssueInfoTool(ctx: ToolContext) {
   return tool({
     name: "get_issue",
-    description: "Retrieve GitHub issue information by issue number",
+    description:
+      "Retrieve GitHub issue information by issue number. " +
+      "Example: `get_issue({ issue_number: 1234 })`.",
     parameters: IssueInfo,
     execute: execute(async ({ issue_number }) => {
       const issue = await ctx.octokit.rest.issues.get({

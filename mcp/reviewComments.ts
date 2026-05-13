@@ -602,6 +602,7 @@ export function GetReviewCommentsTool(ctx: ToolContext) {
     name: "get_review_comments",
     description:
       "Get review comments for a pull request review with full thread context. " +
+      "Example: `get_review_comments({ pull_number: 1234, review_id: 567890 })`. " +
       "Automatically filters to approved comments when applicable. " +
       "Returns a TOC and commentsPath pointing to a markdown file with full comment details.",
     parameters: GetReviewComments,
@@ -673,7 +674,8 @@ export function ListPullRequestReviewsTool(ctx: ToolContext) {
   return tool({
     name: "list_pull_request_reviews",
     description:
-      "List all reviews for a pull request. Returns all reviews including approvals, request changes, and comments.",
+      "List all reviews for a pull request. Returns all reviews including approvals, request changes, and comments. " +
+      "Example: `list_pull_request_reviews({ pull_number: 1234 })`.",
     parameters: ListPullRequestReviews,
     execute: execute(async (params) => {
       const reviews = await ctx.octokit.paginate(ctx.octokit.rest.pulls.listReviews, {
