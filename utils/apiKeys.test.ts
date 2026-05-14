@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { validateAgentApiKey } from "./apiKeys.ts";
+import { formatApiKeyErrorSummary, isApiKeyAuthError, validateAgentApiKey } from "./apiKeys.ts";
 
 const base = {
   agent: { name: "opencode" },
@@ -154,5 +154,50 @@ describe("validateAgentApiKey", () => {
         validateAgentApiKey({ ...base, model: "us.anthropic.claude-opus-4-6-v1" })
       ).toThrow("AWS_BEARER_TOKEN_BEDROCK");
     });
+  });
+});
+
+describe("isApiKeyAuthError", () => {
+  it("matches the missing-key marker thrown by validateAgentApiKey", () => {
+    expect(isApiKeyAuthError("no API key found. Pullfrog needs ...")).toBe(true);
+  });
+
+  it("matches Claude CLI 401 strings", () => {
+    expect(isApiKeyAuthError("Invalid API key · Fix external API key")).toBe(true);
+  });
+
+  it("matches OpenAI / OpenRouter 401 phrasings", () => {
+    expect(isApiKeyAuthError("ProviderAuthError: User not found")).toBe(true);
+    expect(isApiKeyAuthError("401 Invalid authentication")).toBe(true);
+  });
+
+  it("ignores unrelated errors", () => {
+    expect(isApiKeyAuthError("git fetch failed")).toBe(false);
+    expect(isApiKeyAuthError("")).toBe(false);
+  });
+});
+
+describe("formatApiKeyErrorSummary", () => {
+  it("renders the missing-key body when the raw error contains the marker", () => {
+    const msg = formatApiKeyErrorSummary({
+      owner: "acme",
+      name: "repo",
+      raw: "no API key found in this run",
+    });
+    expect(msg).toContain("no API key found");
+    expect(msg).toContain("https://github.com/acme/repo/settings/secrets/actions");
+    expect(msg).toContain("/console/acme/repo");
+    expect(msg).toContain("https://discord.gg/8y96raFg8e");
+  });
+
+  it("renders the invalid-key body for any other auth error", () => {
+    const msg = formatApiKeyErrorSummary({
+      owner: "acme",
+      name: "repo",
+      raw: "Invalid API key · Fix external API key",
+    });
+    expect(msg).toContain("rejected (401)");
+    expect(msg).toContain("https://github.com/acme/repo/settings/secrets/actions");
+    expect(msg).toContain("https://discord.gg/8y96raFg8e");
   });
 });

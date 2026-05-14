@@ -19,7 +19,7 @@ function buildMissingApiKeyError(params: { owner: string; name: string }): strin
   return [
     `**${MISSING_KEY_MARKER}** — Pullfrog needs at least one LLM provider API key (e.g. \`ANTHROPIC_API_KEY\`, \`OPENAI_API_KEY\`, \`GEMINI_API_KEY\`) configured as a GitHub Actions secret.`,
     "",
-    `[Open repo secrets →](${githubSecretsUrl}) · [Configure model →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys)`,
+    `[Open repo secrets →](${githubSecretsUrl}) · [Configure model →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys) · [Ask in Discord →](https://discord.gg/8y96raFg8e)`,
   ].join("\n");
 }
 
@@ -153,6 +153,6 @@ export function formatApiKeyErrorSummary(params: {
   return [
     `**Your LLM provider API key was rejected (401).** Rotate the key in your provider dashboard, then update the matching GitHub Actions secret.`,
     "",
-    `[Update repo secret →](${githubSecretsUrl}) · [Model settings →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys)`,
+    `[Update repo secret →](${githubSecretsUrl}) · [Model settings →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys) · [Ask in Discord →](https://discord.gg/8y96raFg8e)`,
   ].join("\n");
 }
