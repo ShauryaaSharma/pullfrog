@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import arg from "arg";
 import pc from "picocolors";
+import { runCli as runAuthCli } from "./commands/auth.ts";
 import { runCli as runGhaCli } from "./commands/gha.ts";
 import { runCli as runInitCli } from "./commands/init.ts";
 
@@ -13,6 +14,7 @@ function printMainUsage(stream: typeof console.log): void {
   stream(`usage: ${PROG} <command>\n`);
   stream("commands:");
   stream("  init        set up pullfrog on the current repository");
+  stream("  auth        manage provider credentials for the current repository");
   stream("");
   stream("global options:");
   stream("  -h, --help      show help");
@@ -78,6 +80,15 @@ async function run(): Promise<void> {
 
   if (command === "gha") {
     await runGhaCli({
+      args: commandArgs,
+      prog: PROG,
+      showHelp: globalParsed["--help"] === true,
+    });
+    return;
+  }
+
+  if (command === "auth") {
+    await runAuthCli({
       args: commandArgs,
       prog: PROG,
       showHelp: globalParsed["--help"] === true,

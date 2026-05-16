@@ -958,6 +958,7 @@ export async function main(): Promise<MainResult> {
       todoTracker,
       stopScript: runContext.repoSettings.stopScript,
       toolState,
+      apiToken: runContext.apiToken,
       onActivityTimeout: onInnerActivityTimeout,
       onToolUse: (event) => {
         const wasTracked = recordDiffReadFromToolUse({

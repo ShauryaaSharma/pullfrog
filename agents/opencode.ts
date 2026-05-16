@@ -15,12 +15,14 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
+import * as core from "@actions/core";
 import { pullfrogMcpName } from "../external.ts";
 import { BEDROCK_MODEL_ID_ENV, modelAliases } from "../models.ts";
 import type { ToolState } from "../toolState.ts";
 import { getIdleMs, markActivity } from "../utils/activity.ts";
 import { type AgentDiagnostic, formatAgentHangBody } from "../utils/agentHangReport.ts";
 import { formatJsonValue, log } from "../utils/cli.ts";
+import { installCodexAuth } from "../utils/codexHome.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { findProviderErrorMatch } from "../utils/providerErrors.ts";
 import { addSkill, installBundledSkills } from "../utils/skills.ts";
@@ -1244,12 +1246,20 @@ export const opencode = agent({
 
     installBundledSkills({ home: homeEnv.HOME });
 
+    // materialize CODEX_AUTH_JSON (Pullfrog-stored Codex subscription
+    // credential) into the runner's REAL $HOME/.local/share/opencode/auth.json
+    // so OpenCode's CodexAuthPlugin picks it up and routes openai requests
+    // through the ChatGPT subscription instead of needing OPENAI_API_KEY.
+    // see action/utils/codexHome.ts and wiki/codex-auth.md.
+    const codexAuth = installCodexAuth();
+
     // base args shared between initial run and continue runs
     const baseArgs = ["run", "--format", "json", "--print-logs"];
 
     // OPENCODE_PERMISSION has absolute highest precedence (merged after managed/MDM configs).
     // external_directory gates ALL native filesystem tools (Read, Write, Edit, Glob, Grep, etc.)
     // for paths outside the project root. last-match-wins: deny everything, then allow /tmp.
+    // auth.json sits under real $HOME (outside /tmp/*), so deny-default protects it.
     const permissionOverride = JSON.stringify({
       external_directory: { "*": "deny", "/tmp/*": "allow" },
     });
@@ -1262,6 +1272,28 @@ export const opencode = agent({
       GOOGLE_GENERATIVE_AI_API_KEY:
         process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY,
     };
+
+    if (codexAuth) {
+      // point OpenCode at the real-home XDG dir so it reads auth.json from
+      // where we wrote it (not the tmpdir-redirected default).
+      env.XDG_DATA_HOME = codexAuth.xdgDataHome;
+      // remove OPENAI_API_KEY so OpenCode's provider merge unambiguously
+      // picks the OAuth path. with both set, the merge order in opencode
+      // makes the effective key ambiguous.
+      delete env.OPENAI_API_KEY;
+      // hand the post-hook everything it needs to detect + persist refresh.
+      // post-hook runs in a fresh node process, so we have to ferry apiToken
+      // explicitly — env is preserved across main/post but our run-context
+      // JWT is computed at runtime and not put in env. see action/entryPost.ts.
+      core.saveState(
+        "codex_writeback",
+        JSON.stringify({
+          apiToken: ctx.apiToken,
+          authPath: codexAuth.authPath,
+          originalRefresh: codexAuth.originalRefresh,
+        })
+      );
+    }
 
     const repoDir = process.cwd();
 

@@ -74,6 +74,11 @@ interface ModelDef {
 export interface ProviderConfig {
   displayName: string;
   envVars: readonly string[];
+  /** credentials authored only via `pullfrog auth <provider>` — never
+   * user-facing in `init`, never documented as a manual GHA secret. counted
+   * for hasAnyKey / log-redaction purposes but excluded from any prompt /
+   * paste flow. CLI-managed magic. see wiki/codex-auth.md. */
+  managedCredentials?: readonly string[];
   models: Record<string, ModelDef>;
 }
 
@@ -110,6 +115,7 @@ export const providers = {
   openai: provider({
     displayName: "OpenAI",
     envVars: ["OPENAI_API_KEY"],
+    managedCredentials: ["CODEX_AUTH_JSON"],
     models: {
       gpt: {
         displayName: "GPT",
@@ -509,6 +515,16 @@ export function getModelEnvVars(slug: string): string[] {
   }
 
   return providerConfig.envVars.slice();
+}
+
+/** managed credentials are authored only via `pullfrog auth <provider>` — they
+ * count as "configured" for hasAnyKey-style UI checks but are never offered as
+ * a manual-paste option in `init` or the AgentSettings env-var button row.
+ * see `provider.managedCredentials` and wiki/codex-auth.md. */
+export function getModelManagedCredentials(slug: string): string[] {
+  const parsed = parseModel(slug);
+  const providerConfig = (providers as Record<string, ProviderConfig>)[parsed.provider];
+  return providerConfig?.managedCredentials?.slice() ?? [];
 }
 
 // ── derived flat list ──────────────────────────────────────────────────────────

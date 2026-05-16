@@ -802,6 +802,14 @@ const MANAGED_SETTINGS_PATH = `${MANAGED_SETTINGS_DIR}/managed-settings.json`;
 // allowManagedPermissionRulesOnly prevents malicious PRs from adding allow rules that override
 // our deny rules — safe in CI because --dangerously-skip-permissions makes allow/ask irrelevant.
 // allowManagedHooksOnly prevents malicious project hooks from bypassing deny rules.
+// Codex auth.json (Pullfrog-stored ChatGPT subscription credential) lives at
+// `~/.local/share/opencode/auth.json` when the opencode harness materialized
+// it. Claude shouldn't be running OpenAI models — they route to opencode —
+// but defense-in-depth: deny the file regardless. Per Claude Code permissions
+// docs, Read(...) deny ALSO blocks file-reading Bash commands (cat, head,
+// tail, sed) and survives bypassPermissions mode. See wiki/codex-auth.md.
+const CODEX_AUTH_DENY_PATH = "~/.local/share/opencode/auth.json";
+
 const managedSettings = {
   allowManagedPermissionRulesOnly: true,
   allowManagedHooksOnly: true,
@@ -815,11 +823,15 @@ const managedSettings = {
       "Edit(//sys/**)",
       "Glob(//proc/**)",
       "Glob(//sys/**)",
+      `Read(${CODEX_AUTH_DENY_PATH})`,
+      `Grep(${CODEX_AUTH_DENY_PATH})`,
+      `Edit(${CODEX_AUTH_DENY_PATH})`,
+      `Glob(${CODEX_AUTH_DENY_PATH})`,
     ],
   },
   sandbox: {
     filesystem: {
-      denyRead: ["/proc", "/sys"],
+      denyRead: ["/proc", "/sys", CODEX_AUTH_DENY_PATH],
     },
   },
 };

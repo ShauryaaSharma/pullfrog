@@ -6,7 +6,9 @@ import {
 } from "../models.ts";
 import { getApiUrl } from "./apiUrl.ts";
 
-const knownApiKeys: Set<string> = new Set(Object.values(providers).flatMap((p) => [...p.envVars]));
+const knownApiKeys: Set<string> = new Set(
+  Object.values(providers).flatMap((p) => [...p.envVars, ...(p.managedCredentials ?? [])])
+);
 
 /** marker prefix on the throw message for the catch-side reclassification path */
 const MISSING_KEY_MARKER = "no API key found";

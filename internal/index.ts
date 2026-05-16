@@ -17,6 +17,7 @@ export type {
 } from "../external.ts";
 export {
   getModelEnvVars,
+  getModelManagedCredentials,
   getModelProvider,
   getProviderDisplayName,
   modelAliases,
