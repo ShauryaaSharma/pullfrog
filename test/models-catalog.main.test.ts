@@ -47,6 +47,12 @@ describe("models.dev validity", async () => {
     // since there's no models.dev entry to validate against.
     if (alias.routing) continue;
 
+    // aliases with a `fallback` are deprecated entries that legitimately point
+    // at dead resolve targets — the fallback chain redirects callers to a live
+    // model. skip both existence and deprecation checks; the terminal-fallback
+    // is validated separately by the Zen served-list test below.
+    if (alias.fallback) continue;
+
     const parsed = parseResolve(alias.resolve);
 
     it(`${alias.resolve} exists on models.dev`, () => {
@@ -59,13 +65,11 @@ describe("models.dev validity", async () => {
       ).toBeDefined();
     });
 
-    if (!alias.fallback) {
-      it(`${alias.resolve} is not deprecated`, () => {
-        const model = data[parsed.provider]?.models[parsed.modelId];
-        if (!model) return; // covered by existence test above
-        expect(model.status, `${alias.resolve} is deprecated on models.dev`).not.toBe("deprecated");
-      });
-    }
+    it(`${alias.resolve} is not deprecated`, () => {
+      const model = data[parsed.provider]?.models[parsed.modelId];
+      if (!model) return; // covered by existence test above
+      expect(model.status, `${alias.resolve} is deprecated on models.dev`).not.toBe("deprecated");
+    });
   }
 });
 
