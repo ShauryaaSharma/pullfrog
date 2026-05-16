@@ -158,7 +158,7 @@ export function buildUnsubmittedReviewPrompt(mode: "Review" | "IncrementalReview
     return [
       `MISSING REVIEW OUTPUT — you selected Review mode but stopped without calling \`create_pull_request_review\`. the user has no visible signal that this run produced anything; the progress comment will be deleted on exit and no review will appear on the PR.`,
       "",
-      "call `create_pull_request_review` now with your aggregated review (body + inline comments). pick the tier per the mode prompt — Review mode has no no-submit exit, so even informational `> [!NOTE]` reviews and `No new issues found.` reviews must be submitted (both use `approved: true`). the first call may error once with a diff-coverage nudge — retry the same call to proceed.",
+      "call `create_pull_request_review` now with your aggregated review (body + inline comments). pick the tier per the mode prompt — Review mode has no no-submit exit, so even informational `> ✅ No new issues found.` reviews must be submitted (with `approved: true`). the first call may error once with a diff-coverage nudge — retry the same call to proceed.",
       "",
       "do NOT stop again until `create_pull_request_review` has been called successfully.",
     ].join("\n");
@@ -241,6 +241,24 @@ export function buildPostRunPrompt(issues: PostRunIssues): string {
   if (issues.dirtyTree) parts.push(buildCommitPrompt(issues.dirtyTree));
   if (issues.summaryStale) parts.push(buildSummaryStalePrompt(issues.summaryStale.filePath));
   return parts.join("\n\n---\n\n");
+}
+
+/**
+ * modes for which the post-run reflection turn is skipped. reflection costs a
+ * full resume turn (~$0.50-0.80 per run on Opus, mostly cache-write) and only
+ * pays for itself when the run actually produced novel, durable findings.
+ *
+ * `IncrementalReview` is the lowest-novelty mode — it's a tight delta review
+ * against an existing PR with the prior summary already loaded as context.
+ * the agent rarely discovers anything generalizable to next runs, so the
+ * reflection turn is dead weight. initial `Review` still touches fresh PR
+ * territory and benefits; `Build` / `Fix` / `AddressReviews` definitely do.
+ */
+const REFLECTION_SKIP_MODES: ReadonlySet<string> = new Set(["IncrementalReview"]);
+
+export function shouldRunReflection(mode: string | undefined): boolean {
+  if (!mode) return true;
+  return !REFLECTION_SKIP_MODES.has(mode);
 }
 
 /**

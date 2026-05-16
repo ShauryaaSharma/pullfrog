@@ -18,52 +18,116 @@ export interface Mode {
 // shaped by user instructions — see selectMode.ts for the firewall.
 export const PR_SUMMARY_FORMAT = `### Default format
 
-Follow this structure exactly:
+The body has at most three parts in this exact order:
 
-<b>TL;DR</b> — 1-3 sentences on what the PR does and why. Focus on intent, not mechanics.
-NOTE: use HTML bold <b>TL;DR</b>, NOT markdown bold **TL;DR**.
+1. **Reviewed changes preamble** — one bolded inline lead-in describing what the PR does, then a bullet list of the substantive changes, then a collapsed \`<details>Review metadata</details>\` block.
+2. **Cross-cutting issue sections** (zero or more) — one \`### \` heading per concern, with a human-readable problem write-up and a collapsed \`<details>Technical details</details>\` block underneath.
+3. **\`### ℹ️ Nitpicks\`** at the very bottom (only if there are nits worth surfacing in the body) — a flat bullet list, no technical-details block.
 
-### Key changes
+Inline-vs-body discipline is the most important rule: any concern that anchors to a single line in the diff goes in an INLINE comment via the \`comments\` parameter, never the body. The body is reserved for **cross-cutting** concerns — design-level issues that span files, meta-patterns across endpoints, or symptoms whose root cause isn't on any one line. If everything you found can be inlined, the body has zero \`### \` issue sections — just the preamble + metadata.
 
-- **Short human-readable title** — 1 sentence per change. Write a short prose phrase (title case or sentence case); when you name a file, type, or function, put that name in backticks (e.g. **Add \`TodoTracker\` for live checklists**). A reviewer should understand the full PR from this list alone.
+## 1. Reviewed changes preamble
 
-<sub><b>Summary</b> ｜ {file_count} files ｜ {commit_count} commits ｜ base: \`{base}\` ← \`{head}\`</sub>
-NOTE: the metadata line goes AFTER the bullet list, not before it.
+Open with a single bolded inline lead-in followed immediately by the bullet list (no \`### Key changes\` heading, no \`<b>TL;DR</b>\`):
 
-Then for each key change, a ## section with a short descriptive title that reads like a documentation heading (e.g. ## Live todo checklist tracking).
+\`\`\`
+**Reviewed changes** — one sentence on what the PR does and why. Focus on intent, not mechanics.
 
-<br/>
+- **Short human-readable title** — 1 sentence per substantive change. Write a short prose phrase; when you name a file, type, or function, put that name in backticks (e.g. **Add \\\`TodoTracker\\\` for live checklists**). A reviewer should understand the full PR from this list alone — this IS the dispassionate "what was reviewed and what changed" overview, so cover the substantive changes, not just the loudest ones.
 
-## Example readable section title
+<details><summary>Review metadata</summary>
 
-> **Before:** [old behavior/state]<br/>**After:** [new behavior/state]
-IMPORTANT: Before and After MUST be on a SINGLE blockquote line with an inline <br/> between them. Two separate \`>\` lines creates a double line break.
+- **Mode:** Review (initial)   *or*   IncrementalReview (delta against prior pullfrog review)
+- **Files reviewed:** {file_count}
+- **Commits reviewed:** {commit_count}
+- **Base:** \\\`{base_ref}\\\` (\\\`{base_sha_short}\\\`)
+- **Head:** \\\`{head_ref}\\\` (\\\`{head_sha_short}\\\`)
+- **Reviewed commits:**
+  - \\\`{sha_short}\\\` — {commit_subject}
+  - ...
+- **Prior pullfrog review:** none   *or*   \\\`{prior_sha_short}\\\` (linked to the prior review URL when available)
+- **Submitted at:** {iso_timestamp}
 
-1-2 sentences of explanation. Break up text with tables, blockquotes, or lists — NEVER 3+ plain paragraphs in a row.
+If \\\`HEAD\\\` of \\\`{head_ref}\\\` has advanced past \\\`{head_sha_short}\\\`, this review may be partially or fully stale — re-diff against \\\`{head_sha_short}\\\` before treating any technical-details block as current.
 
-If a change warrants deeper explanation, use a blockquoted details/summary framed as a question:
-> <details><summary>How does X work?</summary>
-> Extended explanation here.
-> </details>
+</details>
+\`\`\`
 
-End each section with a file links trail (3-4 key files max):
-[\`file.ts\`](https://github.com/{owner}/{repo}/pull/{number}/files#diff-{sha256hex_of_filepath}) · ...
+Pull every metadata field from the \`checkout_pr\` tool's response — file count, commit count, base/head ref + SHA, the commit list. For \`IncrementalReview\` runs, populate \`Prior pullfrog review\` with the prior review's commit_id (short SHA) and link to its URL via \`list_pull_request_reviews\`.
 
-Single-feature PRs: skip the ## sections. Fold before/after and explanation into the header after key changes.
+## 2. Cross-cutting issue sections (zero or more)
 
-CRITICAL — GitHub markdown rendering rule:
-GitHub's markdown parser requires a blank line between ALL block-level elements. This includes transitions between: HTML tags (<br/>, <sub>, <details>, <b>, etc.) and markdown syntax (headings, lists, blockquotes, paragraphs). Without a blank line, GitHub treats the following content as a continuation of the HTML block and renders markdown syntax as literal text. ALWAYS separate block-level elements with a blank line.
+For each cross-cutting concern, one \`### \` section. Use this exact shape:
 
-Rules:
-- \`##\` titles and key-change bullet lead-ins are plain-language summaries; backtick only actual code tokens (files, types, functions) where they appear in the title
-- ALL variable names, identifiers, and file names in body text must be in backticks
-- ALL file references MUST link to the PR Files Changed view. Use the \`diff-<hex>\` anchor precomputed next to each filename in the \`checkout_pr\` TOC — do NOT run \`sha256sum\` or any other shell command to compute anchors. NEVER fabricate hex strings. If a file is not in the TOC, omit the \`#diff-\` anchor rather than guessing.
-- Add <br/> before each ## heading for visual spacing. Do NOT use horizontal rules (---)
-- Do NOT include raw diff stats like '+123 / -45' or line counts
-- Do NOT include code blocks or repeat diff contents
-- Do NOT include a changelog section — the key changes list serves this purpose
-- Focus on *intent*, not *what* — the diff already shows what changed
-- Get the file count and commit count from the checkout_pr metadata, not by counting manually`;
+\`\`\`
+### {emoji} {short, descriptive title — what's wrong, not what to do}
+
+{Human-readable problem write-up. Describes the PROBLEM only — what's broken, what the symptom is, what the blast radius is. NO asks, NO suggested fixes, NO "the right thing to do is...". Asks and fixes live in the technical-details block below; the visible part is for the human to *understand* the problem, not to implement it.}
+
+<details><summary>Technical details</summary>
+
+\\\`\\\`\\\`\\\`markdown
+# {title repeated}
+
+## Affected sites
+- {file path:line} — {what's wrong there}
+- ...
+
+## Required outcome
+- {what the fix needs to achieve, not how to achieve it}
+- ...
+
+## Suggested approach (optional)
+{When the fix shape is non-obvious, sketch one or more reasonable directions. Skip when the outcome alone makes the fix obvious.}
+
+## Open questions for the human (optional)
+- {Any decision an implementing agent shouldn't make unilaterally — pricing thresholds, breaking-change policy, naming, scope of follow-up.}
+\\\`\\\`\\\`\\\`
+
+</details>
+\`\`\`
+
+**Heading severity emoji** — every \`### \` heading carries one:
+
+- 🚨 critical — blocks merge (data loss, security, broken core flow)
+- ⚠️ important — must address before merging (regression, missing validation, incorrect behavior)
+- ℹ️ informational — surfaced for awareness; mergeable as-is
+
+**Visible problem write-up rules:**
+
+- **No asks, no suggested fixes** in the visible part. The visible portion describes the problem; the technical-details block describes the fix shape and any open questions. The exception: a fix so self-evident that NOT stating it would be weird (e.g. "the typo is missing an 'r'") — in that case, fold it into the problem statement and skip the suggested-approach block in technical details too.
+- **Never two successive plain paragraphs.** Every transition between block-level elements must alternate prose with structure: paragraph → bullet list → paragraph; paragraph → code fence → bullet list; paragraph → table → paragraph. Two consecutive paragraphs in a row create a wall of text that's impossible to digest. If you catch yourself writing one, find a way to split it: pull a list out of it, drop a 2-3 line code fence between them, or merge them into a single tighter paragraph.
+- **Per-paragraph budget:** ~3 sentences max. Past that, you're explaining where you should be structuring.
+- **Identifier discipline still applies** in the visible part. Lead with behavior in plain English; name an identifier only when it's the subject of the concern or a public surface a reader would recognize. The technical-details block is where dense identifier references belong.
+
+**Technical-details block rules:**
+
+- Wrapped in a 4-backtick markdown fence (\`\\\`\\\`\\\`\\\`markdown ... \\\`\\\`\\\`\\\`\`) so it's visually distinct, one-click copyable, and can contain its own 3-backtick code fences without escape gymnastics. The contents are agent-readable — a fix-agent will pull the body down and use this block as the brief.
+- File paths and \`file:line\` refs are encouraged (and necessary) — the next agent uses these to navigate. Identifier density is fine here.
+- Slightly more verbose than the absolute minimum is OK when it materially helps the next agent: a small code snippet showing the symptom, a short table of mismatched key/column pairs, a one-paragraph "why CI doesn't catch it" note. Skip massive regression-test scaffolding or full route rewrites — the implementing agent writes those.
+- Use the four standard sections (\`Affected sites\`, \`Required outcome\`, optional \`Suggested approach\`, optional \`Open questions for the human\`). Skip the optional sections when they wouldn't add anything.
+
+## 3. \`### ℹ️ Nitpicks\` (optional, last section)
+
+Only when there are nits that for some reason can't be inlined. Filepaths in nit text are fine — these are simple enough that a human or agent reads once and acts. No technical-details block.
+
+\`\`\`
+### ℹ️ Nitpicks
+
+- {nit, with file path inline if useful, ≤ ~200 chars}
+- ...
+\`\`\`
+
+## Body-wide rules
+
+- **Inline-vs-body discipline (repeated for emphasis):** anything that anchors to a single line goes inline, not in the body. The body is for cross-cutting concerns only.
+- **No \`### Issues found\` heading** above the issue sections — each \`### \` heading IS the issue.
+- **Severity emoji on every \`### \` heading** (🚨 / ⚠️ / ℹ️). No emoji on the preamble lead-in or anywhere else.
+- **GitHub block-level rendering**: GitHub's markdown parser requires a blank line between ALL block-level elements (HTML tags like \`<br/>\`, \`<sub>\`, \`<details>\`, \`<b>\` and markdown syntax like headings, lists, blockquotes, code fences, paragraphs). Without a blank line, GitHub treats following content as a continuation of the HTML block and renders markdown syntax as literal text. ALWAYS separate block-level elements with a blank line.
+- **Backtick-wrap** every variable, identifier, or file name when you mention one (in either visible or technical-details portions).
+- **Don't repeat diff content**, don't include raw \`+123 / -45\` stats, don't include a changelog section, don't use horizontal rules (\`---\`).
+- **Pull file/commit counts from \`checkout_pr\` metadata** — never count manually.
+- **Legacy headings REMOVED.** Do not use \`### Key changes\`, \`### Issues found\`, \`<b>TL;DR</b>\`, or \`<sub><b>Summary</b>\`. The new structure subsumes them.`;
 
 export function computeModes(agentId: AgentId): Mode[] {
   const t = (toolName: string) => formatMcpToolRef(agentId, toolName);
@@ -171,9 +235,12 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
     // the Review/IncrementalReview lens fan-out where independence between
     // perspectives is what's being purchased.
     //
-    // Deliberate omission vs canonical /anneal: severity categorization in
-    // the final message (the review body has its own CAUTION/IMPORTANT
-    // framing instead of a severity table).
+    // Severity categorization is split across two surfaces: the opening
+    // callout (CAUTION/IMPORTANT/ℹ️/✅) sets the review's overall tier, and
+    // per-bullet emoji prefixes (🚨/⚠️/ℹ️ in PR_SUMMARY_FORMAT) tag
+    // individual points inside summary sections — scoping severity to the
+    // specific bullet rather than the whole section keeps a section that
+    // mixes a 🚨 and an ℹ️ from being mislabeled by either of them.
     {
       name: "Review",
       description:
@@ -268,12 +335,12 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
    The review body is structured as: \`[optional alert blockquote]\` → \`[PR summary using the default format below]\`. Inline comments are passed via the \`comments\` parameter, not in the body.
 
-   GitHub alert blockquotes render at four visual intensities — the callout is what the author sees first, so pick the one that matches what you want them to do:
+   The opening callout is what the author sees first — pick the one that matches what you want them to do. Five tiers, from loudest to friendliest:
 
    - \`[!CAUTION]\` — large red banner. Reads as "this will break something."
    - \`[!IMPORTANT]\` — large purple banner. Reads as "you need to look at this before merging."
-   - \`[!NOTE]\` — small blue inline callout. Reads as "FYI, here's something worth noting."
-   - no callout — plain text. Reads as routine review output.
+   - \`> ℹ️ ...\` — informational blockquote. Reads as "minor suggestions, nothing blocking."
+   - \`> ✅ ...\` — green friendly blockquote. Reads as "no concerns, mergeable."
 
    Two reinforcing levers: callout intensity (above) and \`approved\` (which gates the footer Fix-button affordance — Fix renders on every non-approving review, so \`approved: true\` suppresses it). Wrapping mergeable feedback in \`[!IMPORTANT]\` trains users to click Fix on reviews that don't need fixing. Pick the tier the author's actual next action justifies.
 
@@ -282,11 +349,11 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
    - **must-address non-critical findings** (real consequences if shipped — incorrect behavior in non-critical paths, missing validation on user input, regressions the author should fix before merge):
      \`approved: false\`. Body opens with \`> [!IMPORTANT]\\n> ...\`, followed by the PR summary. Reserve this tier for findings with concrete fallout — do NOT use \`[!IMPORTANT]\` for nits, style preferences, or "consider also" suggestions. Include all inline comments via \`comments\`.
    - **minor suggestions only** (single-line nits, doc/comment polish, defer-able observations, "rough edges"):
-     \`approved: false\`. NO alert blockquote. Body opens directly with the PR summary. Include all inline comments via \`comments\`.
+     \`approved: false\`. Body opens with \`> ℹ️ No critical issues — minor suggestions inline.\\n\\n\` followed by the PR summary. Include all inline comments via \`comments\`. Vary the wording after the emoji to fit the review (e.g. "Minor suggestions only.", "Two rough edges worth a look."), but always keep the ℹ️ prefix and keep it short.
    - **informational observations** (mergeable as-is, nothing actionable — e.g. prior feedback addressed cleanly, surfacing a minor stale doc reference, calling out something noteworthy without recommending a change):
-     \`approved: true\`. Body opens with \`> [!NOTE]\\n> ...\`, followed by the PR summary. Do NOT include inline \`comments\` — \`[!NOTE]\` signals "no action needed", which contradicts an actionable anchor; if a point is concrete enough to anchor to a line, downgrade the whole review to "minor suggestions only" (\`approved: false\`) instead.
+     \`approved: true\`. Body opens with \`> ✅ No new issues found.\\n\\n\` followed by the PR summary. Do NOT include inline \`comments\` — the ✅ signals "no action needed", which contradicts an actionable anchor; if a point is concrete enough to anchor to a line, downgrade the whole review to "minor suggestions only" (\`approved: false\`) instead.
    - **no actionable issues**:
-     \`approved: true\`. Body opens with \`No new issues found.\` followed by the PR summary.
+     \`approved: true\`. Body opens with \`> ✅ No new issues found.\\n\\n\` followed by the PR summary.
 
 ${PR_SUMMARY_FORMAT}`,
     },
@@ -300,7 +367,7 @@ ${PR_SUMMARY_FORMAT}`,
     // "Reviewed changes" — a separate "Prior review feedback" checklist
     // would duplicate the rolling PR summary snapshot's record of what
     // earlier runs already addressed and add noise to the user-facing
-    // body. Same severity-table omission as Review.
+    // body. Same opening-callout + per-bullet emoji severity split as Review.
     {
       name: "IncrementalReview",
       description:
@@ -365,16 +432,16 @@ ${PR_SUMMARY_FORMAT}`,
 
 10. Submit — every run must end with EXACTLY ONE of \`${t("create_pull_request_review")}\` (substantive review) or \`${t("report_progress")}\` (no-review acknowledgement). do NOT call \`create_issue_comment\` for review output.
 
-   Same callout-intensity ladder as Review mode — \`[!CAUTION]\` (large red, "will break") → \`[!IMPORTANT]\` (large purple, "must address before merging") → \`[!NOTE]\` (small blue, "FYI") → no callout (plain text). And the same Fix-button lever: the footer renders a Fix button on every non-approving review, so \`approved: true\` suppresses it. Wrapping mergeable feedback in \`[!IMPORTANT]\` trains users to click Fix on reviews that don't need fixing — pick the tier the author's actual next action justifies.
+   Same callout ladder as Review mode — \`[!CAUTION]\` (red, "will break") → \`[!IMPORTANT]\` (purple, "must address before merging") → \`> ℹ️ ...\` (informational, "minor suggestions only") → \`> ✅ ...\` (green friendly, "no concerns"). Same Fix-button lever: the footer renders a Fix button on every non-approving review, so \`approved: true\` suppresses it. Wrapping mergeable feedback in \`[!IMPORTANT]\` trains users to click Fix on reviews that don't need fixing — pick the tier the author's actual next action justifies.
 
    Follow these rules:
    - note: the first create_pull_request_review submission may error with a one-time diff-coverage nudge listing unread TOC regions. retry the same call to proceed — optionally after reading the listed ranges. the pre-flight will not block again this session.
    - IF NO NEW ISSUES, NON-SUBSTANTIVE CHANGES ONLY (trivial formatting, import reordering, comment tweaks): do NOT submit a review. Instead call \`${t("report_progress")}\` with a 1-2 sentence note explaining no review was warranted (e.g. "No new issues. Changes since last review are formatting-only."). this leaves a visible signal that the run completed.
    - ELSE IF NEW CRITICAL ISSUES (blocks merge — bugs, security, data loss, broken core flows): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!CAUTION]\\n> This PR introduces ...\`, then the Reviewed-changes summary.
    - ELSE IF NEW MUST-ADDRESS NON-CRITICAL FINDINGS (real consequences if shipped — incorrect behavior, missing validation, regressions the author should fix before merge): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> [!IMPORTANT]\\n> ...\`, then the Reviewed-changes summary. Do NOT use this tier for nits, style preferences, or "consider also" suggestions.
-   - ELSE IF NEW MINOR SUGGESTIONS ONLY (single-line nits, doc/comment polish, defer-able observations, "rough edges"): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens directly with \`Reviewed the following changes:\\n\` (NO alert blockquote), then the Reviewed-changes summary.
-   - ELSE IF INFORMATIONAL OBSERVATIONS (mergeable as-is, but worth surfacing — e.g. prior feedback addressed cleanly with one minor stale doc reference, or a noteworthy positive observation): call \`${t("create_pull_request_review")}\` with \`approved: true\`, NO inline comments, and the review body. body opens with \`> [!NOTE]\\n> ...\` alert, then the Reviewed-changes summary. If a point is concrete enough to anchor to a line, downgrade the whole review to "minor suggestions only" (\`approved: false\`) instead — \`[!NOTE]\` and inline comments don't mix.
-   - ELSE IF NO NEW ISSUES, SUBSTANTIVE CHANGES (new functionality, behavior changes, or fixes to prior review feedback): call \`${t("create_pull_request_review")}\` to create a PR review. If all previous reviews have been properly addressed and no new issues were discovered, you can set \`approved: true\`. body opens with \`No new issues. Reviewed the following changes:\\n\`, then the Reviewed-changes summary.`,
+   - ELSE IF NEW MINOR SUGGESTIONS ONLY (single-line nits, doc/comment polish, defer-able observations, "rough edges"): call \`${t("create_pull_request_review")}\` with \`approved: false\`, all comments, and the review body. body opens with \`> ℹ️ No critical issues — minor suggestions inline.\\n\\n\` (vary the wording after ℹ️ to fit the review), then the Reviewed-changes summary.
+   - ELSE IF INFORMATIONAL OBSERVATIONS (mergeable as-is, but worth surfacing — e.g. prior feedback addressed cleanly with one minor stale doc reference, or a noteworthy positive observation): call \`${t("create_pull_request_review")}\` with \`approved: true\`, NO inline comments, and the review body. body opens with \`> ✅ No new issues found.\\n\\n\` (or similar friendly green opener), then the Reviewed-changes summary. If a point is concrete enough to anchor to a line, downgrade the whole review to "minor suggestions only" (\`approved: false\`) instead — the ✅ signals "no action needed", which contradicts an actionable anchor.
+   - ELSE IF NO NEW ISSUES, SUBSTANTIVE CHANGES (new functionality, behavior changes, or fixes to prior review feedback): call \`${t("create_pull_request_review")}\` to create a PR review. If all previous reviews have been properly addressed and no new issues were discovered, set \`approved: true\`. body opens with \`> ✅ No new issues found.\\n\\nReviewed the following changes:\\n\`, then the Reviewed-changes summary.`,
     },
     {
       name: "Plan",

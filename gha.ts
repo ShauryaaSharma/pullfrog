@@ -34,8 +34,11 @@ config({ path: join(actionDir, ".env") });
 config({ path: join(repoRoot, ".env") });
 
 // host env vars that would actively conflict with the container's own
-// configuration (paths, identity, shell). everything else passes through.
+// configuration (paths, identity, shell, and outer-CI workflow-run identifiers
+// that don't apply to whatever repo the harness is acting against). everything
+// else passes through.
 const HOST_ONLY_VARS = new Set([
+  // paths / identity / shell — would clobber the container's testuser setup
   "PATH",
   "HOME",
   "USER",
@@ -63,6 +66,25 @@ const HOST_ONLY_VARS = new Set([
   "COLORTERM",
   "ITERM_PROFILE",
   "ITERM_SESSION_ID",
+  // outer-CI workflow-run identifiers — when `pnpm runtest smoke` runs inside
+  // pullfrog/app's CI, these refer to pullfrog/app's run, NOT the test repo
+  // the harness is acting against (e.g. pullfrog/test-repo). Anything inside
+  // the action that uses them as keys to look up state on the test repo (most
+  // notably `resolveRun()`'s `actions.listJobsForWorkflowRun(...)` call) will
+  // 404. Filtering them here means the action sees them as undefined and
+  // skips the lookup, instead of misdirecting it. `GITHUB_REPOSITORY` and
+  // `GITHUB_TOKEN` are NOT filtered — those are genuinely needed inside.
+  "GITHUB_RUN_ID",
+  "GITHUB_RUN_NUMBER",
+  "GITHUB_RUN_ATTEMPT",
+  "GITHUB_JOB",
+  "GITHUB_WORKFLOW",
+  "GITHUB_ACTION",
+  "GITHUB_REF",
+  "GITHUB_SHA",
+  "GITHUB_HEAD_REF",
+  "GITHUB_BASE_REF",
+  "GITHUB_TRIGGERING_ACTOR",
 ]);
 
 type Args = {

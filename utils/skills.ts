@@ -109,9 +109,25 @@ export function addSkill(params: {
   );
   if (result.status === 0) {
     log.success(`installed ${params.skill} skill (${params.agent})`);
-  } else {
-    const stderr = (result.stderr?.toString() || "").trim();
-    const errorMsg = result.error ? result.error.message : stderr;
-    log.info(`${params.skill} skill install failed: ${errorMsg}`);
+    return;
   }
+  // skills CLI uses a Clack-style TUI that prints errors to stdout (alongside
+  // spinner output), not stderr. report exit code + both streams + spawn
+  // error so failures aren't silent. tail-truncate streams to keep CI logs
+  // bounded.
+  const stdout = (result.stdout?.toString() || "").trim();
+  const stderr = (result.stderr?.toString() || "").trim();
+  const parts = [
+    `exit=${result.status ?? "null"} signal=${result.signal ?? "null"}`,
+    result.error ? `spawn error: ${result.error.message}` : null,
+    stderr ? `stderr:\n${tailLines(stderr, 20)}` : null,
+    stdout ? `stdout:\n${tailLines(stdout, 20)}` : null,
+  ].filter(Boolean);
+  log.warning(`${params.skill} skill install failed — ${parts.join(" | ")}`);
+}
+
+function tailLines(text: string, n: number): string {
+  const lines = text.split("\n");
+  if (lines.length <= n) return text;
+  return `...(truncated, last ${n} of ${lines.length} lines)\n${lines.slice(-n).join("\n")}`;
 }

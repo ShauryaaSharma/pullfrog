@@ -170,7 +170,11 @@ export const providers = {
         resolve: "google/gemini-3.1-pro-preview",
         openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
         preferred: true,
-        subagentModel: "gemini-flash",
+        // Inherit (subagents stay on Pro). Google has no in-between tier;
+        // dropping to Flash for review work was a meaningful capability cliff
+        // (Flash missed the catastrophic camelCase/snake_case mismatch in
+        // the v4 e2e test). Pro is cost-effective enough to use for both
+        // orchestrator and lenses.
       },
       "gemini-flash": {
         displayName: "Gemini Flash",
@@ -319,7 +323,7 @@ export const providers = {
         displayName: "Gemini Pro",
         resolve: "opencode/gemini-3.1-pro",
         openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
-        subagentModel: "gemini-flash",
+        // Inherit — see google/gemini-pro for rationale.
       },
       "gemini-flash": {
         displayName: "Gemini Flash",
@@ -432,7 +436,7 @@ export const providers = {
         displayName: "Gemini Pro",
         resolve: "openrouter/google/gemini-3.1-pro-preview",
         openRouterResolve: "openrouter/google/gemini-3.1-pro-preview",
-        subagentModel: "gemini-flash",
+        // Inherit — see google/gemini-pro for rationale.
       },
       "gemini-flash": {
         displayName: "Gemini Flash",

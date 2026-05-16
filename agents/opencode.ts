@@ -39,7 +39,11 @@ import {
   PULLFROG_OPENCODE_PLUGIN_FILENAME,
   PULLFROG_OPENCODE_PLUGIN_SOURCE,
 } from "./opencodePlugin.ts";
-import { buildLearningsReflectionPrompt, runPostRunRetryLoop } from "./postRun.ts";
+import {
+  buildLearningsReflectionPrompt,
+  runPostRunRetryLoop,
+  shouldRunReflection,
+} from "./postRun.ts";
 import { REVIEWER_AGENT_NAME, REVIEWER_SYSTEM_PROMPT } from "./reviewer.ts";
 import { formatWithLabel, ORCHESTRATOR_LABEL, SessionLabeler } from "./sessionLabeler.ts";
 import {
@@ -95,24 +99,20 @@ type OpenCodeConfig = {
 // on merge in session/llm.ts), so the env var is the only working knob.
 
 /**
- * upstream opencode hardcodes `thinkingLevel: "high"` as the default for every
- * gemini-3 model on the direct google SDK (`provider/transform.ts` `options()`).
- * that adds 30-60s of pre-tool-call TTFT and 5-46s of post-tool jabber per turn,
- * which is overkill for agentic loops where most steps are tool-routing
- * decisions. we override to "medium" for the curated slugs we ship in
- * `action/models.ts`; users who want max quality can still pick the `-high`
- * variant explicitly. flash stays at "medium" too — low-effort flash is
- * visibly worse on harder tasks and the latency savings aren't meaningful
- * (flash is already fast). other gemini-3 ids that exist in models.dev but
- * aren't in our curated alias map keep the upstream `"high"` default.
- *
- * keyed by upstream api id (matches the slugs in `action/models.ts`). the
- * merge order in opencode `session/llm.ts` is `base ← model.options ← agent.options ← variant`,
- * deep-merged — so an explicit `--variant high` still wins, and explicit
- * model.options in a user-provided opencode config would also win.
+ * Build the `provider.google.models[id].options` map that pins every direct-Google
+ * Gemini alias to `thinkingLevel: "high"`. Sourced from the model registry so
+ * adding/renaming a Google alias in `action/models.ts` flows through automatically.
  */
-const GEMINI_3_DIRECT_THINKING_LEVEL = "medium";
-const GEMINI_3_DIRECT_API_IDS = ["gemini-3.1-pro-preview", "gemini-3-flash-preview"];
+export function geminiHighThinkingOverrides(): Record<string, { options: object }> {
+  return Object.fromEntries(
+    modelAliases
+      .filter((a) => a.provider === "google")
+      .map((a) => [
+        a.resolve.replace(/^google\//, ""),
+        { options: { thinkingConfig: { thinkingLevel: "high" } } },
+      ])
+  );
+}
 
 function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): string {
   const config: OpenCodeConfig = {
@@ -142,20 +142,9 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
     // the "Parallel tool execution" guidance in utils/instructions.ts so the
     // model actually reaches for it. see wiki/prompt.md.
     experimental: { batch_tool: true },
-    provider: {
-      google: {
-        models: Object.fromEntries(
-          GEMINI_3_DIRECT_API_IDS.map((id) => [
-            id,
-            {
-              options: {
-                thinkingConfig: { thinkingLevel: GEMINI_3_DIRECT_THINKING_LEVEL },
-              },
-            },
-          ])
-        ),
-      },
-    },
+    // gemini-3 thinking pinned to high for review depth; gpt and anthropic
+    // effort set elsewhere (gpt: upstream default, anthropic: --effort flag in claude.ts).
+    provider: { google: { models: geminiHighThinkingOverrides() } },
   };
 
   if (model) {
@@ -1304,9 +1293,10 @@ export const opencode = agent({
       ctx,
       initialResult: result,
       initialUsage: result.usage,
-      reflectionPrompt: ctx.toolState.learningsFilePath
-        ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
-        : undefined,
+      reflectionPrompt:
+        ctx.toolState.learningsFilePath && shouldRunReflection(ctx.toolState.selectedMode)
+          ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
+          : undefined,
       resume: async (c) =>
         runOpenCode({
           ...runParams,

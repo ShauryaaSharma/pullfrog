@@ -66,20 +66,23 @@ describe("deriveSubagentModels", () => {
     });
   });
 
-  describe("google (gemini) — pro → flash", () => {
-    it("direct google", () => {
+  describe("google (gemini) — inherit (Pro for both orchestrator and lenses)", () => {
+    // pro → flash was a meaningful capability cliff (Flash missed catastrophic
+    // cross-file bugs the v4 e2e test surfaced); Pro is cost-effective enough
+    // to keep on for lenses too. Google has no in-between tier.
+    it("direct google pro inherits", () => {
       expect(deriveSubagentModels("google/gemini-3.1-pro-preview")).toEqual({
-        reviewer: "google/gemini-3-flash-preview",
+        reviewer: undefined,
       });
     });
-    it("opencode-vendored gemini-pro", () => {
+    it("opencode-vendored gemini-pro inherits", () => {
       expect(deriveSubagentModels("opencode/gemini-3.1-pro")).toEqual({
-        reviewer: "opencode/gemini-3-flash",
+        reviewer: undefined,
       });
     });
-    it("openrouter-google-gemini-pro", () => {
+    it("openrouter gemini-pro inherits", () => {
       expect(deriveSubagentModels("openrouter/google/gemini-3.1-pro-preview")).toEqual({
-        reviewer: "openrouter/google/gemini-3-flash-preview",
+        reviewer: undefined,
       });
     });
     it("flash has no downshift", () => {

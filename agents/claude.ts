@@ -33,7 +33,11 @@ import {
 import { ThinkingTimer } from "../utils/timer.ts";
 import type { TodoTracker } from "../utils/todoTracking.ts";
 import { getDevDependencyVersion } from "../utils/version.ts";
-import { buildLearningsReflectionPrompt, runPostRunRetryLoop } from "./postRun.ts";
+import {
+  buildLearningsReflectionPrompt,
+  runPostRunRetryLoop,
+  shouldRunReflection,
+} from "./postRun.ts";
 import { REVIEWER_AGENT_NAME, REVIEWER_SYSTEM_PROMPT } from "./reviewer.ts";
 import { formatWithLabel, ORCHESTRATOR_LABEL, SessionLabeler } from "./sessionLabeler.ts";
 import {
@@ -966,9 +970,10 @@ export const claude = agent({
       ctx,
       initialResult: result,
       initialUsage: result.usage,
-      reflectionPrompt: ctx.toolState.learningsFilePath
-        ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
-        : undefined,
+      reflectionPrompt:
+        ctx.toolState.learningsFilePath && shouldRunReflection(ctx.toolState.selectedMode)
+          ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
+          : undefined,
       canResume: (r) => Boolean(r.sessionId),
       resume: async (c) => {
         const sessionId = c.previousResult.sessionId;
