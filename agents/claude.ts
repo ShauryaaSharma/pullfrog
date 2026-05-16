@@ -926,6 +926,16 @@ export const claude = agent({
       env.CLAUDE_CODE_USE_BEDROCK = "1";
     }
 
+    // claude-code's `Vw()` resolver prefers ANTHROPIC_API_KEY over the OAuth
+    // token when both are set, so we strip the API key to fall through to the
+    // Max-subscription path. bedrock route uses AWS creds and is excluded.
+    if (env.CLAUDE_CODE_OAUTH_TOKEN && !isBedrockRoute && env.ANTHROPIC_API_KEY) {
+      log.debug(
+        "» CLAUDE_CODE_OAUTH_TOKEN present — stripping ANTHROPIC_API_KEY from Claude Code env so the OAuth subscription is used"
+      );
+      delete env.ANTHROPIC_API_KEY;
+    }
+
     const repoDir = process.cwd();
 
     log.info(`» effort: ${effort}`);
