@@ -96,6 +96,27 @@ function detectSandboxMethod(): SandboxMethod {
 const PROC_CLEANUP =
   "umount /proc 2>/dev/null; umount /proc 2>/dev/null; mount -t proc proc /proc 2>/dev/null;";
 
+// block container-runtime sockets that would otherwise grant a PID-namespace
+// escape: `docker run --pid=host --privileged busybox cat /proc/<pid>/environ`
+// reads the parent action process's env (which contains user secrets) even
+// though the sandbox itself is unsharing PIDs. GHA `ubuntu-latest` puts the
+// `runner` user in the `docker` group by default, so the socket is reachable
+// without sudo. bind-mounting /dev/null on top inside the sandbox's mount
+// namespace makes the socket unreachable from sandboxed shells without
+// touching the host runner (so it doesn't break user workflow steps that
+// run before/after pullfrog and legitimately need docker). same trick for
+// podman/containerd/cri-o sockets — all silent-fail if the path is missing.
+const SOCKET_CLEANUP = [
+  "/var/run/docker.sock",
+  "/run/docker.sock",
+  "/var/run/podman/podman.sock",
+  "/run/podman/podman.sock",
+  "/run/containerd/containerd.sock",
+  "/var/run/crio/crio.sock",
+]
+  .map((path) => `mount --bind /dev/null ${path} 2>/dev/null;`)
+  .join(" ");
+
 function spawnShell(params: SpawnParams): ChildProcess {
   const spawnOpts = { env: params.env, cwd: params.cwd, stdio: params.stdio, detached: true };
   const sandboxMethod = detectSandboxMethod();
@@ -110,7 +131,14 @@ function spawnShell(params: SpawnParams): ChildProcess {
   if (sandboxMethod === "unshare") {
     return spawn(
       "unshare",
-      ["--pid", "--fork", "--mount-proc", "bash", "-c", `${PROC_CLEANUP} ${params.command}`],
+      [
+        "--pid",
+        "--fork",
+        "--mount-proc",
+        "bash",
+        "-c",
+        `${PROC_CLEANUP} ${SOCKET_CLEANUP} ${params.command}`,
+      ],
       spawnOpts
     );
   }
@@ -143,7 +171,7 @@ function spawnShell(params: SpawnParams): ChildProcess {
         "--mount-proc",
         "bash",
         "-c",
-        `${PROC_CLEANUP} exec su -p -s /bin/bash ${username} -c '${escaped}'`,
+        `${PROC_CLEANUP} ${SOCKET_CLEANUP} exec su -p -s /bin/bash ${username} -c '${escaped}'`,
       ],
       { ...spawnOpts, env: {} }
     );

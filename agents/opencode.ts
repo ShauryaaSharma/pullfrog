@@ -135,15 +135,19 @@ function buildSecurityConfig(ctx: AgentRunContext, model: string | undefined): s
       log.info(`» subagent models: reviewfrog=${reviewerModel}`);
       return cfg;
     })(),
-    // opt into opencode's experimental `batch` tool (added in
-    // anomalyco/opencode PR #2983, opt-in via `experimental.batch_tool`). it
-    // exposes a single `batch` tool that runs 1-25 independent tool calls
-    // (read/grep/glob/bash/etc.) concurrently in one assistant turn, which
-    // collapses the dominant grep→20×read pattern into a single round trip.
-    // edits are explicitly disallowed inside the batch upstream. paired with
-    // the "Parallel tool execution" guidance in utils/instructions.ts so the
-    // model actually reaches for it. see wiki/prompt.md.
-    experimental: { batch_tool: true },
+    // NOTE: `experimental.batch_tool` was enabled in #719 to bundle 1-25
+    // independent tool calls into one round trip, but the batch tool rejects
+    // MCP/"external" tools with `"Tool '<name>' not in registry. External
+    // tools (MCP, environment) cannot be batched - call them directly."`
+    // (anomalyco/opencode PR #2983 design). when a model emits parallel
+    // tool_use blocks containing `pullfrog_*` calls, opencode internally
+    // routes them through batch — they all fail, the model misreads the
+    // error as "the tool doesn't exist", and gives up. caught in CI by
+    // `restricted-opencode` after a `lens:` subagent dispatched parallel
+    // `pullfrog_shell` calls and concluded shell was unavailable.
+    // native parallel tool_use (multiple tool_use blocks per assistant
+    // message) still works without batch_tool for both built-in and MCP
+    // tools, so we lose only the batch wrapper, not parallelism.
     // gemini-3 thinking pinned to high for review depth; gpt and anthropic
     // effort set elsewhere (gpt: upstream default, anthropic: --effort flag in claude.ts).
     provider: { google: { models: geminiHighThinkingOverrides() } },

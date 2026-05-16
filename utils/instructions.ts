@@ -297,11 +297,9 @@ For maximum efficiency, whenever you need to perform multiple independent operat
 - listing multiple directories
 - inspecting multiple MCP tools or resources
 
-Do NOT parallelize operations that depend on prior output (e.g. create a file then read it), or ordered stateful mutations. Edits are not parallelizable — sequence those normally.${
-    ctx.agentId === "opencode"
-      ? `\n\nOn OpenCode you also have a \`batch\` tool that bundles 1-25 independent calls into one wrapper call. Reach for it whenever you have >=2 independent calls. Native parallel tool_use and \`batch\` both achieve one round trip instead of N — use whichever your provider supports best.`
-      : `\n\nEmit multiple \`tool_use\` blocks in the same assistant message for independent calls — the runtime executes them concurrently. Do not wait for one tool result before issuing the next independent call.`
-  }
+Do NOT parallelize operations that depend on prior output (e.g. create a file then read it), or ordered stateful mutations. Edits are not parallelizable — sequence those normally.
+
+Emit multiple \`tool_use\` blocks in the same assistant message for independent calls — the runtime executes them concurrently. Do not wait for one tool result before issuing the next independent call.
 
 ### Command execution
 
