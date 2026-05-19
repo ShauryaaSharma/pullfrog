@@ -693,6 +693,8 @@ export function ListPullRequestReviewsTool(ctx: ToolContext) {
           state: review.state,
           user: review.user?.login,
           submitted_at: review.submitted_at,
+          commit_id: review.commit_id,
+          html_url: review.html_url,
         })),
         count: reviews.length,
       };
