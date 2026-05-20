@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { modelAliases, resolveDisplayAlias } from "../models.ts";
 
-// ── catalog drift tests — main-only ─────────────────────────────────────────────
+// ── catalog drift tests ─────────────────────────────────────────────────────
 //
 // these tests fetch models.dev and openrouter.ai to verify that every alias in
 // models.ts still corresponds to a live, non-deprecated upstream model. upstream
 // catalog drift (new model ships, old model deprecated, etc.) causes failures
-// that are unrelated to any code change in the PR — so these run only on main.
+// that are unrelated to any code change in a typical PR — so these are gated
+// off for normal PRs and run only on main pushes plus PRs from the
+// `pullfrog/models-bump` branch (the bot-authored bump PR — this test IS the
+// integrity gate for its edits, so it has to run on the PR itself, not just
+// post-merge).
 //
 // the registry is kept in sync with upstreams by the `models-bump` cron
 // (`.github/workflows/models-bump.yml`), which scans models.dev every 12h and
@@ -15,7 +19,6 @@ import { modelAliases, resolveDisplayAlias } from "../models.ts";
 // for that PR — they catch typos, removed models, and openrouter mismatches.
 //
 // run locally with `pnpm test:catalog`.
-// in CI, gated to push events on main.
 
 type ModelsDevModel = {
   name: string;

@@ -194,12 +194,8 @@ function buildAliasesMatrix(input: {
   changedFiles: string[];
   full: boolean;
   filter: string;
-  includePassthroughs: boolean;
 }): SlugEntry[] {
-  const all = buildAliasMatrix({
-    filter: input.filter,
-    includePassthroughs: input.includePassthroughs,
-  });
+  const all = buildAliasMatrix({ filter: input.filter });
   const coverageByProvider = new Map(providers.map((p) => [p.name, p.coverage]));
   return all.filter((entry) => {
     const provider = entry.slug.split("/")[0];
@@ -214,14 +210,13 @@ function buildAliasesMatrix(input: {
 function main(): void {
   const full = process.env.FULL === "1";
   const filter = process.env.MATRIX_FILTER?.trim().toLowerCase() ?? "";
-  const includePassthroughs = process.env.INCLUDE_PASSTHROUGHS === "1";
   const changedFiles = full ? [] : readChangedFiles();
 
   const output: MatrixOutput = {
     agents: buildAgentsMatrix({ changedFiles, full }),
     agnostic: buildAgnosticMatrix({ changedFiles, full }),
     flagships: buildFlagshipsMatrix({ changedFiles, full, filter }),
-    aliases: buildAliasesMatrix({ changedFiles, full, filter, includePassthroughs }),
+    aliases: buildAliasesMatrix({ changedFiles, full, filter }),
   };
 
   process.stdout.write(JSON.stringify(output));

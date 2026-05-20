@@ -29,6 +29,7 @@ export const ALWAYS_RUN_ALL: string[] = [
   "action/test/run.ts",
   "action/test/utils.ts",
   "action/test/matrix.ts",
+  "action/test/list-aliases.ts",
   "action/test/coverage.ts",
   "action/test/providers.ts",
   // boot + lifecycle
