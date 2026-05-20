@@ -21,7 +21,7 @@ export const PR_SUMMARY_FORMAT = `### Default format
 
 The body has at most three parts in this exact order:
 
-1. **Reviewed changes preamble** — one bolded inline lead-in describing what was reviewed in this run, a bullet list of the substantive changes, an italic TL;DR commit-range line, and an HTML comment carrying review metadata for downstream agents.
+1. **Reviewed changes preamble** — one bolded inline lead-in describing what was reviewed in this run, a bullet list of the substantive changes, and an HTML comment carrying review metadata for downstream agents.
 2. **Cross-cutting issue sections** (zero or more) — one \`### \` heading per concern, with a human-readable problem write-up and a collapsed \`<details>Technical details</details>\` block underneath.
 3. **\`### ℹ️ Nitpicks\`** at the very bottom (only if there are nits worth surfacing in the body) — a flat bullet list, no technical-details block.
 
@@ -35,8 +35,6 @@ Open with a single bolded inline lead-in followed immediately by the bullet list
 **Reviewed changes** — one sentence on what was reviewed in this run. For Review (initial), this is what the PR does and why. For IncrementalReview, this is what changed since the prior pullfrog review. Focus on intent, not mechanics.
 
 - **Short human-readable title** — 1 sentence per substantive change. Write a short prose phrase; when you name a file, type, or function, put that name in backticks (e.g. **Add \\\`TodoTracker\\\` for live checklists**). A reviewer should understand the full reviewed scope from this list alone — this IS the dispassionate "what was reviewed and what changed" overview, so cover the substantive changes, not just the loudest ones.
-
-_Reviewed {start_sha_short}…{head_sha_short} ({commit_count} commit{s})._
 
 <!--
 Pullfrog review metadata — for any agent (or human-with-agent) reading this
@@ -60,8 +58,6 @@ state before acting on findings.
 - Submitted at: {iso_timestamp}
 -->
 \`\`\`
-
-The TL;DR line uses **bare 7-character SHAs** (no backticks, no surrounding link) — GitHub auto-links bare commit SHAs to the commit page; backticking them suppresses the auto-link. \`{start_sha_short}\` is the PR base SHA for Review and the prior pullfrog review's commit_id for IncrementalReview; \`…\` is a single ellipsis (U+2026), not three dots, which keeps both SHAs as separate lex tokens for the auto-linker. Use "commit" / "commits" appropriately for \`{commit_count}\`.
 
 Pull every metadata field from the \`checkout_pr\` tool's response — file count, commit count, base/head ref + SHA, the commit list. For \`IncrementalReview\` runs, populate \`Prior pullfrog review\` with the prior review's commit_id (short SHA) and \`html_url\` from \`list_pull_request_reviews\`.
 
@@ -468,7 +464,7 @@ ${PR_SUMMARY_FORMAT}`,
 
    draft inline comments with NEW line numbers from the full PR diff — attach a \`<details>Technical details</details>\` block to any inline comment whose fix is non-trivial or has cross-file implications (see Inline technical details in the format below). every comment must be actionable, 2-3 sentences max in the visible part.
 
-9. **build the review body**: use the same default format as Review mode (preamble + optional cross-cutting \`### \` sections + optional \`### ℹ️ Nitpicks\`) — scoped to the **incremental delta**, not the full PR. The "Reviewed changes" bullets describe what changed since the prior pullfrog review (each bullet starts with a past-tense verb, e.g. \`- Extracted shared CLI runtime into a single module\`); the TL;DR commit-range line uses the prior review's commit_id as \`{start_sha_short}\` so GitHub renders both the prior-review SHA and the current head SHA as auto-links. Do NOT include a separate "Prior review feedback" checklist — that's tracked in the rolling PR summary snapshot for the next agent run, and surfacing it in the user-facing body is noise (changes that addressed prior feedback are already covered by the Reviewed-changes bullets). In some cases you may receive a complete diff for the whole PR instead of an incremental one; when this happens, determine what changed since Pullfrog's most recent review yourself before drafting bullets.
+9. **build the review body**: use the same default format as Review mode (preamble + optional cross-cutting \`### \` sections + optional \`### ℹ️ Nitpicks\`) — scoped to the **incremental delta**, not the full PR. The "Reviewed changes" bullets describe what changed since the prior pullfrog review (each bullet starts with a past-tense verb, e.g. \`- Extracted shared CLI runtime into a single module\`). Do NOT include a separate "Prior review feedback" checklist — that's tracked in the rolling PR summary snapshot for the next agent run, and surfacing it in the user-facing body is noise (changes that addressed prior feedback are already covered by the Reviewed-changes bullets). In some cases you may receive a complete diff for the whole PR instead of an incremental one; when this happens, determine what changed since Pullfrog's most recent review yourself before drafting bullets.
 
 10. Submit — every run must end with EXACTLY ONE of \`${t("create_pull_request_review")}\` (substantive review) or \`${t("report_progress")}\` (no-review acknowledgement). do NOT call \`create_issue_comment\` for review output.
 
