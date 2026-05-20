@@ -17,6 +17,7 @@ import {
 import { resolveAgent, resolveModel } from "./utils/agent.ts";
 import { validateAgentApiKey } from "./utils/apiKeys.ts";
 import { resolveBody } from "./utils/body.ts";
+import { selectFallbackModelIfNeeded } from "./utils/byokFallback.ts";
 import { log } from "./utils/cli.ts";
 import { recordDiffReadFromToolUse } from "./utils/diffCoverage.ts";
 import { onExitSignal } from "./utils/exitHandler.ts";
@@ -203,18 +204,46 @@ export async function main(): Promise<MainResult> {
     await using gitAuthServer = await startGitAuthServer(tmpdir);
     setGitAuthServer(gitAuthServer);
 
-    const resolvedModel = payload.proxyModel ? undefined : resolveModel({ slug: payload.model });
+    const initialResolvedModel = payload.proxyModel
+      ? undefined
+      : resolveModel({ slug: payload.model });
+
+    // BYOK fallback: if the configured model needs a key the runner doesn't
+    // have, swap to a free OpenCode model so the run can still produce
+    // value. Without this, the agent launches with no key, the LLM provider
+    // 401s, and the run dies in seconds with a synthetic "Invalid API key"
+    // — exactly the silent-churn pattern that took out 15 accounts before
+    // this landed. Router/proxy runs are skipped (Pullfrog mints the key);
+    // see `selectFallbackModelIfNeeded` for the full skip set.
+    const fallback = selectFallbackModelIfNeeded({
+      resolvedModel: initialResolvedModel,
+      proxyModel: payload.proxyModel,
+    });
+    // when fallback engages we bypass `resolveModel` for the new slug —
+    // `PULLFROG_MODEL` has higher priority than the slug arg inside that
+    // helper and would otherwise re-override back to the unkeyed model.
+    // the free fallback slug is already a CLI-ready specifier, so using
+    // it verbatim is correct and avoids the override.
+    const effectiveSlug = fallback.fallback ? fallback.to : payload.model;
+    const resolvedModel = fallback.fallback ? fallback.to : initialResolvedModel;
+    if (fallback.fallback) {
+      log.warning(
+        `» fell back from ${fallback.from} to ${fallback.to} — no BYOK key present in runner env. add a provider key in repo secrets to use ${fallback.from} instead.`
+      );
+      toolState.modelFallback = { from: fallback.from };
+    }
+
     const agent = resolveAgent({ model: resolvedModel });
 
     // surface the effective model in comment/review footers. payload.model is
     // just the stored slug (often undefined for router/oss runs that derive
     // the target from proxyModel). matching priority with resolveModelForLog
     // so the "Using `…`" badge reflects what actually ran.
-    toolState.model = payload.proxyModel ?? resolvedModel ?? payload.model;
+    toolState.model = payload.proxyModel ?? resolvedModel ?? effectiveSlug;
 
     validateAgentApiKey({
       agent,
-      model: payload.proxyModel ?? resolvedModel ?? payload.model,
+      model: payload.proxyModel ?? resolvedModel ?? effectiveSlug,
       owner: runContext.repo.owner,
       name: runContext.repo.name,
     });

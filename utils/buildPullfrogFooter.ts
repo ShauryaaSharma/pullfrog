@@ -1,4 +1,4 @@
-import { modelAliases, resolveDisplayAlias } from "../models.ts";
+import { getModelProvider, modelAliases, providers, resolveDisplayAlias } from "../models.ts";
 
 export const PULLFROG_DIVIDER = "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->";
 
@@ -23,20 +23,41 @@ export interface BuildPullfrogFooterParams {
   customParts?: string[] | undefined;
   /** model slug from payload (e.g., "anthropic/claude-opus"). shown in footer as "Using `Model Name`" */
   model?: string | undefined;
+  /**
+   * When the action engaged the BYOK fallback, this is the slug the user
+   * had configured (e.g. "anthropic/claude-opus") — the footer renders
+   * `Using <free model> (credentials for <configured> not configured)`
+   * so the substitution is visible in PR comments + reviews.
+   */
+  fallbackFrom?: string | undefined;
 }
 
-function formatModelLabel(slug: string): string {
-  // walk the fallback chain so a deprecated stored slug shows the model the
-  // run actually executed against (e.g. "GPT", not "GPT Codex").
+/** Provider display name (e.g. "Anthropic") for the slug, or the raw provider segment as a fallback. */
+function providerDisplayName(slug: string): string {
+  try {
+    const key = getModelProvider(slug);
+    const meta = providers[key as keyof typeof providers];
+    return meta?.displayName ?? key;
+  } catch {
+    // raw IDs without a `/` (Bedrock model IDs) — never reach this function
+    // in practice because the BYOK fallback skips Bedrock, but defensively
+    // return the slug itself rather than throw if it ever does.
+    return slug;
+  }
+}
+
+function formatModelLabel(params: { model: string; fallbackFrom?: string | undefined }): string {
   const alias =
-    resolveDisplayAlias(slug) ??
+    resolveDisplayAlias(params.model) ??
     // reverse-lookup: when the caller passes an effective model (proxy or
     // resolved target like "openrouter/anthropic/claude-opus-4.7") instead of
     // a stored alias slug, find the alias whose resolve target matches so we
     // still render a friendly display name.
-    modelAliases.find((a) => a.resolve === slug || a.openRouterResolve === slug);
-  if (!alias) return `\`${slug}\``;
-  return alias.isFree ? `\`${alias.displayName}\` (free)` : `\`${alias.displayName}\``;
+    modelAliases.find((a) => a.resolve === params.model || a.openRouterResolve === params.model);
+  const displayName = alias?.displayName ?? params.model;
+  const base = alias?.isFree ? `\`${displayName}\` (free)` : `\`${displayName}\``;
+  if (!params.fallbackFrom) return base;
+  return `${base} (credentials for ${providerDisplayName(params.fallbackFrom)} not configured)`;
 }
 
 /**
@@ -64,7 +85,9 @@ export function buildPullfrogFooter(params: BuildPullfrogFooterParams): string {
   }
 
   if (params.model) {
-    parts.push(`Using ${formatModelLabel(params.model)}`);
+    parts.push(
+      `Using ${formatModelLabel({ model: params.model, fallbackFrom: params.fallbackFrom })}`
+    );
   }
 
   const allParts = [...parts, "[𝕏](https://x.com/pullfrogai)"];

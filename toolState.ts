@@ -156,6 +156,12 @@ export interface ToolState {
   output?: string;
   usageEntries: AgentUsage[];
   model?: string | undefined;
+  // set by main.ts when the BYOK fallback engaged (configured model needed
+  // a provider key the runner didn't have). carried into PR-comment footers
+  // so users can see "Using <free model> (credentials for <configured> not
+  // configured)" rather than just being silently downgraded. literal record
+  // of an event that happened — matches the ToolState design rule.
+  modelFallback?: { from: string } | undefined;
   todoTracker?: TodoTracker | undefined;
   diffCoverage?: DiffCoverageState | undefined;
   // mutable handle the agent harness writes to as a run progresses (recent
