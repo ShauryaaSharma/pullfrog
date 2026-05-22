@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_PROXY_MODEL,
   getModelEnvVars,
   getModelProvider,
   isBedrockAnthropicId,
@@ -131,6 +132,12 @@ describe("resolveDisplayAlias", () => {
 
   it("returns undefined for unknown slug", () => {
     expect(resolveDisplayAlias("bogus/nope")).toBeUndefined();
+  });
+});
+
+describe("DEFAULT_PROXY_MODEL", () => {
+  it("tracks moonshotai/kimi-k2 openRouterResolve", () => {
+    expect(DEFAULT_PROXY_MODEL).toBe(resolveOpenRouterModel("moonshotai/kimi-k2"));
   });
 });
 

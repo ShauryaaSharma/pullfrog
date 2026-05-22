@@ -570,6 +570,13 @@ export const modelAliases: ModelAlias[] = Object.entries(providers).flatMap(
     }))
 );
 
+/** OpenRouter target when Router or OSS funding is active and `repo.model` is null. */
+const defaultProxyAlias = modelAliases.find((a) => a.slug === "moonshotai/kimi-k2");
+if (!defaultProxyAlias?.openRouterResolve) {
+  throw new Error("DEFAULT_PROXY_MODEL: moonshotai/kimi-k2 missing openRouterResolve");
+}
+export const DEFAULT_PROXY_MODEL = defaultProxyAlias.openRouterResolve;
+
 // ── resolution ─────────────────────────────────────────────────────────────────
 
 /** resolve a model slug to its concrete models.dev specifier (e.g. "anthropic/claude-opus-4-6") */

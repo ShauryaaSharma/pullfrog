@@ -29,6 +29,7 @@ export function formatMcpToolRef(agentId: AgentId, toolName: string): string {
 // model alias registry lives in models.ts — re-exported here for shared access
 export type { ModelAlias, ModelProvider, ProviderConfig } from "./models.ts";
 export {
+  DEFAULT_PROXY_MODEL,
   getModelEnvVars,
   getModelManagedCredentials,
   getModelProvider,

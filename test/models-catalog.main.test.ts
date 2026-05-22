@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelAliases, resolveDisplayAlias } from "../models.ts";
+import { DEFAULT_PROXY_MODEL, modelAliases, resolveDisplayAlias } from "../models.ts";
 
 // ── catalog drift tests ─────────────────────────────────────────────────────
 //
@@ -97,6 +97,29 @@ describe("openRouterResolve models.dev validity", async () => {
       ).toBeDefined();
     });
   }
+});
+
+describe("DEFAULT_PROXY_MODEL models.dev validity", async () => {
+  const data = await api;
+  const parsed = parseResolve(DEFAULT_PROXY_MODEL);
+
+  it(`${DEFAULT_PROXY_MODEL} exists on models.dev`, () => {
+    const providerData = data[parsed.provider];
+    expect(providerData, `provider "${parsed.provider}" not found on models.dev`).toBeDefined();
+    const model = providerData.models[parsed.modelId];
+    expect(
+      model,
+      `model "${parsed.modelId}" not found under ${parsed.provider} on models.dev`
+    ).toBeDefined();
+  });
+
+  it(`${DEFAULT_PROXY_MODEL} is not deprecated on models.dev`, () => {
+    const model = data[parsed.provider]?.models[parsed.modelId];
+    if (!model) return;
+    expect(model.status, `${DEFAULT_PROXY_MODEL} is deprecated on models.dev`).not.toBe(
+      "deprecated"
+    );
+  });
 });
 
 type OpenRouterModel = { id: string };

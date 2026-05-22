@@ -16,6 +16,7 @@ export type {
   WriteablePayload,
 } from "../external.ts";
 export {
+  DEFAULT_PROXY_MODEL,
   getModelEnvVars,
   getModelManagedCredentials,
   getModelProvider,
