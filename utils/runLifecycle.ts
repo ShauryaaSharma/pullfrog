@@ -27,13 +27,12 @@ import type { AgentResult } from "../agents/shared.ts";
 import { deleteProgressComment } from "../mcp/comment.ts";
 import type { ToolContext } from "../mcp/server.ts";
 import type { ToolState } from "../toolState.ts";
-import { formatApiKeyErrorSummary, isApiKeyAuthError } from "./apiKeys.ts";
 import { formatUsageSummary, log, writeSummary } from "./cli.ts";
 import { reportErrorToComment } from "./errorReport.ts";
 import { persistLearnings } from "./learnings.ts";
 import { persistSummary } from "./prSummary.ts";
 import { postReviewCleanup } from "./reviewCleanup.ts";
-import type { RenderedRunError } from "./runErrorRenderer.ts";
+import { type RenderedRunError, renderRunError } from "./runErrorRenderer.ts";
 
 /**
  * Best-effort cleanup shared by both run-end paths:
@@ -57,9 +56,12 @@ export async function persistRunArtifacts(toolContext: ToolContext): Promise<voi
  *
  *   1. shared best-effort cleanup via `persistRunArtifacts`
  *   2. when the harness returned `success=false` (e.g. unsubmitted-review
- *      gate exhausted retries, stop-hook persistently failing), surface
- *      the error in the progress comment so the user sees it instead of a
- *      deleted-comment void
+ *      gate exhausted retries, stop-hook persistently failing), render via
+ *      `renderRunError` and surface the error in BOTH the progress comment
+ *      (rendered.comment) and the Actions job summary (rendered.summary,
+ *      prepended below in step 4) — same classifier as the catch path so
+ *      the user sees it instead of a deleted-comment void / empty summary
+ *      tab
  *   3. when the run succeeded and the progress comment was never finalized
  *      via `report_progress`, delete it (three sub-cases — orphan
  *      "Leaping into action" comment, abandoned checklist, agent wrote
@@ -78,18 +80,27 @@ export async function finalizeSuccessRun(input: {
 }): Promise<void> {
   await persistRunArtifacts(input.toolContext);
 
-  if (!input.result.success && input.toolState.progressComment) {
-    const rawError = input.result.error || "agent run failed";
-    const errorBody = isApiKeyAuthError(rawError)
-      ? formatApiKeyErrorSummary({
-          owner: input.repo.owner,
-          name: input.repo.name,
-          raw: rawError,
-        })
-      : rawError;
-    await reportErrorToComment({ toolState: input.toolState, error: errorBody }).catch((error) => {
-      log.debug(`failure error report failed: ${error}`);
-    });
+  // shared rendering for the !success branch — same classifier as the
+  // outer catch path (BillingError reclassify → hang → api-key → generic),
+  // so a harness-returned `{success: false}` lands an actionable error
+  // block in the job summary alongside the matching body in the progress
+  // comment. hang and generic get the `### ❌ Pullfrog failed` H3 banner;
+  // BillingError and api-key render their own provider-specific framing
+  // (no banner). renders once; reused for both surfaces below.
+  const rendered = !input.result.success
+    ? renderRunError({
+        errorMessage: input.result.error || "agent run failed",
+        repo: input.repo,
+        agentDiagnostic: input.toolState.agentDiagnostic,
+      })
+    : null;
+
+  if (rendered && input.toolState.progressComment) {
+    await reportErrorToComment({ toolState: input.toolState, error: rendered.comment }).catch(
+      (error) => {
+        log.debug(`failure error report failed: ${error}`);
+      }
+    );
   }
 
   // create_pull_request_review owns its own deletion (see mcp/review.ts), so
@@ -110,7 +121,7 @@ export async function finalizeSuccessRun(input: {
   try {
     const usageSummary = formatUsageSummary(input.toolState.usageEntries);
     const body = input.toolState.lastProgressBody || input.result.output;
-    const parts = [body, usageSummary].filter(Boolean);
+    const parts = [rendered?.summary, body, usageSummary].filter(Boolean);
     if (parts.length > 0) {
       await writeSummary(parts.join("\n\n"));
     }
