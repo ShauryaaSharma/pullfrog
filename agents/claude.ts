@@ -933,7 +933,7 @@ export const claude = agent({
       ref: `vercel-labs/agent-browser@v${agentBrowserVersion}`,
       skill: "agent-browser",
       env: homeEnv,
-      agent: "claude",
+      agent: "claude-code",
     });
 
     installBundledSkills({ home: homeEnv.HOME });
