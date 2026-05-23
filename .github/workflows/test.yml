@@ -62,7 +62,7 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
       AWS_REGION: us-east-1
-      BEDROCK_MODEL_ID: us.anthropic.claude-opus-4-6-v1
+      BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-4-6
       VERTEX_SERVICE_ACCOUNT_JSON: ${{ secrets.VERTEX_SERVICE_ACCOUNT_JSON }}
       GOOGLE_CLOUD_PROJECT: pullfrog
       VERTEX_LOCATION: global
