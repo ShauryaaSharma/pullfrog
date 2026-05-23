@@ -1,5 +1,5 @@
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, realpathSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ShellPermission } from "../external.ts";
@@ -21,6 +21,96 @@ export function createTempDirectory(): string {
   process.env.PULLFROG_TEMP_DIR = sharedTempDir;
   log.info(`» created temp dir at ${sharedTempDir}`);
   return sharedTempDir;
+}
+
+/**
+ * snapshot-and-delete the GHA runner's known credential leak surfaces inside
+ * `$RUNNER_TEMP` before the agent spawns. without this, a shell-capable agent
+ * can grep:
+ *   - `_runner_file_commands/set_output_*` for `core.setOutput('token', ghs_…)`
+ *     calls made by earlier composite-action steps (e.g.
+ *     pullfrog/pullfrog/get-installation-token);
+ *   - `<uuid>.sh` rendered step scripts whose `run: |` body embeds
+ *     `${{ steps.token.outputs.token }}` literally (GHA expands BEFORE writing);
+ *   - `git-credentials-*.config` written by `actions/checkout@v6` for the
+ *     workflow GITHUB_TOKEN.
+ *
+ * the running bash process already has its own `.sh` open via fd, so the
+ * unlink is safe — `unlink` removes the dirent, the kernel keeps reading.
+ *
+ * preserves every `_runner_file_commands/` file path the runner pre-allocated
+ * for OUR step — `$GITHUB_OUTPUT`, `$GITHUB_ENV`, `$GITHUB_PATH`,
+ * `$GITHUB_STATE`, `$GITHUB_STEP_SUMMARY`. those are read by the runner
+ * AFTER we exit (or by our own `post:` hook), and wiping them would break
+ * pullfrog's `result` output, `post:` state handoff, and job summary.
+ *
+ * silent no-op when `$RUNNER_TEMP` is unset (local dev, `pnpm play`).
+ * per-file errors are tolerated — the runner may delete files between
+ * our readdir and our unlink.
+ */
+export function wipeRunnerLeakSurface(): void {
+  const runnerTemp = process.env.RUNNER_TEMP;
+  if (!runnerTemp) return;
+
+  const preserve = new Set<string>();
+  for (const envVar of [
+    "GITHUB_OUTPUT",
+    "GITHUB_ENV",
+    "GITHUB_PATH",
+    "GITHUB_STATE",
+    "GITHUB_STEP_SUMMARY",
+  ]) {
+    const path = process.env[envVar];
+    if (!path) continue;
+    try {
+      preserve.add(realpathSync(path));
+    } catch {
+      // path may not exist yet — preserve the literal in case it gets created later
+      preserve.add(path);
+    }
+  }
+
+  const wiped: string[] = [];
+
+  const tryUnlink = (path: string): void => {
+    let resolved = path;
+    try {
+      resolved = realpathSync(path);
+    } catch {
+      // file may already be gone — fall through to unlink for the race-tolerant path
+    }
+    if (preserve.has(resolved) || preserve.has(path)) return;
+    try {
+      unlinkSync(path);
+      wiped.push(path);
+    } catch {
+      // race-tolerant: file may have been deleted between readdir and unlink
+    }
+  };
+
+  const listDir = (dir: string): string[] => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  };
+
+  const fileCommandsDir = join(runnerTemp, "_runner_file_commands");
+  for (const entry of listDir(fileCommandsDir)) {
+    tryUnlink(join(fileCommandsDir, entry));
+  }
+
+  for (const entry of listDir(runnerTemp)) {
+    if (entry.endsWith(".sh") || /^git-credentials-.*\.config$/.test(entry)) {
+      tryUnlink(join(runnerTemp, entry));
+    }
+  }
+
+  if (wiped.length > 0) {
+    log.info(`» wiped ${wiped.length} leak-surface file(s) from $RUNNER_TEMP`);
+    log.debug(`» wiped paths: ${wiped.join(", ")}`);
+  }
 }
 
 /**

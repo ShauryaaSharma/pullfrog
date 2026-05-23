@@ -43,7 +43,7 @@ import {
 } from "./utils/runLifecycle.ts";
 import { logRunStartup } from "./utils/runStartupLog.ts";
 import { setEnvAllowlist } from "./utils/secrets.ts";
-import { createTempDirectory, setupGit } from "./utils/setup.ts";
+import { createTempDirectory, setupGit, wipeRunnerLeakSurface } from "./utils/setup.ts";
 import { killTrackedChildren } from "./utils/subprocess.ts";
 import { resolveTimeoutMs, TIMEOUT_DISABLED } from "./utils/time.ts";
 import { Timer } from "./utils/timer.ts";
@@ -144,6 +144,13 @@ export async function main(): Promise<MainResult> {
 
   // resolve tokens first — acquireNewToken needs OIDC env vars for token exchange
   await using tokenRef = await resolveTokens({ push: payload.push });
+
+  // wipe the GHA runner's known credential leak surface inside $RUNNER_TEMP
+  // before the agent spawns. our installation token is already in memory
+  // (tokenRef above), and setupGit's includeIf strip handles the matching
+  // dangling references in the user's .git/config. see wipeRunnerLeakSurface
+  // for the leak inventory and threat model.
+  wipeRunnerLeakSurface();
 
   // stash OIDC credentials in memory before wiping from process.env
   // the agent's shell commands can't access JS variables, so this is safe
