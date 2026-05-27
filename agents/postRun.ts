@@ -315,6 +315,8 @@ export function buildLearningsReflectionPrompt(filePath: string): string {
     `tool-quirk bullets are fine when you burned calls discovering the quirk and a future run would repeat them. write the workaround, not the war story.`,
     "",
     `if you have nothing substantively new to add AND the existing entries still look healthy and well-structured, leave the file alone — just reply "done" and stop. silence is a valid outcome.`,
+    "",
+    `do NOT call \`set_output\` during this turn. the task's result output was already set on the previous turn; this reflection is a meta-turn for the learnings file only. ignore any standing instruction to call \`set_output\` "when done" — it does not apply here.`,
   ].join("\n");
 }
 
@@ -374,7 +376,9 @@ export async function runPostRunRetryLoop<R extends AgentResult>(params: {
       // reflection is a meta-turn for editing the learnings file. it must not
       // affect the user-visible `result` output: some models (notably Gemini
       // Pro) re-trigger on the initial "call set_output when done" system
-      // instruction and clobber the task-turn value. snapshot + restore.
+      // instruction during this turn and clobber the task-turn value with the
+      // literal word "done". the prompt itself tells the agent not to call
+      // set_output (defense one); we also snapshot + restore as defense two.
       const preReflectionOutput = params.ctx.toolState.output;
       const reflectionResult = await params.resume({
         prompt: pendingReflection,
