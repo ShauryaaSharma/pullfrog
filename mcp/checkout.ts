@@ -394,8 +394,12 @@ export async function checkoutPrBranch(
 
   // self-hosted runners and cancelled jobs frequently leave stale .git/*.lock
   // files behind. without this sweep, the first fetch below aborts with
-  // `Unable to create '.git/shallow.lock': File exists` and the agent has to
-  // shell out to `rm -f` (issue #564).
+  // `Unable to create '.git/shallow.lock': File exists` (originally surfaced
+  // by agents shelling out to `rm -f` here, issue #564). doing it server-side
+  // is the only safe place — the tool description now explicitly forbids the
+  // agent from removing lock files, because manual removal during an in-flight
+  // fetch kills the running fetch and creates an inescapable retry loop
+  // (issue #860).
   cleanupStaleGitLocks();
 
   const isFork = pr.headRepoFullName !== pr.baseRepoFullName;
@@ -812,8 +816,8 @@ export function CheckoutPrTool(ctx: ToolContext) {
       "Returns diffPath pointing to the formatted diff file. " +
       "Example: `checkout_pr({ pull_number: 1234 })`. " +
       "Large repos can take several minutes — wait for the call to finish; do not treat a slow response as failure. " +
-      "If you see `MCP error -32001: Request timed out`, retry the same call without touching git lock files first — that error is a client-side abort. " +
-      "If the retry then reports `.git/shallow.lock: File exists` or `.git/index.lock: File exists`, remove those lock files via the shell tool and retry again.",
+      "If you see `MCP error -32001: Request timed out`, that is a client-side abort while the server's `git fetch` is still running in the background; retry the SAME call (it will share the in-flight result) and DO NOT touch `.git/*.lock` files — removing them kills the still-running fetch and creates an inescapable retry loop. " +
+      "Stale lock files from prior crashed runs are swept automatically by the tool itself before each fetch; you do not need to remove them by hand.",
     parameters: CheckoutPr,
     execute: execute(async ({ pull_number }) => {
       const inFlight = inFlightCheckouts.get(pull_number);

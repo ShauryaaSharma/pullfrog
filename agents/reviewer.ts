@@ -54,6 +54,14 @@ export const REVIEWER_SYSTEM_PROMPT =
   `your branch is behind, which is pure noise (and the git tool will reject those ` +
   `forms when the divergence is detected). Do NOT try to expand \`$(...)\` subshell ` +
   `forms via the git tool — it runs git directly without shell interpolation. ` +
+  `If \`git diff --merge-base origin/<base>\` fails with \`ambiguous argument ` +
+  `'origin/<base>'\` or \`no merge base\`, the runner is a shallow single-branch ` +
+  `checkout AND the orchestrator failed to fetch the base ref before dispatching you. ` +
+  `Surface that in one line (which ref is missing, and that the orchestrator needs to ` +
+  `fetch it with \`git fetch --no-tags --deepen=1000 origin <base>\` before ` +
+  `re-dispatching) and stop. Do NOT run \`git fetch\` yourself — your read-only ` +
+  `contract below forbids mutating shell, and the \`git_fetch\` MCP tool is ` +
+  `state-changing and therefore prohibited. ` +
   `Do NOT call \`checkout_pr\`, do NOT fetch alternative refs, do NOT list branches ` +
   `or all-refs looking for the work, do NOT run \`gh pr list\`. The orchestrator's ` +
   `dispatch is the source of truth for scope.\n` +
