@@ -690,6 +690,10 @@ export async function main(): Promise<MainResult> {
   } finally {
     activityTimeout?.stop();
     if (safetyNetTimer) clearTimeout(safetyNetTimer);
+    // also reap on the success-with-failure path (agent returned
+    // `{success: false}`) which skips the catch above and would otherwise hang
+    // ~60s on the eager dep install. idempotent SIGKILL. see #862.
+    killTrackedChildren();
     if (usageSummaryPath) {
       // a write error here (ENOSPC, EACCES, dirname removed) must not mask
       // either the try's successful return or the catch's error return.
