@@ -64,7 +64,7 @@ export const REVIEWER_SYSTEM_PROMPT =
   `'origin/<base>'\` or \`no merge base\`, the runner is a shallow single-branch ` +
   `checkout AND the orchestrator failed to fetch the base ref before dispatching you. ` +
   `Surface that in one line (which ref is missing, and that the orchestrator needs to ` +
-  `fetch it with \`git fetch --no-tags --deepen=1000 origin <base>\` before ` +
+  `fetch it with \`git fetch --no-tags --deepen=1000 origin <base>:refs/remotes/origin/<base>\` before ` +
   `re-dispatching) and stop. Do NOT run \`git fetch\` yourself — your read-only ` +
   `contract below forbids mutating shell, and the \`git_fetch\` MCP tool is ` +
   `state-changing and therefore prohibited. ` +
