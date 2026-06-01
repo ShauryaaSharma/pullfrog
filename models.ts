@@ -97,8 +97,8 @@ export const providers = {
     models: {
       "claude-opus": {
         displayName: "Claude Opus",
-        resolve: "anthropic/claude-opus-4-7",
-        openRouterResolve: "openrouter/anthropic/claude-opus-4.7",
+        resolve: "anthropic/claude-opus-4-8",
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.8",
         preferred: true,
         subagentModel: "claude-sonnet",
       },
@@ -276,8 +276,8 @@ export const providers = {
       },
       "claude-opus": {
         displayName: "Claude Opus",
-        resolve: "opencode/claude-opus-4-7",
-        openRouterResolve: "openrouter/anthropic/claude-opus-4.7",
+        resolve: "opencode/claude-opus-4-8",
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.8",
         subagentModel: "claude-sonnet",
       },
       "claude-sonnet": {
@@ -409,8 +409,8 @@ export const providers = {
     models: {
       "claude-opus": {
         displayName: "Claude Opus",
-        resolve: "openrouter/anthropic/claude-opus-4.7",
-        openRouterResolve: "openrouter/anthropic/claude-opus-4.7",
+        resolve: "openrouter/anthropic/claude-opus-4.8",
+        openRouterResolve: "openrouter/anthropic/claude-opus-4.8",
         preferred: true,
         subagentModel: "claude-sonnet",
       },

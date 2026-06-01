@@ -68,15 +68,21 @@ async function plan(slug: string): Promise<Plan> {
     const cliPath = await installFromNpmTarball({
       packageName: "@anthropic-ai/claude-code",
       version: getDevDependencyVersion("@anthropic-ai/claude-code"),
-      executablePath: "cli.js",
-      installDependencies: false,
+      // 2.1.113+ ships a native binary (bin/claude.exe) wired up from
+      // platform-specific optionalDependencies by the package postinstall;
+      // installDependencies runs that postinstall. mirrors opencode below.
+      executablePath: "bin/claude.exe",
+      installDependencies: true,
     });
     // claude expects a bare model id (e.g. "claude-sonnet-4-6"), not "anthropic/claude-sonnet-4-6"
     const bareModel = cliModel.split("/").slice(1).join("/");
+    // mirror production: claude.ts always passes `--effort high` (resolveEffort).
+    // newer Opus (4.8+) rejects the CLI's default `thinking.type.enabled` shape
+    // with a 400 and requires the adaptive-thinking API that `--effort` selects.
     return {
       agent: "claude",
       cliPath,
-      args: [cliPath, "-p", PROMPT, "--model", bareModel],
+      args: ["-p", PROMPT, "--model", bareModel, "--effort", "high"],
     };
   }
 
@@ -98,9 +104,9 @@ async function plan(slug: string): Promise<Plan> {
 type SpawnResult = { ok: boolean; output: string; reason: string };
 
 function runCli(p: Plan, env: NodeJS.ProcessEnv): Promise<SpawnResult> {
-  // claude's cli.js shebangs to env node, but we invoke node explicitly to
-  // avoid PATH-resolution surprises in CI runners; opencode is a real binary.
-  const command = p.agent === "claude" ? "node" : p.cliPath;
+  // both claude (2.1.113+) and opencode ship native binaries now, so we invoke
+  // the resolved executable directly.
+  const command = p.cliPath;
 
   return new Promise((resolve) => {
     const child = spawn(command, p.args, { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -161,9 +167,7 @@ async function main(): Promise<void> {
 
   console.log(`» model-smoke ${slug}`);
   const p = await plan(slug);
-  console.log(
-    `» agent=${p.agent} cmd=${[p.agent === "claude" ? "node" : p.cliPath, ...p.args].join(" ")}`
-  );
+  console.log(`» agent=${p.agent} cmd=${[p.cliPath, ...p.args].join(" ")}`);
 
   const result = await runCli(p, process.env);
   if (result.ok) {

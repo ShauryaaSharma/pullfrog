@@ -68,8 +68,11 @@ async function installClaudeCli(): Promise<string> {
   return await installFromNpmTarball({
     packageName: "@anthropic-ai/claude-code",
     version: getDevDependencyVersion("@anthropic-ai/claude-code"),
-    executablePath: "cli.js",
-    installDependencies: false,
+    // 2.1.113+ ships a native binary (bin/claude.exe) instead of cli.js; the
+    // package postinstall copies it from the platform optionalDependency, so we
+    // need installDependencies to run that postinstall.
+    executablePath: "bin/claude.exe",
+    installDependencies: true,
   });
 }
 
@@ -277,6 +280,7 @@ type ClaudeEvent =
 
 type RunParams = {
   label: string;
+  cmd: string;
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
@@ -619,7 +623,7 @@ export async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
 
   try {
     const result = await spawn({
-      cmd: "node",
+      cmd: params.cmd,
       args: params.args,
       cwd: params.cwd,
       env: params.env,
@@ -629,9 +633,9 @@ export async function runClaude(params: RunParams): Promise<ClaudeRunResult> {
       stdio: ["ignore", "pipe", "pipe"],
       // run claude in its own process group so SIGKILL on activity timeout /
       // outer cancellation reaches any subprocesses it spawns (rg, file
-      // watchers, mcp transports, etc). claude itself is a node bundle so
-      // there's no shim-orphan issue like opencode-ai/bin/opencode, but
-      // detached + killGroup is the right default for any agent runtime.
+      // watchers, mcp transports, etc). claude (2.1.113+) is now a native
+      // binary like opencode-ai/bin/opencode, so detached + killGroup is
+      // required to avoid orphaning the binary and its children.
       killGroup: true,
       // claude already drains every chunk via onStdout (NDJSON parsing) and
       // onStderr (recentStderr ring buffer). retaining a second copy in the
@@ -1055,7 +1059,6 @@ export const claude = agent({
 
     // base args shared between initial run and continue runs
     const baseArgs = [
-      cliPath,
       "--output-format",
       "stream-json",
       "--dangerously-skip-permissions",
@@ -1123,7 +1126,7 @@ export const claude = agent({
     }
 
     log.info(`» effort: ${effort}`);
-    log.debug(`» starting Pullfrog (Claude Code): node ${baseArgs.join(" ")}`);
+    log.debug(`» starting Pullfrog (Claude Code): ${cliPath} ${baseArgs.join(" ")}`);
     log.debug(`» working directory: ${repoDir}`);
 
     // gate server lives only as long as the claude subprocess does. the
@@ -1133,6 +1136,7 @@ export const claude = agent({
 
     const result = await runClaude({
       label: "Pullfrog",
+      cmd: cliPath,
       cwd: repoDir,
       env: { ...env, [STOP_HOOK_GATE_URL_ENV]: gateServer.url },
       todoTracker: ctx.todoTracker,
