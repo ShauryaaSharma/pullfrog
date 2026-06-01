@@ -244,6 +244,42 @@ export function buildPostRunPrompt(issues: PostRunIssues): string {
 }
 
 /**
+ * terminal-only post-run finalize: re-checks the hard-fail gates after the
+ * agent has exited and converts a successful result to a hard-fail when
+ * `stopHook` or `unsubmittedReview` is still failing. used by harnesses
+ * that inject follow-up turns via a mechanism other than the resume
+ * callback (e.g. the Claude managed Stop hook + gate server). soft gates
+ * (`dirtyTree`, `summaryStale`) are intentionally not re-checked here —
+ * they never flip a successful run to failed.
+ */
+export async function finalizeAgentResult<R extends AgentResult>(params: {
+  ctx: AgentRunContext;
+  result: R;
+}): Promise<R> {
+  if (!params.result.success) return params.result;
+  const issues = await collectPostRunIssues(params.ctx, { skipSummaryStale: true });
+  if (issues.stopHook) {
+    return {
+      ...params.result,
+      success: false,
+      error: `stop hook failed (exit code ${issues.stopHook.exitCode}): ${issues.stopHook.output || "(no output)"}`,
+    };
+  }
+  if (issues.unsubmittedReview) {
+    const expected =
+      issues.unsubmittedReview === "Review"
+        ? "create_pull_request_review"
+        : "create_pull_request_review or report_progress";
+    return {
+      ...params.result,
+      success: false,
+      error: `${issues.unsubmittedReview} mode finished without calling ${expected}`,
+    };
+  }
+  return params.result;
+}
+
+/**
  * modes for which the post-run reflection turn is skipped. reflection costs a
  * full resume turn (~$0.50-0.80 per run on Opus, mostly cache-write) and only
  * pays for itself when the run actually produced novel, durable findings.

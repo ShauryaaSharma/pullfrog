@@ -45,11 +45,8 @@ import { ThinkingTimer } from "../utils/timer.ts";
 import type { TodoTracker } from "../utils/todoTracking.ts";
 import { getDevDependencyVersion } from "../utils/version.ts";
 import { applyClaudeVertexEnv } from "../utils/vertex.ts";
-import {
-  buildLearningsReflectionPrompt,
-  runPostRunRetryLoop,
-  shouldRunReflection,
-} from "./postRun.ts";
+import { startGateServer } from "./gateServer.ts";
+import { finalizeAgentResult } from "./postRun.ts";
 import { REVIEWER_AGENT_NAME, REVIEWER_SYSTEM_PROMPT } from "./reviewer.ts";
 import { formatWithLabel, ORCHESTRATOR_LABEL, SessionLabeler } from "./sessionLabeler.ts";
 import {
@@ -831,8 +828,53 @@ const MANAGED_SETTINGS_PATH = `${MANAGED_SETTINGS_DIR}/managed-settings.json`;
 // tail, sed) and survives bypassPermissions mode. See wiki/codex-auth.md.
 const CODEX_AUTH_DENY_PATH = "~/.local/share/opencode/auth.json";
 
-function buildManagedSettings(ctx: AgentRunContext) {
-  const secretDenyPaths = ctx.secretDenyPaths ?? [];
+/**
+ * env var carrying the gate-server URL to the Claude subprocess. the Stop
+ * hook curls it on every stop; an absent value disables the hook (e.g.
+ * non-CI local dev paths that don't install managed settings either).
+ */
+const STOP_HOOK_GATE_URL_ENV = "PULLFROG_GATE_URL";
+
+/**
+ * managed Stop hook. swaps the old `--resume <sessionId>` follow-up
+ * subprocesses (reflection + every gate retry — cost audit on PR #792
+ * showed reflection alone burned ~$0.85 / 111K cache_write per Opus run,
+ * almost all of it wasted re-running `getAttachmentMessages` in the fresh
+ * process) for a `{decision: "block", reason: ...}` injection inside the
+ * live `queryLoop`. existing session context is already in the prompt
+ * cache so only the new reason text is fresh cache_write.
+ *
+ * the script is intentionally minimal — all decision logic lives in the
+ * sidecar gate server (`gateServer.ts`), which reads live `ctx.toolState`
+ * mutations from the same process the MCP server runs in. budget +
+ * one-shot tracking lives there too, so re-fires across multiple stops in
+ * one session are safe. claude-code's 8-consecutive-block override is the
+ * last-line backstop.
+ */
+function buildStopHookScript(): string {
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    `url="\${${STOP_HOOK_GATE_URL_ENV}:-}"`,
+    'if [ -z "$url" ]; then exit 0; fi',
+    "cat >/dev/null",
+    'response=$(curl -fsS --max-time 30 "$url" 2>/dev/null || printf \'{"block":false}\')',
+    'block=$(printf "%s" "$response" | jq -r ".block // false")',
+    'if [ "$block" != "true" ]; then exit 0; fi',
+    'reason=$(printf "%s" "$response" | jq -r ".reason // \\"\\"")',
+    'if [ -z "$reason" ]; then exit 0; fi',
+    'jq -n --arg reason "$reason" \'{decision: "block", reason: $reason}\'',
+    "",
+  ].join("\n");
+}
+
+interface ManagedSettingsParams {
+  ctx: AgentRunContext;
+  stopHookPath: string | null;
+}
+
+function buildManagedSettings(params: ManagedSettingsParams): Record<string, unknown> {
+  const secretDenyPaths = params.ctx.secretDenyPaths ?? [];
   const toolDeny = secretDenyPaths.flatMap((path) => [
     `Read(${path}/**)`,
     `Read(/${path}/**)`,
@@ -843,7 +885,7 @@ function buildManagedSettings(ctx: AgentRunContext) {
     `Glob(${path}/**)`,
     `Glob(/${path}/**)`,
   ]);
-  return {
+  const base: Record<string, unknown> = {
     allowManagedPermissionRulesOnly: true,
     allowManagedHooksOnly: true,
     permissions: {
@@ -869,12 +911,22 @@ function buildManagedSettings(ctx: AgentRunContext) {
       },
     },
   };
+  if (params.stopHookPath) {
+    base.hooks = {
+      Stop: [
+        {
+          hooks: [{ type: "command", command: params.stopHookPath }],
+        },
+      ],
+    };
+  }
+  return base;
 }
 
-function installManagedSettings(ctx: AgentRunContext): void {
+function installManagedSettings(params: ManagedSettingsParams): void {
   if (process.env.CI !== "true") return;
 
-  const content = JSON.stringify(buildManagedSettings(ctx), null, 2);
+  const content = JSON.stringify(buildManagedSettings(params), null, 2);
   try {
     execFileSync("sudo", ["mkdir", "-p", MANAGED_SETTINGS_DIR]);
     execFileSync("sudo", ["tee", MANAGED_SETTINGS_PATH], {
@@ -941,7 +993,15 @@ export const claude = agent({
     const mcpConfigPath = writeMcpConfig(ctx);
     const effort = resolveEffort(model);
 
-    installManagedSettings(ctx);
+    // reflection + every gate retry (dirty tree, unsubmitted review, summary
+    // stale) move from post-exit `--resume <sessionId>` subprocesses to a
+    // managed Stop hook that curls a sidecar gate server. see
+    // `buildStopHookScript` for the cost rationale (PR #792 audit) and
+    // `gateServer.ts` for the decision policy.
+    const stopHookPath = join(ctx.tmpdir, "pullfrog-stop-hook.sh");
+    writeFileSync(stopHookPath, buildStopHookScript(), { mode: 0o755 });
+
+    installManagedSettings({ ctx, stopHookPath });
 
     // base args shared between initial run and continue runs
     const baseArgs = [
@@ -1014,43 +1074,27 @@ export const claude = agent({
     log.debug(`» starting Pullfrog (Claude Code): node ${baseArgs.join(" ")}`);
     log.debug(`» working directory: ${repoDir}`);
 
-    const runParams = {
+    // gate server lives only as long as the claude subprocess does. the
+    // Stop hook curls `gateServer.url` and turns the response into its
+    // `{decision: "block", reason}` payload (or exits 0 to allow stop).
+    await using gateServer = await startGateServer(ctx);
+
+    const result = await runClaude({
       label: "Pullfrog",
       cwd: repoDir,
-      env,
+      env: { ...env, [STOP_HOOK_GATE_URL_ENV]: gateServer.url },
       todoTracker: ctx.todoTracker,
       onActivityTimeout: ctx.onActivityTimeout,
       onToolUse: ctx.onToolUse,
-    };
-
-    const result = await runClaude({
-      ...runParams,
       args: [...baseArgs, "-p", ctx.instructions.full],
     });
 
-    // post-run retry loop aggregates usage across the initial run + every
-    // resume, so the caller sees the whole session — not just the final
-    // slice. claude needs a sessionId to `--resume`; if it's missing the
-    // loop bails (checks still ran, so persistent hook failures still fail
-    // the run). the reflection prompt fires once after gates go clean, as a
-    // dedicated turn that nudges the agent to persist learnings.
-    return runPostRunRetryLoop({
-      ctx,
-      initialResult: result,
-      initialUsage: result.usage,
-      reflectionPrompt:
-        ctx.toolState.learningsFilePath && shouldRunReflection(ctx.toolState.selectedMode)
-          ? buildLearningsReflectionPrompt(ctx.toolState.learningsFilePath)
-          : undefined,
-      canResume: (r) => Boolean(r.sessionId),
-      resume: async (c) => {
-        const sessionId = c.previousResult.sessionId;
-        if (!sessionId) throw new Error("unreachable: canResume gated on sessionId");
-        return runClaude({
-          ...runParams,
-          args: [...baseArgs, "-p", c.prompt, "--resume", sessionId],
-        });
-      },
-    });
+    // every follow-up turn (reflection + gate retries) has already happened
+    // inside this single subprocess via the Stop hook, so usage aggregation
+    // and resume orchestration are no-ops. all that remains is the terminal
+    // hard-fail render: when the budget exhausted with `stopHook` /
+    // `unsubmittedReview` still failing, flip `success` to false with the
+    // same error shape `runPostRunRetryLoop` produced pre-migration.
+    return finalizeAgentResult({ ctx, result });
   },
 });
