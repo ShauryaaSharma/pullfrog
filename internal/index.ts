@@ -17,6 +17,7 @@ export type {
 } from "../external.ts";
 export {
   DEFAULT_PROXY_MODEL,
+  getAutoSelectHintModel,
   getModelEnvVars,
   getModelManagedCredentials,
   getModelProvider,

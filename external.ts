@@ -30,6 +30,7 @@ export function formatMcpToolRef(agentId: AgentId, toolName: string): string {
 export type { ModelAlias, ModelProvider, ProviderConfig } from "./models.ts";
 export {
   DEFAULT_PROXY_MODEL,
+  getAutoSelectHintModel,
   getModelEnvVars,
   getModelManagedCredentials,
   getModelProvider,

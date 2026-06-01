@@ -589,6 +589,18 @@ if (!defaultProxyAlias?.openRouterResolve) {
 }
 export const DEFAULT_PROXY_MODEL = defaultProxyAlias.openRouterResolve;
 
+/** short label for the model auto-select picks today (console hint copy). */
+export function getAutoSelectHintModel(): string {
+  const alias = defaultProxyAlias;
+  if (!alias) return "Kimi 2.6";
+  const modelId = alias.resolve.split("/")[1] ?? "kimi-k2.6";
+  const version = modelId.replace(/^kimi-k2\./, "");
+  if (version && version !== modelId) {
+    return `Kimi 2.${version}`;
+  }
+  return alias.displayName;
+}
+
 // ── resolution ─────────────────────────────────────────────────────────────────
 
 /** resolve a model slug to its concrete models.dev specifier (e.g. "anthropic/claude-opus-4-6") */
