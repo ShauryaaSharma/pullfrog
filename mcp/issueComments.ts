@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import { resolveBodyAssets } from "../utils/body.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -21,16 +22,26 @@ export function GetIssueCommentsTool(ctx: ToolContext) {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
         issue_number,
+        headers: { accept: "application/vnd.github.full+json" },
       });
+
+      const processedComments = await Promise.all(
+        comments.map(async (comment) => ({
+          id: comment.id,
+          body: await resolveBodyAssets({
+            body: comment.body,
+            bodyHtml: comment.body_html,
+            tmpdir: ctx.tmpdir,
+            githubToken: ctx.githubInstallationToken,
+          }),
+          user: comment.user?.login,
+        }))
+      );
 
       return {
         issue_number,
-        comments: comments.map((comment) => ({
-          id: comment.id,
-          body: comment.body,
-          user: comment.user?.login,
-        })),
-        count: comments.length,
+        comments: processedComments,
+        count: processedComments.length,
       };
     }),
   });

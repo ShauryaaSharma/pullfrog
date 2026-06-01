@@ -235,6 +235,8 @@ export async function main(): Promise<MainResult> {
       process.chdir(payload.cwd);
     }
 
+    const tmpdir = createTempDirectory();
+
     // resolve body - fetches body_html and converts to markdown if images present
     // this ensures agents receive markdown with working signed image URLs
     const originalBody = payload.event.body;
@@ -242,6 +244,8 @@ export async function main(): Promise<MainResult> {
       event: payload.event,
       octokit,
       repo: runContext.repo,
+      tmpdir,
+      githubToken: tokenRef.mcpToken,
     });
     if (resolvedBody !== originalBody) {
       payload.event.body = resolvedBody;

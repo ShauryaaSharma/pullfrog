@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Octokit } from "@octokit/rest";
 import { type } from "arktype";
+import { resolveBodyAssets } from "../utils/body.ts";
 import { stripExistingFooter } from "../utils/buildPullfrogFooter.ts";
 import { log } from "../utils/log.ts";
 import type { ToolContext } from "./server.ts";
@@ -25,6 +26,7 @@ query ($owner: String!, $name: String!, $prNumber: Int!) {
             nodes {
               fullDatabaseId
               body
+              bodyHTML
               createdAt
               diffHunk
               line
@@ -56,6 +58,7 @@ query ($owner: String!, $name: String!, $prNumber: Int!) {
 export type ReviewThreadComment = {
   fullDatabaseId: string | null;
   body: string;
+  bodyHTML: string;
   createdAt: string;
   diffHunk: string;
   line: number | null;
@@ -495,6 +498,8 @@ interface GetReviewDataInput {
   pullNumber: number;
   reviewId: number;
   approvedBy?: string | undefined;
+  tmpdir: string;
+  githubToken: string;
 }
 
 // pure formatter: takes already-fetched GitHub responses and produces the
@@ -572,6 +577,7 @@ export async function getReviewData(input: GetReviewDataInput): Promise<
       repo: input.name,
       pull_number: input.pullNumber,
       review_id: input.reviewId,
+      headers: { accept: "application/vnd.github.full+json" },
     }),
     getReviewThreads(input),
   ]);
@@ -587,6 +593,30 @@ export async function getReviewData(input: GetReviewDataInput): Promise<
           per_page: 100,
         })
       : [];
+
+  if (review.data.body) {
+    review.data.body =
+      (await resolveBodyAssets({
+        body: review.data.body,
+        bodyHtml: review.data.body_html,
+        tmpdir: input.tmpdir,
+        githubToken: input.githubToken,
+      })) ?? review.data.body;
+  }
+
+  for (const thread of threads) {
+    for (const comment of thread.comments?.nodes ?? []) {
+      if (comment?.body) {
+        comment.body =
+          (await resolveBodyAssets({
+            body: comment.body,
+            bodyHtml: comment.bodyHTML,
+            tmpdir: input.tmpdir,
+            githubToken: input.githubToken,
+          })) ?? comment.body;
+      }
+    }
+  }
 
   return formatReviewData({
     review: review.data,
@@ -620,6 +650,8 @@ export function GetReviewCommentsTool(ctx: ToolContext) {
         pullNumber: params.pull_number,
         reviewId: params.review_id,
         approvedBy,
+        tmpdir: ctx.tmpdir,
+        githubToken: ctx.githubInstallationToken,
       });
 
       if (!result) {
@@ -682,21 +714,31 @@ export function ListPullRequestReviewsTool(ctx: ToolContext) {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
         pull_number: params.pull_number,
+        headers: { accept: "application/vnd.github.full+json" },
       });
 
-      return {
-        pull_number: params.pull_number,
-        reviews: reviews.map((review) => ({
+      const processedReviews = await Promise.all(
+        reviews.map(async (review) => ({
           id: review.id,
           node_id: review.node_id,
-          body: review.body,
+          body: await resolveBodyAssets({
+            body: review.body,
+            bodyHtml: review.body_html,
+            tmpdir: ctx.tmpdir,
+            githubToken: ctx.githubInstallationToken,
+          }),
           state: review.state,
           user: review.user?.login,
           submitted_at: review.submitted_at,
           commit_id: review.commit_id,
           html_url: review.html_url,
-        })),
-        count: reviews.length,
+        }))
+      );
+
+      return {
+        pull_number: params.pull_number,
+        reviews: processedReviews,
+        count: processedReviews.length,
       };
     }),
   });

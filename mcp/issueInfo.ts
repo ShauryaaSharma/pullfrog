@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import { resolveBodyAssets } from "../utils/body.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -18,9 +19,17 @@ export function IssueInfoTool(ctx: ToolContext) {
         owner: ctx.repo.owner,
         repo: ctx.repo.name,
         issue_number,
+        headers: { accept: "application/vnd.github.full+json" },
       });
 
       const data = issue.data;
+
+      const body = await resolveBodyAssets({
+        body: data.body,
+        bodyHtml: data.body_html,
+        tmpdir: ctx.tmpdir,
+        githubToken: ctx.githubInstallationToken,
+      });
 
       // set issue context
       ctx.toolState.issueNumber = issue_number;
@@ -37,7 +46,7 @@ export function IssueInfoTool(ctx: ToolContext) {
         number: data.number,
         url: data.html_url,
         title: data.title,
-        body: data.body,
+        body: body,
         state: data.state,
         locked: data.locked,
         labels: data.labels?.map((label) => (typeof label === "string" ? label : label.name)),

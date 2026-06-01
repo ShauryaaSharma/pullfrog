@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import { resolveBodyAssets } from "../utils/body.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, tool } from "./shared.ts";
 
@@ -35,12 +36,20 @@ export function PullRequestInfoTool(ctx: ToolContext) {
       "To checkout a PR branch locally, use checkout_pr instead.",
     parameters: PullRequestInfo,
     execute: execute(async ({ pull_number }) => {
-      // fetch REST and GraphQL in parallel
-      const [restResponse, graphqlResponse] = await Promise.all([
+      // fetch REST and GraphQL in parallel. the issues.get call is only for body_html
+      // (PRs are issues; the pulls.get response type omits body_html) so attachment urls
+      // resolve to signed CDN urls — see resolveBodyAssets.
+      const [restResponse, issueResponse, graphqlResponse] = await Promise.all([
         ctx.octokit.rest.pulls.get({
           owner: ctx.repo.owner,
           repo: ctx.repo.name,
           pull_number,
+        }),
+        ctx.octokit.rest.issues.get({
+          owner: ctx.repo.owner,
+          repo: ctx.repo.name,
+          issue_number: pull_number,
+          headers: { accept: "application/vnd.github.full+json" },
         }),
         ctx.octokit.graphql<ClosingIssuesResponse>(CLOSING_ISSUES_QUERY, {
           owner: ctx.repo.owner,
@@ -53,11 +62,18 @@ export function PullRequestInfoTool(ctx: ToolContext) {
       const isFork = data.head.repo?.full_name !== data.base.repo.full_name;
       const closingIssues = graphqlResponse.repository.pullRequest.closingIssuesReferences.nodes;
 
+      const body = await resolveBodyAssets({
+        body: data.body,
+        bodyHtml: issueResponse.data.body_html,
+        tmpdir: ctx.tmpdir,
+        githubToken: ctx.githubInstallationToken,
+      });
+
       return {
         number: data.number,
         url: data.html_url,
         title: data.title,
-        body: data.body,
+        body: body,
         state: data.state,
         draft: data.draft,
         merged: data.merged,

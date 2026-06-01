@@ -1,6 +1,6 @@
 import TurndownService from "turndown";
 import type { PayloadEvent } from "../external.ts";
-import { log } from "./cli.ts";
+import { downloadAssetsInMarkdown } from "./assets.ts";
 import type { OctokitWithPlugins } from "./github.ts";
 import type { RunContextData } from "./runContextData.ts";
 
@@ -15,6 +15,8 @@ interface ResolveBodyContext {
   event: PayloadEvent;
   octokit: OctokitWithPlugins;
   repo: RunContextData["repo"];
+  tmpdir: string;
+  githubToken: string;
 }
 
 /**
@@ -25,18 +27,38 @@ interface ResolveBodyContext {
  */
 export async function resolveBody(ctx: ResolveBodyContext): Promise<string | null> {
   const body = ctx.event.body;
+  const bodyHtml = hasImages(body) ? await fetchBodyHtml(ctx) : undefined;
+  return resolveBodyAssets({
+    body,
+    bodyHtml,
+    tmpdir: ctx.tmpdir,
+    githubToken: ctx.githubToken,
+  });
+}
 
-  // pass through if no images - no API call needed
-  if (!hasImages(body)) return body ?? null;
+interface ResolveBodyAssetsContext {
+  body: string | null | undefined;
+  bodyHtml: string | null | undefined;
+  tmpdir: string;
+  githubToken: string;
+}
 
-  log.debug(`[resolveBody] fetching body_html for ${ctx.event.trigger}`);
-  const bodyHtml = await fetchBodyHtml(ctx);
-  log.debug(`[resolveBody] bodyHtml: ${bodyHtml?.substring(0, 300)}`);
-  if (!bodyHtml) return body ?? null;
-
-  const resolved = turndown.turndown(bodyHtml);
-  log.debug(`[resolveBody] resolved: ${resolved.substring(0, 300)}`);
-  return resolved;
+/**
+ * downloads github-hosted image assets in a body to disk and rewrites the urls to local
+ * paths so the agent can read them. when the body has images and a rendered `bodyHtml`
+ * is supplied, the html is turndowned first: github only exposes attachments as signed,
+ * self-authenticating `*.githubusercontent.com` urls through body_html — the raw
+ * `github.com/user-attachments/...` urls in unrendered markdown 404 for the installation
+ * token. callers that fetch a body should request it with the `application/vnd.github.full+json`
+ * media type and pass `body_html` here.
+ */
+export async function resolveBodyAssets(ctx: ResolveBodyAssetsContext): Promise<string | null> {
+  let body = ctx.body ?? null;
+  if (body && hasImages(body) && ctx.bodyHtml) {
+    body = turndown.turndown(ctx.bodyHtml);
+  }
+  if (!body) return ctx.body ?? null;
+  return downloadAssetsInMarkdown(body, ctx.tmpdir, ctx.githubToken);
 }
 
 async function fetchBodyHtml(ctx: ResolveBodyContext): Promise<string | undefined> {
