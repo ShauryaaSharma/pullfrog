@@ -30,18 +30,24 @@
  *   5. Activity-timeout hang — `errorMessage` starts with
  *      `"activity timeout"` or `"agent still pending"` AND none of the
  *      above matched. The harness keeps structured diagnostic state on
- *      `toolState.agentDiagnostic`; `formatAgentHangBody` renders that as
- *      a markdown block.
+ *      `toolState.agentDiagnostic`; `formatAgentHangBody` renders that into
+ *      the job summary. The PR comment instead collapses to a one-line
+ *      `**Run failed.** [View the logs →]` — the watchdog jargon, event
+ *      counts, and benign stderr tail are operator-grade detail that only
+ *      alarm the average user. The one exception is a hang masking billing
+ *      exhaustion (#778), where `formatAgentHangBody` emits an actionable
+ *      top-up CTA that the comment keeps verbatim.
  *
- *   6. Default — a plain-English lead sentence explaining the run failed,
- *      followed by the raw error message in a fenced code block (so the user
- *      never sees a bare internal string). The job summary adds the
- *      `### ❌ Pullfrog failed` banner on top of the same body.
+ *   6. Default — the job summary gets a plain-English lead sentence plus the
+ *      raw error in a fenced code block under the `### ❌ Pullfrog failed`
+ *      banner; the PR comment collapses to the same one-line logs link as
+ *      the hang case, since the raw internal string helps nobody on the PR.
  *
- * The hang body and the API-key body diverge between the two surfaces only
- * in that the job summary wraps them in the `### ❌ Pullfrog failed` H3
- * banner; the PR comment uses the bare body since it already has Pullfrog
- * branding in its footer.
+ * Net: the actionable classifications (billing, API-key, model-not-found)
+ * render identical bodies on both surfaces; the non-actionable ones (hang,
+ * generic) keep the forensics in the Actions job summary and show a calm
+ * one-liner in the PR comment, whose footer already carries Pullfrog
+ * branding + rerun links.
  */
 
 import type { AgentDiagnostic } from "./agentHangReport.ts";
@@ -79,6 +85,21 @@ function formatGenericFailure(errorMessage: string): string {
     errorMessage,
     "```",
   ].join("\n");
+}
+
+/**
+ * Minimal PR-comment body for non-actionable failures (hangs, unexpected
+ * errors). The forensic detail (event counts, stderr tail, raw error) stays
+ * in the Actions job summary; the comment the average user sees is one calm
+ * line plus a link to the logs. The footer appended by `reportErrorToComment`
+ * already carries rerun / model context.
+ */
+function formatMinimalFailureComment(repo: { owner: string; name: string }): string {
+  const runId = process.env.GITHUB_RUN_ID;
+  if (!runId) return "**Run failed.**";
+  const server = process.env.GITHUB_SERVER_URL ?? "https://github.com";
+  const url = `${server}/${repo.owner}/${repo.name}/actions/runs/${runId}`;
+  return `**Run failed.** [View the logs →](${url})`;
 }
 
 /**
@@ -218,15 +239,21 @@ export function renderRunError(input: {
   }
 
   if (hangBody) {
+    // a hang masking billing exhaustion (#778) renders an actionable top-up
+    // CTA inside `hangBody` — keep that in the comment. every other hang is
+    // non-actionable noise for the average user, so the comment collapses to
+    // a one-liner and the diagnostic stays in the Actions job summary.
+    const isBillingExhausted =
+      input.agentDiagnostic?.lastProviderError === "provider billing exhausted";
     return {
       summary: `### ❌ Pullfrog failed\n\n${hangBody}`,
-      comment: hangBody,
+      comment: isBillingExhausted ? hangBody : formatMinimalFailureComment(input.repo),
     };
   }
 
   const genericBody = formatGenericFailure(input.errorMessage);
   return {
     summary: `### ❌ Pullfrog failed\n\n${genericBody}`,
-    comment: genericBody,
+    comment: formatMinimalFailureComment(input.repo),
   };
 }
