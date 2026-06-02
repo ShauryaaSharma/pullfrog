@@ -219,6 +219,45 @@ export function classifyPushError(msg: string): PushErrorKind {
 // rarely notices, large enough to ride out most upstream hiccups.
 const TRANSIENT_RETRY_DELAYS_MS = [2000, 5000];
 
+/**
+ * push with backoff retry on transient failures (network 5xx, connection
+ * reset, and the freshly-minted-token 401 github surfaces as "Invalid
+ * username or token" while the installation token replicates across edges —
+ * see TRANSIENT_PATTERNS). concurrent-push and permission rejections are not
+ * retried — they need caller intervention.
+ *
+ * shared by push_branch, push_tags, and delete_branch so all three are
+ * equally resilient to github's post-mint replication lag. before this,
+ * only push_branch retried, so a tag push or branch delete that happened to
+ * hit an un-replicated edge failed outright even though the token was valid.
+ */
+async function pushWithRetry(args: string[], token: string): Promise<void> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      await $git("push", args, { token });
+      if (attempt > 0) log.info(`push succeeded on attempt ${attempt + 1}`);
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (classifyPushError(msg) === "transient" && attempt < TRANSIENT_RETRY_DELAYS_MS.length) {
+        // jitter avoids lockstep retries when several agents are hit by the
+        // same upstream blip simultaneously.
+        const baseDelay = TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 5000;
+        const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5));
+        log.info(
+          `push attempt ${attempt + 1} failed (transient), retrying in ${delay}ms: ${msg.slice(0, 300)}`
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 export function PushBranchTool(ctx: ToolContext) {
   const defaultBranch = ctx.repo.data.default_branch || "main";
   const pushPermission = ctx.payload.push;
@@ -331,65 +370,32 @@ export function PushBranchTool(ctx: ToolContext) {
         log.warning(`force pushing - this will overwrite remote history`);
       }
 
-      // retry transient network/server errors (RPC failed, early EOF, 5xx,
-      // connection reset, etc) with backoff. push is idempotent: if the remote
-      // never received the pack, retry creates the ref; if it did, the retry
-      // is a no-op fast-forward to the same SHA. concurrent-push rejections
-      // and permission errors are NOT retried — they need user intervention.
-      let lastErr: unknown;
-      let pushed = false;
-      for (let attempt = 0; attempt <= TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
-        try {
-          await $git("push", pushArgs, {
-            token: ctx.gitToken,
-          });
-          if (attempt > 0) {
-            log.info(`push succeeded on attempt ${attempt + 1}`);
-          }
-          pushed = true;
-          break;
-        } catch (err) {
-          lastErr = err;
-          const msg = err instanceof Error ? err.message : String(err);
-          const kind = classifyPushError(msg);
-
-          if (kind === "concurrent-push") {
-            // git rebase is blocked through the MCP tool when shell is disabled
-            // (rebase --exec can execute arbitrary code). merge always works and
-            // integrates remote changes cleanly, so suggest it as the default.
-            const integrateStep =
-              ctx.payload.shell === "disabled"
-                ? `2. use the git tool to merge the remote branch into yours: git({ command: "merge", args: ["origin/${pushDest.remoteBranch}"] })`
-                : `2. use the git tool to rebase or merge your changes on top: git({ command: "merge", args: ["origin/${pushDest.remoteBranch}"] }) (or 'rebase')`;
-            throw new Error(
-              `push rejected: the remote branch '${pushDest.remoteBranch}' has new commits you don't have locally (often a concurrent push to the same branch).\n\n` +
-                `to resolve this:\n` +
-                `1. use git_fetch to fetch the remote branch: git_fetch({ ref: "${pushDest.remoteBranch}" })\n` +
-                `${integrateStep}\n` +
-                `3. resolve any merge conflicts if needed\n` +
-                `4. retry push_branch`
-            );
-          }
-
-          if (kind === "transient" && attempt < TRANSIENT_RETRY_DELAYS_MS.length) {
-            // jitter avoids lockstep retries when several agents are hit by the
-            // same upstream blip simultaneously — without it, all retries land
-            // on the same recovering server at the same instant.
-            const baseDelay = TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 5000;
-            const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5));
-            log.info(
-              `push attempt ${attempt + 1} failed (transient), retrying in ${delay}ms: ${msg.slice(0, 300)}`
-            );
-            await new Promise((r) => setTimeout(r, delay));
-            continue;
-          }
-
-          throw err;
+      // push is idempotent, so pushWithRetry rides out transient failures
+      // (5xx, reset, freshly-minted-token 401). concurrent-push is not
+      // transient — it surfaces here so we can render the integrate-and-retry
+      // recovery the agent needs.
+      try {
+        await pushWithRetry(pushArgs, ctx.gitToken);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (classifyPushError(msg) === "concurrent-push") {
+          // git rebase is blocked through the MCP tool when shell is disabled
+          // (rebase --exec can execute arbitrary code). merge always works and
+          // integrates remote changes cleanly, so suggest it as the default.
+          const integrateStep =
+            ctx.payload.shell === "disabled"
+              ? `2. use the git tool to merge the remote branch into yours: git({ command: "merge", args: ["origin/${pushDest.remoteBranch}"] })`
+              : `2. use the git tool to rebase or merge your changes on top: git({ command: "merge", args: ["origin/${pushDest.remoteBranch}"] }) (or 'rebase')`;
+          throw new Error(
+            `push rejected: the remote branch '${pushDest.remoteBranch}' has new commits you don't have locally (often a concurrent push to the same branch).\n\n` +
+              `to resolve this:\n` +
+              `1. use git_fetch to fetch the remote branch: git_fetch({ ref: "${pushDest.remoteBranch}" })\n` +
+              `${integrateStep}\n` +
+              `3. resolve any merge conflicts if needed\n` +
+              `4. retry push_branch`
+          );
         }
-      }
-      if (!pushed) {
-        // safety net — loop should always either break with success or throw.
-        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+        throw err;
       }
 
       const pushedSha = $("git", ["rev-parse", "HEAD"], { log: false }).trim();
@@ -815,9 +821,7 @@ export function DeleteBranchTool(ctx: ToolContext) {
       // branches and tags; a tag-only match would silently remove the tag.
       // rejectSpecialRef guarantees branchName is a bare name, so the
       // branchName construction here can't collide with user-supplied refs.
-      await $git("push", ["origin", "--delete", `refs/heads/${params.branchName}`], {
-        token: ctx.gitToken,
-      });
+      await pushWithRetry(["origin", "--delete", `refs/heads/${params.branchName}`], ctx.gitToken);
       log.info(`» deleted branch ${params.branchName}`);
       return { success: true, deleted: params.branchName };
     }),
@@ -846,9 +850,7 @@ export function PushTagsTool(ctx: ToolContext) {
 
       validateTagName(params.tag);
       const pushArgs = [...(params.force ? ["-f"] : []), "origin", `refs/tags/${params.tag}`];
-      await $git("push", pushArgs, {
-        token: ctx.gitToken,
-      });
+      await pushWithRetry(pushArgs, ctx.gitToken);
       log.info(`» pushed tag ${params.tag}`);
       return { success: true, tag: params.tag };
     }),
