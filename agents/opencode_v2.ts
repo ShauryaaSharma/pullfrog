@@ -374,7 +374,15 @@ interface RunnerContext {
  * end-of-turn `logUnseenToolCalls` fallback for the guarantee.
  */
 async function consumeEvents(ctx: RunnerContext, signal: AbortSignal): Promise<void> {
-  const result = await ctx.client.event.subscribe();
+  // wire the abort signal into the SSE request itself. without it the
+  // generated client falls back to an internal never-aborting signal
+  // (serverSentEvents.gen.js: `options.signal ?? new AbortController().signal`),
+  // so `reader.read()` parks forever once the session goes idle and the stream
+  // falls silent. the teardown `await eventLoopPromise` in the run() finally
+  // then blocks — `abortController.abort()` can't interrupt a `for await` that
+  // never advances — until the outer process-output watchdog kills the
+  // already-succeeded run at 300s and reports a false "stalled" (PR #876).
+  const result = await ctx.client.event.subscribe({}, { signal });
   for await (const event of result.stream as AsyncGenerator<EventSubscribeResponse>) {
     if (signal.aborted) break;
     ctx.eventCount += 1;
