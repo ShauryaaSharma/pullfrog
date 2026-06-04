@@ -141,8 +141,8 @@ describe("resolveDisplayAlias", () => {
 });
 
 describe("DEFAULT_PROXY_MODEL", () => {
-  it("tracks moonshotai/kimi-k2 openRouterResolve", () => {
-    expect(DEFAULT_PROXY_MODEL).toBe(resolveOpenRouterModel("moonshotai/kimi-k2"));
+  it("tracks deepseek/deepseek-pro openRouterResolve", () => {
+    expect(DEFAULT_PROXY_MODEL).toBe(resolveOpenRouterModel("deepseek/deepseek-pro"));
   });
 });
 

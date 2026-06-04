@@ -583,22 +583,16 @@ export const modelAliases: ModelAlias[] = Object.entries(providers).flatMap(
 );
 
 /** OpenRouter target when Router or OSS funding is active and `repo.model` is null. */
-const defaultProxyAlias = modelAliases.find((a) => a.slug === "moonshotai/kimi-k2");
+const defaultProxyAlias = modelAliases.find((a) => a.slug === "deepseek/deepseek-pro");
 if (!defaultProxyAlias?.openRouterResolve) {
-  throw new Error("DEFAULT_PROXY_MODEL: moonshotai/kimi-k2 missing openRouterResolve");
+  throw new Error("DEFAULT_PROXY_MODEL: deepseek/deepseek-pro missing openRouterResolve");
 }
 export const DEFAULT_PROXY_MODEL = defaultProxyAlias.openRouterResolve;
+const defaultProxyDisplayName = defaultProxyAlias.displayName;
 
 /** short label for the model auto-select picks today (console hint copy). */
 export function getAutoSelectHintModel(): string {
-  const alias = defaultProxyAlias;
-  if (!alias) return "Kimi 2.6";
-  const modelId = alias.resolve.split("/")[1] ?? "kimi-k2.6";
-  const version = modelId.replace(/^kimi-k2\./, "");
-  if (version && version !== modelId) {
-    return `Kimi 2.${version}`;
-  }
-  return alias.displayName;
+  return defaultProxyDisplayName;
 }
 
 // ── resolution ─────────────────────────────────────────────────────────────────
