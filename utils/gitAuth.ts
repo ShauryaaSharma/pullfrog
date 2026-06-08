@@ -16,6 +16,7 @@
 import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { log } from "./cli.ts";
 import type { GitAuthServer } from "./gitAuthServer.ts";
 import { filterEnv } from "./secrets.ts";
@@ -78,6 +79,47 @@ function verifyGitBinary(): string {
   return gitBinary.path;
 }
 
+// --- hooks isolation ---
+
+const hooksDirCache = new Map<string, string>();
+
+/**
+ * resolve the repo's REAL hooks dir (`<git-common-dir>/hooks`) so every
+ * authenticated `$git()` call can pin `core.hooksPath` to it.
+ *
+ * a `pre-push` hook fires inside `$git push` while GIT_ASKPASS is live, so an
+ * agent-controlled hook would receive the installation token (the token isn't
+ * in env, but a hook can ask the loopback auth server for it just like git
+ * does — and the replay trap only catches use after the call returns). the
+ * agent can't write the real `.git/hooks` (RO bind-mount in the shell sandbox +
+ * native-tool `.git` write deny), but it CAN redirect `core.hooksPath` to a dir
+ * it controls via `~/.gitconfig`, husky's tracked `.husky/`, or repo
+ * `.git/config`. pinning `core.hooksPath` on the command line (highest config
+ * precedence) ignores every such redirect while still firing legit hooks in the
+ * sealed `.git/hooks` — notably git-lfs `pre-push`, which is why we pin to the
+ * dir rather than `/dev/null` (empty/`/dev/null` disables ALL hooks and breaks
+ * LFS).
+ *
+ * derived from `--git-common-dir`, which is structural and NOT influenced by
+ * `core.hooksPath` (unlike `--git-path hooks`, which honors the override).
+ * memoized per cwd.
+ *
+ * runs the tamper-verified git binary (the value it returns becomes the pinned
+ * `core.hooksPath`, so resolving `git` from PATH here would let a substituted
+ * binary choose the hooks dir and reopen the very hole this pin closes).
+ */
+function resolveHooksDir(cwd: string, gitPath: string): string {
+  const cached = hooksDirCache.get(cwd);
+  if (cached) return cached;
+  const commonDir = $(gitPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd,
+    log: false,
+  }).trim();
+  const hooksDir = join(commonDir, "hooks");
+  hooksDirCache.set(cwd, hooksDir);
+  return hooksDir;
+}
+
 // --- auth server ---
 
 let authServer: GitAuthServer | undefined;
@@ -122,7 +164,10 @@ export async function $git(
   const scriptPath = authServer.writeAskpassScript(code);
 
   // -c flags override local .git/config — defense-in-depth against
-  // agent-set config that could spawn subprocesses before ASKPASS runs
+  // agent-set config that could spawn subprocesses before ASKPASS runs.
+  // core.hooksPath is pinned to the repo's real hooks dir so an
+  // agent-redirected hooksPath (~/.gitconfig, husky, .git/config) can't run
+  // attacker code with the token live — see resolveHooksDir.
   const fullArgs = [
     "-c",
     "core.fsmonitor=false",
@@ -132,6 +177,8 @@ export async function $git(
     "protocol.file.allow=never",
     "-c",
     "core.sshCommand=ssh",
+    "-c",
+    `core.hooksPath=${resolveHooksDir(cwd, gitPath)}`,
     subcommand,
     ...args,
   ];
