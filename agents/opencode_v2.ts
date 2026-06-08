@@ -990,6 +990,13 @@ export const opencode = agent({
 
     const rawModel = ctx.payload.proxyModel ?? ctx.resolvedModel ?? autoSelectModel();
 
+    // rawModel is the authoritative "what actually ran" — including the
+    // auto-select pick that main.ts cannot know (it's opencode-specific:
+    // folding it into `resolvedModel` earlier would mis-route `resolveAgent`).
+    // overwrite the pre-agent best-effort so `toolState.model` (footers + the
+    // end-of-run PATCH that persists `WorkflowRun.model`) reflects the real model.
+    if (rawModel) ctx.toolState.model = rawModel;
+
     // bedrock route: opencode's `amazon-bedrock` provider expects the model
     // in `amazon-bedrock/<bedrock-id>` form. detect via env-var sentinel
     // (same pattern as claude.ts). do not gate on Anthropic-vs-other — that

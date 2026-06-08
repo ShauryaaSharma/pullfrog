@@ -297,11 +297,17 @@ export async function main(): Promise<MainResult> {
 
     const agent = resolveAgent({ model: resolvedModel });
 
-    // surface the effective model in comment/review footers. payload.model is
-    // just the stored slug (often undefined for router/oss runs that derive
-    // the target from proxyModel). matching priority with resolveModelForLog
-    // so the "Using `…`" badge reflects what actually ran.
-    toolState.model = payload.proxyModel ?? resolvedModel ?? effectiveSlug;
+    // agent-agnostic best-effort for the model that ran: proxy spec for
+    // router/oss runs, else the post-fallback resolved model, else the slug.
+    // payload.model is just the stored slug (often undefined for router/oss
+    // runs that derive the target from proxyModel). matching priority with
+    // resolveModelForLog so the "Using `…`" badge reflects what actually ran.
+    // the opencode agent refines this from `rawModel` once it auto-selects (a
+    // pick main.ts can't know — see opencode_v2.ts), so auto-select runs persist
+    // their real model rather than this placeholder.
+    const effectiveModel = payload.proxyModel ?? resolvedModel ?? effectiveSlug;
+    // surface it in comment/review footers and persist it on the end-of-run PATCH.
+    toolState.model = effectiveModel;
 
     // skip validation when fallback engaged: the effective model is the
     // free fallback (`opencode/big-pickle`) and the fallback gate already
@@ -318,7 +324,7 @@ export async function main(): Promise<MainResult> {
     if (!fallback.fallback && !payload.proxyModel) {
       validateAgentApiKey({
         agent,
-        model: payload.proxyModel ?? resolvedModel ?? effectiveSlug,
+        model: effectiveModel,
         authorized,
         owner: runContext.repo.owner,
         name: runContext.repo.name,
@@ -724,6 +730,9 @@ export async function main(): Promise<MainResult> {
     // usage because the harness populates AgentUsage before returning.
     if (toolContext) {
       const patch = aggregateUsage(toolState.usageEntries);
+      // persist the resolved/effective model (what actually ran) so per-model
+      // cost analytics don't have to parse the audit-only payload.
+      if (toolState.model) patch.model = toolState.model;
       if (Object.keys(patch).length > 0) {
         await patchWorkflowRunFields(toolContext, patch);
       }
