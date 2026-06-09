@@ -31,6 +31,7 @@ import {
 } from "../models.ts";
 
 import { AGENT_ACTIVITY_TIMEOUT_MS, getIdleMs, markActivity } from "../utils/activity.ts";
+import { preflightClaudeSubscription } from "../utils/claudeSubscription.ts";
 import { formatJsonValue, log } from "../utils/cli.ts";
 import { installFromNpmTarball } from "../utils/install.ts";
 import { findProviderErrorMatch } from "../utils/providerErrors.ts";
@@ -1161,11 +1162,25 @@ export const claude = agent({
     // claude-code's `Vw()` resolver prefers ANTHROPIC_API_KEY over the OAuth
     // token when both are set, so we strip the API key to fall through to the
     // Max-subscription path. bedrock route uses AWS creds and is excluded.
+    // the strip is gated on a 1-token preflight: an exhausted (session/weekly
+    // limit) or revoked subscription would otherwise kill the run at its first
+    // model call with a working API key sitting unused in env.
     if (env.CLAUDE_CODE_OAUTH_TOKEN && !isBedrockRoute && env.ANTHROPIC_API_KEY) {
-      log.debug(
-        "» CLAUDE_CODE_OAUTH_TOKEN present — stripping ANTHROPIC_API_KEY from Claude Code env so the OAuth subscription is used"
-      );
-      delete env.ANTHROPIC_API_KEY;
+      const preflight = await preflightClaudeSubscription({
+        token: env.CLAUDE_CODE_OAUTH_TOKEN,
+        model,
+      });
+      if (preflight.usable) {
+        log.debug(
+          "» CLAUDE_CODE_OAUTH_TOKEN present — stripping ANTHROPIC_API_KEY from Claude Code env so the OAuth subscription is used"
+        );
+        delete env.ANTHROPIC_API_KEY;
+      } else {
+        log.info(
+          `» Claude subscription unusable (${preflight.reason}) — falling back to ANTHROPIC_API_KEY`
+        );
+        delete env.CLAUDE_CODE_OAUTH_TOKEN;
+      }
     }
 
     log.info(`» effort: ${effort}`);
