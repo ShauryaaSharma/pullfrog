@@ -166,6 +166,12 @@ export function validateAgentApiKey(params: {
  *     {"type":"error","error":{"type":"authentication_error", ...
  *     "Invalid bearer token"}}`) emitted by the Claude CLI for revoked /
  *     mistyped / rotated `ANTHROPIC_API_KEY`. see #782.
+ *   - expired credentials (#931): Bedrock 403 `Failed to authenticate. API
+ *     Error: 403 {"Message":"*** has expired"}` (short-lived bearer tokens),
+ *     OpenAI OAuth "Your authentication token has expired", and Codex
+ *     "Token refresh failed: 401". the Bedrock pattern is anchored to the
+ *     Claude CLI emission ("Failed to authenticate. API Error:") so generic
+ *     auth chatter in agent stderr can't misclassify a hang as a key error.
  */
 export function isApiKeyAuthError(text: string): boolean {
   if (!text) return false;
@@ -177,8 +183,22 @@ export function isApiKeyAuthError(text: string): boolean {
     /authentication_error/i.test(text) ||
     /Invalid bearer token/i.test(text) ||
     /api_error_status\s*=\s*401/i.test(text) ||
-    /API Error:\s*401/i.test(text)
+    /API Error:\s*401/i.test(text) ||
+    /Failed to authenticate\. API Error:/i.test(text) ||
+    isOAuthCredentialExpiredError(text)
   );
+}
+
+/**
+ * Expired OAuth-connection credential shapes (#931) — the fix is to
+ * re-authenticate the provider connection (`pullfrog auth <provider>`), not
+ * to rotate a repo-secret API key, so `formatApiKeyErrorSummary` renders
+ * distinct copy for these. Patterns are deliberately narrow:
+ * "authentication token has expired" (not bare "token has expired") so a
+ * GitHub installation-token expiry can't be misread as an LLM key problem.
+ */
+export function isOAuthCredentialExpiredError(text: string): boolean {
+  return /authentication token has expired/i.test(text) || /Token refresh failed/i.test(text);
 }
 
 /**
@@ -198,8 +218,18 @@ export function formatApiKeyErrorSummary(params: {
   const githubSecretsUrl = `https://github.com/${params.owner}/${params.name}/settings/secrets/actions`;
   const settingsUrl = `${getApiUrl()}/console/${params.owner}/${params.name}`;
 
+  // OAuth-connection credentials (Codex / provider OAuth) aren't repo
+  // secrets — "rotate the key, update the GitHub secret" is wrong advice.
+  if (isOAuthCredentialExpiredError(params.raw)) {
+    return [
+      `**Your provider OAuth credential has expired.** Re-authenticate the provider connection (e.g. \`pullfrog auth codex\`), then re-trigger the run.`,
+      "",
+      `[Model settings →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys) · [Ask in Discord →](https://discord.gg/8y96raFg8e)`,
+    ].join("\n");
+  }
+
   return [
-    `**Your LLM provider API key was rejected (401).** Rotate the key in your provider dashboard, then update the matching GitHub Actions secret.`,
+    `**Your LLM provider API key was rejected.** Rotate the key in your provider dashboard, then update the matching GitHub Actions secret.`,
     "",
     `[Update repo secret →](${githubSecretsUrl}) · [Model settings →](${settingsUrl}) · [Setup docs →](https://docs.pullfrog.com/keys) · [Ask in Discord →](https://discord.gg/8y96raFg8e)`,
   ].join("\n");

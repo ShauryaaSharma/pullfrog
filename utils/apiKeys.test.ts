@@ -239,9 +239,31 @@ describe("isApiKeyAuthError", () => {
     ).toBe(true);
   });
 
+  // see #931 — expired-credential shapes observed in production: Bedrock
+  // short-lived bearer token (403, not 401), OpenAI OAuth expiry, and the
+  // Codex refresh chain failing with a bare 401.
+  it("matches expired-credential shapes", () => {
+    expect(
+      isApiKeyAuthError(
+        '##[error]action failed: Failed to authenticate. API Error: 403 {"Message":"*** has expired"}'
+      )
+    ).toBe(true);
+    expect(
+      isApiKeyAuthError(
+        "» Pullfrog session error: Your authentication token has expired. Please try signing in again."
+      )
+    ).toBe(true);
+    expect(isApiKeyAuthError("» Pullfrog session error: Token refresh failed: 401")).toBe(true);
+  });
+
   it("ignores unrelated errors", () => {
     expect(isApiKeyAuthError("git fetch failed")).toBe(false);
     expect(isApiKeyAuthError("")).toBe(false);
+    // GitHub-side token expiry is not an LLM key problem
+    expect(isApiKeyAuthError("This installation access token has expired.")).toBe(false);
+    // generic auth chatter (e.g. a customer test suite in agent stderr) must
+    // not match — only the Claude CLI "Failed to authenticate. API Error:" shape
+    expect(isApiKeyAuthError("Failed to authenticate with internal-service")).toBe(false);
   });
 });
 
@@ -264,8 +286,21 @@ describe("formatApiKeyErrorSummary", () => {
       name: "repo",
       raw: "Invalid API key · Fix external API key",
     });
-    expect(msg).toContain("rejected (401)");
+    expect(msg).toContain("rejected");
     expect(msg).toContain("https://github.com/acme/repo/settings/secrets/actions");
     expect(msg).toContain("https://discord.gg/8y96raFg8e");
+  });
+
+  // see #931 — OAuth-connection credentials aren't repo secrets, so the
+  // rotate-the-secret copy is wrong advice for these shapes.
+  it("renders re-authenticate copy for expired OAuth credentials", () => {
+    const msg = formatApiKeyErrorSummary({
+      owner: "acme",
+      name: "repo",
+      raw: "» Pullfrog session error: Token refresh failed: 401",
+    });
+    expect(msg).toContain("OAuth credential has expired");
+    expect(msg).toContain("pullfrog auth");
+    expect(msg).not.toContain("settings/secrets/actions");
   });
 });
