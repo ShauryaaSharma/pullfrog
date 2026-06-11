@@ -24,7 +24,14 @@ import {
   AwaitDependencyInstallationTool,
   StartDependencyInstallationTool,
 } from "./dependencies.ts";
-import { DeleteBranchTool, GitFetchTool, GitTool, PushBranchTool, PushTagsTool } from "./git.ts";
+import {
+  CommitChangesTool,
+  DeleteBranchTool,
+  GitFetchTool,
+  GitTool,
+  PushBranchTool,
+  PushTagsTool,
+} from "./git.ts";
 import { IssueTool } from "./issue.ts";
 import { GetIssueCommentsTool } from "./issueComments.ts";
 import { GetIssueEventsTool } from "./issueEvents.ts";
@@ -56,6 +63,9 @@ export interface ToolContext {
   postCheckoutScript: string | null;
   prepushScript: string | null;
   prApproveEnabled: boolean;
+  // commits are created via the GitHub API (server-side signed, Verified)
+  // instead of local git commit + push_branch. see CommitChangesTool.
+  signedCommits: boolean;
   modeInstructions: Record<string, string>;
   toolState: ToolState;
   runId: number | undefined;
@@ -154,7 +164,7 @@ function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any
 }
 
 function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any, any>[] {
-  return [
+  const tools = [
     ...buildCommonTools(ctx, outputSchema),
     ReportProgressTool(ctx),
     SelectModeTool(ctx),
@@ -164,6 +174,12 @@ function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): To
     CreatePullRequestTool(ctx),
     UpdatePullRequestBodyTool(ctx),
   ];
+  // only registered in signed-commits mode so the tool never tempts agents
+  // on repos where plain git commit + push_branch is the canonical flow
+  if (ctx.signedCommits) {
+    tools.push(CommitChangesTool(ctx));
+  }
+  return tools;
 }
 
 type McpStartResult = {

@@ -35,10 +35,13 @@ export const SUBAGENT_DENIED_TOOLS = [
   // working-tree mutation: switches HEAD onto pr-N and registers a push remote
   "checkout_pr",
 
-  // remote mutation: pushes commits / branches / tags / deletes a branch
+  // remote mutation: pushes commits / branches / tags / deletes a branch.
+  // commit_changes lands the orchestrator's (possibly half-finished) shared
+  // working tree directly on the remote — strictly worse than push_branch.
   "push_branch",
   "push_tags",
   "delete_branch",
+  "commit_changes",
 
   // GitHub PR state mutation
   "create_pull_request",

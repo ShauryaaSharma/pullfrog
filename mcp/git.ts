@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { regex } from "arkregex";
 import { type } from "arktype";
 import type { StoredPushDest } from "../toolState.ts";
+import {
+  assertApiCommittable,
+  createSignedCommit,
+  detectWorkingTreeChanges,
+} from "../utils/apiCommit.ts";
 import { log } from "../utils/cli.ts";
 import { $git, $gitFetchWithDeepen } from "../utils/gitAuth.ts";
 import { executeLifecycleHook, type LifecycleHookFailure } from "../utils/lifecycle.ts";
@@ -129,6 +134,18 @@ export function validateTagName(tag: string): void {
 }
 
 /**
+ * whether this run pushes to the base repo (vs a contributor's fork). signed
+ * commits only apply to the base repo — the app can't API-commit to a fork.
+ * keyed off `toolState.pushUrl` (set by setupGit to the base URL, updated by
+ * checkout_pr to the fork URL for fork PRs) rather than the remote *name*,
+ * which is mutable git config an agent could rename.
+ */
+function pushesToBaseRepo(ctx: ToolContext): boolean {
+  const baseUrl = `https://github.com/${ctx.repo.owner}/${ctx.repo.name}.git`;
+  return normalizeUrl(ctx.toolState.pushUrl ?? "") === normalizeUrl(baseUrl);
+}
+
+/**
  * validate that the push destination matches expected URL.
  * pushUrl is set by setupGit (base repo) and updated by checkout_pr (fork repo).
  */
@@ -156,6 +173,67 @@ export const PushBranch = type({
     .optional(),
   force: type.boolean.describe("Force push (use with caution)").default(false),
 });
+
+/** target guards shared by push_branch and commit_changes: the cross-PR
+ * backstop and the restricted-mode default-branch block. */
+function assertPushTarget(ctx: ToolContext, branch: string, pushDest: PushDestination): void {
+  // backstop against subagent-induced cross-PR clobbers: a subagent
+  // shares cwd + toolState with the orchestrator, so its `checkout_pr(N)`
+  // moves HEAD to pr-N and persists pushDest pointing at the foreign
+  // PR's remote branch. refuse pr-N → origin/<other> pushes unless this
+  // run is itself scoped to PR N (zed-industries/cloud, 2026-05-18).
+  const prBranchMatch = branch.match(/^pr-(\d+)$/);
+  if (prBranchMatch && pushDest.remoteBranch !== branch) {
+    const prNumber = Number(prBranchMatch[1]);
+    const event = ctx.payload.event;
+    const runScoped = event.is_pr === true && event.issue_number === prNumber;
+    if (!runScoped) {
+      throw new Error(
+        `push blocked: local branch '${branch}' would push to '${pushDest.remoteName}/${pushDest.remoteBranch}', ` +
+          `but this run is not scoped to PR #${prNumber}. ` +
+          `the 'pr-${prNumber}' branch was created by a prior checkout_pr call (likely from a subagent — subagents share the working tree and toolState with the orchestrator). ` +
+          `you have probably landed your commit on the wrong branch. ` +
+          `switch to your own feature branch first (e.g. 'git checkout <feature-branch>') and then push. ` +
+          `if the push to PR #${prNumber} is intentional, this run needs to be triggered against that PR.`
+      );
+    }
+  }
+
+  // block pushes to default branch in restricted mode
+  const defaultBranch = ctx.repo.data.default_branch || "main";
+  if (ctx.payload.push === "restricted" && pushDest.remoteBranch === defaultBranch) {
+    throw new Error(
+      `Push blocked: cannot push directly to default branch '${pushDest.remoteBranch}'. ` +
+        `Create a feature branch and open a PR instead.`
+    );
+  }
+}
+
+/** run the repo's best-effort prepush hook with the per-run failure latch.
+ * returns true when the hook was skipped due to an earlier failure.
+ * `retryTool` names the tool the agent should re-invoke on failure. */
+async function runPrepushHook(ctx: ToolContext, retryTool: string): Promise<boolean> {
+  if (ctx.toolState.prepushFailureCount > 0) {
+    log.info(`» skipping prepush hook (failed earlier this run)`);
+    return true;
+  }
+  if (!ctx.prepushScript) return false;
+  const prepushHook = await executeLifecycleHook({
+    event: "prepush",
+    script: ctx.prepushScript,
+  });
+  if (prepushHook.failure) {
+    ctx.toolState.prepushFailureCount += 1;
+    throw new Error(
+      buildPrepushFailureMessage({
+        failure: prepushHook.failure,
+        shell: ctx.payload.shell,
+        retryTool,
+      })
+    );
+  }
+  return false;
+}
 
 // classify an error from `$git("push", ...)` to decide retry vs. recovery
 // vs. rethrow. exported for tests.
@@ -264,7 +342,6 @@ async function pushWithRetry(args: string[], token: string): Promise<void> {
 }
 
 export function PushBranchTool(ctx: ToolContext) {
-  const defaultBranch = ctx.repo.data.default_branch || "main";
   const pushPermission = ctx.payload.push;
 
   return tool({
@@ -291,6 +368,17 @@ export function PushBranchTool(ctx: ToolContext) {
       // can't slip past the default-branch guard below.
       rejectSpecialRef(branch, "branch");
 
+      // signed-commits mode: same-repo commits are created directly on the
+      // remote by commit_changes, so there is nothing to push. fork PRs keep
+      // the git push path (the app can't API-commit to a contributor's fork).
+      if (ctx.signedCommits && pushesToBaseRepo(ctx)) {
+        throw new Error(
+          "push_branch is not used in signed-commits mode — commits land on the remote via the commit_changes tool. " +
+            "call commit_changes to commit your working-tree changes as a GitHub-signed commit. " +
+            "if you already called commit_changes, your work is already on the remote — there is nothing left to push."
+        );
+      }
+
       // reject push if working tree is dirty — forces agent to commit or discard before pushing
       const status = $("git", ["status", "--porcelain"], { log: false });
       if (status) {
@@ -305,36 +393,7 @@ export function PushBranchTool(ctx: ToolContext) {
 
       // validate push destination matches expected URL
       const pushDest = validatePushDestination(ctx, branch);
-
-      // backstop against subagent-induced cross-PR clobbers: a subagent
-      // shares cwd + toolState with the orchestrator, so its `checkout_pr(N)`
-      // moves HEAD to pr-N and persists pushDest pointing at the foreign
-      // PR's remote branch. refuse pr-N → origin/<other> pushes unless this
-      // run is itself scoped to PR N (zed-industries/cloud, 2026-05-18).
-      const prBranchMatch = branch.match(/^pr-(\d+)$/);
-      if (prBranchMatch && pushDest.remoteBranch !== branch) {
-        const prNumber = Number(prBranchMatch[1]);
-        const event = ctx.payload.event;
-        const runScoped = event.is_pr === true && event.issue_number === prNumber;
-        if (!runScoped) {
-          throw new Error(
-            `push blocked: local branch '${branch}' would push to '${pushDest.remoteName}/${pushDest.remoteBranch}', ` +
-              `but this run is not scoped to PR #${prNumber}. ` +
-              `the 'pr-${prNumber}' branch was created by a prior checkout_pr call (likely from a subagent — subagents share the working tree and toolState with the orchestrator). ` +
-              `you have probably landed your commit on the wrong branch. ` +
-              `switch to your own feature branch first (e.g. 'git checkout <feature-branch>') and then push. ` +
-              `if the push to PR #${prNumber} is intentional, this run needs to be triggered against that PR.`
-          );
-        }
-      }
-
-      // block pushes to default branch in restricted mode
-      if (pushPermission === "restricted" && pushDest.remoteBranch === defaultBranch) {
-        throw new Error(
-          `Push blocked: cannot push directly to default branch '${pushDest.remoteBranch}'. ` +
-            `Create a feature branch and open a PR instead.`
-        );
-      }
+      assertPushTarget(ctx, branch, pushDest);
 
       // use refspec when local and remote branch names differ
       const refspec =
@@ -343,19 +402,8 @@ export function PushBranchTool(ctx: ToolContext) {
         ? ["--force", "-u", pushDest.remoteName, refspec]
         : ["-u", pushDest.remoteName, refspec];
 
-      const prepushSkipped = ctx.toolState.prepushFailureCount > 0;
-      if (prepushSkipped) {
-        log.info(`» skipping prepush hook (failed earlier this run)`);
-      } else if (ctx.prepushScript) {
-        const prepushHook = await executeLifecycleHook({
-          event: "prepush",
-          script: ctx.prepushScript,
-        });
-        if (prepushHook.failure) {
-          ctx.toolState.prepushFailureCount += 1;
-          throw new Error(buildPrepushFailureMessage(prepushHook.failure, ctx.payload.shell));
-        }
-
+      const prepushSkipped = await runPrepushHook(ctx, "push_branch");
+      if (!prepushSkipped && ctx.prepushScript) {
         // re-verify clean working tree after prepush. a hook that writes tracked
         // files (formatter, type generator, build artifacts) would leave those
         // changes uncommitted — pushing now would silently drop them, and the
@@ -428,10 +476,12 @@ export function PushBranchTool(ctx: ToolContext) {
 
 /** agent-facing prepush failure message: script output + bypass guidance,
  * with no generic lifecycle retry advice (which would conflict). */
-function buildPrepushFailureMessage(
-  failure: LifecycleHookFailure,
-  shell: ToolContext["payload"]["shell"]
-): string {
+function buildPrepushFailureMessage(params: {
+  failure: LifecycleHookFailure;
+  shell: ToolContext["payload"]["shell"];
+  retryTool: string;
+}): string {
+  const failure = params.failure;
   const header =
     failure.kind === "exit"
       ? `prepush hook failed with exit code ${failure.exitCode}.\n\nscript output:\n${failure.output || "(empty)"}`
@@ -440,16 +490,179 @@ function buildPrepushFailureMessage(
         : `prepush hook failed to spawn: ${failure.spawnError}.`;
 
   const ifRealBug =
-    shell === "disabled"
+    params.shell === "disabled"
       ? `fix it before pushing again — shell access is disabled in this run, so you can't re-run the hook command yourself.`
-      : `run the hook command yourself via the shell tool to iterate (push_branch will NOT re-run it).`;
+      : `run the hook command yourself via the shell tool to iterate (${params.retryTool} will NOT re-run it).`;
 
   return (
     `${header}\n\n` +
-    `this repo's prepush hook is best-effort: the next push_branch call will SKIP the hook and proceed. ` +
-    `if the failure is unrelated to your changes (pre-existing breakage, flaky check), just call push_branch again. ` +
+    `this repo's prepush hook is best-effort: the next ${params.retryTool} call will SKIP the hook and proceed. ` +
+    `if the failure is unrelated to your changes (pre-existing breakage, flaky check), just call ${params.retryTool} again. ` +
     `if it could be a real bug in your code, ${ifRealBug}`
   );
+}
+
+/** distinguish "work already landed" and "stranded local commits" from a
+ * genuinely clean tree — all three end in a clean worktree, and the wrong
+ * diagnosis sends agents in circles. */
+function buildNothingToCommitMessage(pushDest: PushDestination): string {
+  const base = "nothing to commit — the working tree matches HEAD.";
+  try {
+    const remoteTip = $(
+      "git",
+      ["rev-parse", `refs/remotes/${pushDest.remoteName}/${pushDest.remoteBranch}`],
+      { log: false }
+    ).trim();
+    const head = $("git", ["rev-parse", "HEAD"], { log: false }).trim();
+    if (remoteTip === head) {
+      return `${base} your work is already on ${pushDest.remoteName}/${pushDest.remoteBranch} — there is no push step in signed-commits mode.`;
+    }
+    $("git", ["merge-base", "--is-ancestor", remoteTip, "HEAD"], { log: false });
+    return (
+      `${base} but your local branch has commits that were never pushed — signed-commits mode can't push local commits. ` +
+      `run git reset --mixed ${remoteTip} (keeps every change in the working tree), then retry commit_changes.`
+    );
+  } catch {
+    return base;
+  }
+}
+
+const CommitChanges = type({
+  message: type.string.describe("Commit message (first line = subject)"),
+  files: type.string
+    .array()
+    .describe("Optional subset of changed paths to commit. Defaults to every working-tree change.")
+    .optional(),
+});
+
+export function CommitChangesTool(ctx: ToolContext) {
+  const pushPermission = ctx.payload.push;
+
+  return tool({
+    name: "commit_changes",
+    description:
+      "Commit working-tree changes directly to the remote branch as a GitHub-signed (Verified) commit — this repository has signed commits enabled, so use this INSTEAD of git commit + push_branch. " +
+      "Edit files locally, then call this tool: it detects every working-tree change (new, modified, deleted files), or commits a subset via `files`. " +
+      "The commit lands on the remote immediately — there is no separate push step. The remote branch is created automatically on the first commit to a new local branch. " +
+      "A merge in progress (git merge --no-commit) is concluded as a signed merge commit — resolve conflicts and git add first. " +
+      "Runs the repository prepush hook (if configured) before committing — best-effort, same skip-on-failure behavior as push_branch.",
+    parameters: CommitChanges,
+    timeoutMs: 600_000,
+    execute: execute(async (params) => {
+      if (pushPermission === "disabled") {
+        throw new Error("Push is disabled. This repository is configured for read-only access.");
+      }
+
+      const branch = $("git", ["rev-parse", "--abbrev-ref", "HEAD"], { log: false }).trim();
+      if (branch === "HEAD") {
+        throw new Error(
+          "HEAD is detached — create or check out a branch before committing (e.g. git checkout -b pullfrog/<description>)."
+        );
+      }
+      rejectSpecialRef(branch, "branch");
+
+      const pushDest = validatePushDestination(ctx, branch);
+      if (!pushesToBaseRepo(ctx)) {
+        throw new Error(
+          `'${branch}' pushes to the fork '${pushDest.url}', where the app can't create signed commits. ` +
+            `commit locally via the git tool and use push_branch instead (those commits will be unsigned).`
+        );
+      }
+      assertPushTarget(ctx, branch, pushDest);
+
+      // run the hook before reading file content so formatter/codegen
+      // effects land inside the commit instead of being silently dropped
+      const prepushSkipped = await runPrepushHook(ctx, "commit_changes");
+
+      const head = $("git", ["rev-parse", "HEAD"], { log: false }).trim();
+      // a pending merge contributes MERGE_HEAD as a second parent: the API
+      // commit becomes a true merge commit, so integrating the base branch
+      // doesn't flatten its commits into the PR diff.
+      let mergeHead = "";
+      try {
+        mergeHead = $("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { log: false }).trim();
+      } catch {
+        // no merge in progress
+      }
+
+      let changes = detectWorkingTreeChanges();
+      if (params.files) {
+        if (mergeHead) {
+          throw new Error(
+            "can't commit a subset of files while a merge is in progress — the merge commit must include every merged change. omit `files`."
+          );
+        }
+        const requested = new Set(params.files);
+        const known = new Set(changes.map((c) => c.path));
+        const unknown = [...requested].filter((p) => !known.has(p));
+        if (unknown.length > 0) {
+          throw new Error(
+            `no detected change at: ${unknown.join(", ")} — run git status to list changed paths.`
+          );
+        }
+        changes = changes.filter((c) => requested.has(c.path));
+      }
+      // a merge that resolved to HEAD's tree (both sides made the same
+      // change) still needs its empty merge commit to conclude
+      if (changes.length === 0 && !mergeHead) {
+        throw new Error(buildNothingToCommitMessage(pushDest));
+      }
+      await assertApiCommittable(changes);
+      const parents = mergeHead ? [head, mergeHead] : [head];
+
+      const result = await createSignedCommit({
+        token: ctx.gitToken,
+        owner: ctx.repo.owner,
+        repo: ctx.repo.name,
+        remoteBranch: pushDest.remoteBranch,
+        message: params.message,
+        parents,
+        files: changes,
+      });
+
+      // resync the local clone: fetch the new commit, advance the local
+      // branch to it, refresh the index. worktree files already match the
+      // committed content, so leftovers from a `files` subset stay visible
+      // in git status and nothing is lost.
+      await $git(
+        "fetch",
+        [
+          "--no-tags",
+          "origin",
+          `+refs/heads/${pushDest.remoteBranch}:refs/remotes/origin/${pushDest.remoteBranch}`,
+        ],
+        { token: ctx.gitToken }
+      );
+      $("git", ["update-ref", `refs/heads/${branch}`, result.sha], { log: false });
+      if (mergeHead) {
+        $("git", ["merge", "--quit"], { log: false });
+      }
+      $("git", ["reset", "-q"], { log: false });
+      if (result.createdBranch) {
+        // mirror what `git push -u` would have configured
+        $("git", ["config", `branch.${branch}.remote`, "origin"], { log: false });
+        $("git", ["config", `branch.${branch}.merge`, `refs/heads/${pushDest.remoteBranch}`], {
+          log: false,
+        });
+      }
+
+      log.info(
+        `» created signed commit ${result.sha.slice(0, 7)} (${changes.length} file(s)) on ${pushDest.remoteName}/${pushDest.remoteBranch}`
+      );
+
+      return {
+        success: true,
+        sha: result.sha,
+        branch,
+        remoteBranch: pushDest.remoteBranch,
+        files: changes.map((c) => (c.deleted ? `D ${c.path}` : c.path)),
+        createdBranch: result.createdBranch,
+        verified: true,
+        prepushSkipped,
+        message: `created signed commit ${result.sha.slice(0, 7)} on ${pushDest.remoteName}/${pushDest.remoteBranch}${result.createdBranch ? " (remote branch created)" : ""}`,
+      };
+    }),
+  });
 }
 
 // commands that require authentication - redirect to dedicated tools.
@@ -670,7 +883,40 @@ export function GitTool(ctx: ToolContext) {
 
       const redirect = AUTH_REQUIRED_REDIRECT[command];
       if (redirect) {
+        if (command === "push" && ctx.signedCommits) {
+          throw new Error(
+            "git push is not available through this tool — in signed-commits mode use commit_changes instead: it commits your working-tree changes directly to the remote as a GitHub-signed commit (push_branch only applies to fork PRs)."
+          );
+        }
         throw new Error(`git ${command} is not available through this tool — ${redirect}`);
+      }
+
+      // signed-commits mode: local commits can never reach the remote (the
+      // app only accepts API-created signed commits via commit_changes), so
+      // block commit-creating subcommands for same-repo work up front. merge
+      // stays available with --no-commit so conflict resolution still works;
+      // commit_changes concludes the pending merge as a signed merge commit.
+      // fork-PR branches keep plain git semantics (signing is impossible there).
+      if (ctx.signedCommits && (command === "commit" || command === "merge")) {
+        if (pushesToBaseRepo(ctx)) {
+          if (command === "commit") {
+            throw new Error(
+              "git commit is blocked in signed-commits mode — use the commit_changes tool instead. " +
+                "it commits your working-tree changes directly to the remote as a GitHub-signed (Verified) commit. " +
+                "if you are concluding a merge, stage the resolutions with git add and call commit_changes — no local commit is needed."
+            );
+          }
+          const noLocalCommit = args.some(
+            (a) => a === "--no-commit" || a === "--abort" || a === "--quit"
+          );
+          if (!noLocalCommit) {
+            throw new Error(
+              "bare git merge would create a local commit, which can't be pushed in signed-commits mode. " +
+                "use git merge --no-commit <ref>, resolve any conflicts, git add the results, then call commit_changes — " +
+                "it concludes the merge as a signed merge commit."
+            );
+          }
+        }
       }
 
       // SECURITY: block dangerous subcommands when shell is disabled.

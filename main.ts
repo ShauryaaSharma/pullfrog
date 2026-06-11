@@ -372,7 +372,10 @@ export async function main(): Promise<MainResult> {
     timer.checkpoint("lifecycleHooks::setup");
 
     const agentId = agent.name;
-    const modes = [...computeModes(agentId), ...runContext.repoSettings.modes];
+    const modes = [
+      ...computeModes(agentId, runContext.repoSettings.signedCommits),
+      ...runContext.repoSettings.modes,
+    ];
 
     const outputSchema = resolveOutputSchema();
 
@@ -389,6 +392,7 @@ export async function main(): Promise<MainResult> {
       postCheckoutScript: runContext.repoSettings.postCheckoutScript,
       prepushScript: runContext.repoSettings.prepushScript,
       prApproveEnabled: runContext.repoSettings.prApproveEnabled,
+      signedCommits: runContext.repoSettings.signedCommits,
       modeInstructions: runContext.repoSettings.modeInstructions,
       toolState,
       runId: runInfo.runId,
@@ -482,6 +486,7 @@ export async function main(): Promise<MainResult> {
       modes,
       agentId,
       outputSchema,
+      signedCommits: runContext.repoSettings.signedCommits,
       learningsFilePath: toolState.learningsFilePath ?? null,
       learningsHeadings: runContext.repoSettings.learningsHeadings,
       setupHookFailure: describeSetupFailure(setupHook.failure),

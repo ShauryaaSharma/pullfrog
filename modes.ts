@@ -159,8 +159,16 @@ Inline comments use the same severity framing as body \`### \` sections, scaled 
 - **Pull file/commit counts from \`checkout_pr\` metadata** — never count manually.
 - **Legacy headings REMOVED.** Do not use \`### Key changes\`, \`### Issues found\`, \`<b>TL;DR</b>\`, or \`<sub><b>Summary</b>\`. The new structure subsumes them.`;
 
-export function computeModes(agentId: AgentId): Mode[] {
+export function computeModes(agentId: AgentId, signedCommits = false): Mode[] {
   const t = (toolName: string) => formatMcpToolRef(agentId, toolName);
+  // signed-commits mode swaps the local-commit + push flow for the
+  // commit_changes tool (API-created, GitHub-signed commits — no push step)
+  const commitStep = signedCommits
+    ? `commit via \`${t("commit_changes")}\` — it lands a GitHub-signed commit directly on the remote branch (no push step)`
+    : `commit locally via shell (\`git add . && git commit -m "..."\`)`;
+  const finalizeStep = signedCommits
+    ? `confirm a clean working tree (\`git status\`) — your \`${t("commit_changes")}\` calls already landed the work on the remote`
+    : `confirm a clean working tree, then push via \`${t("push_branch")}\``;
   return [
     {
       name: "Build",
@@ -232,10 +240,10 @@ export function computeModes(agentId: AgentId): Mode[] {
    - Do NOT defect-hunt the diff yourself in parallel with the subagent. Your role is dispatch + evaluation; doing the review yourself reintroduces the implementation bias the subagent is meant to mitigate.
    - For diffs that rely on third-party API contracts, SDK semantics, framework directives, or DB engine specifics, instruct the subagent to verify load-bearing claims via web search and quote source URLs rather than trust training data — this is the single most common review-quality failure mode.
 
-   Be **discerning** about what comes back. The reviewer is an AI subagent and is fallible — treat every finding as a hypothesis, not a directive, and **verify each one yourself** against the diff and the code before deciding whether to apply. You are searching for a solution that is **complete, minimal, and elegant** — you may need to think hard to find it. Do not over-engineer, do not be over-defensive, **do not write AI slop**. Reviewers bias toward *recommending additions*, and that bias has a recognizable slop texture: defensive checks for cases that cannot happen, extra logging, new abstractions used once, comments restating code, tests asserting tautologies, "just-in-case" guards, error handlers for cases the type system already rules out. Reject those. For each surviving finding, ask: would applying it leave the code more sound, correct, AND elegant? Two-out-of-three means look harder for a fix that gets all three before settling. After applying the fixes you accept, re-read your diff and be discerning about what *you just changed*: if any fix turned out to be bloat in context, revert it. Then verify only intended changes are present, no debug artifacts or commented-out code remain, no unrelated files were modified. Commit locally via shell (\`git add . && git commit -m "..."\`).
+   Be **discerning** about what comes back. The reviewer is an AI subagent and is fallible — treat every finding as a hypothesis, not a directive, and **verify each one yourself** against the diff and the code before deciding whether to apply. You are searching for a solution that is **complete, minimal, and elegant** — you may need to think hard to find it. Do not over-engineer, do not be over-defensive, **do not write AI slop**. Reviewers bias toward *recommending additions*, and that bias has a recognizable slop texture: defensive checks for cases that cannot happen, extra logging, new abstractions used once, comments restating code, tests asserting tautologies, "just-in-case" guards, error handlers for cases the type system already rules out. Reject those. For each surviving finding, ask: would applying it leave the code more sound, correct, AND elegant? Two-out-of-three means look harder for a fix that gets all three before settling. After applying the fixes you accept, re-read your diff and be discerning about what *you just changed*: if any fix turned out to be bloat in context, revert it. Then verify only intended changes are present, no debug artifacts or commented-out code remain, no unrelated files were modified. Then ${commitStep}.
 
 6. **finalize**:
-   - confirm a clean working tree, then push via \`${t("push_branch")}\` (see *SYSTEM* Git rules if this fails — prepush errors are usually the repo's tests/lint, not infra timeouts)
+   - ${finalizeStep} (see *SYSTEM* Git rules if this fails — prepush errors are usually the repo's tests/lint, not infra timeouts)
    - create a PR via \`${t("create_pull_request")}\`
    - call \`${t("report_progress")}\` with the PR link or the exact error if push/PR failed
 
@@ -264,12 +272,12 @@ For simple, well-defined tasks, skip the plan phase and go straight to build.`,
 
 5. Quality check:
    - test changes, then review the diff before committing — verify only intended changes are present, no debug artifacts remain, no fix turned out to be bloat in context (revert any that did), and the changes are clean enough that a senior engineer would approve without hesitation
-   - commit locally via shell (\`git add . && git commit -m "..."\`)
+   - ${commitStep}
 
 6. Finalize. Reply + resolve are paired write actions: do BOTH or NEITHER for each thread.
-   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
-   - **if push fails**, call \`${t("report_progress")}\` with the exact error and STOP — do NOT reply or resolve any thread until the fix is live on the remote. Resolving a thread without the fix landing misleads the reviewer.
-   - **on push success**, for each thread you acted on:
+   - ${finalizeStep} (same push/prepush guidance as Build mode in *SYSTEM*)
+   - **if the push/commit fails**, call \`${t("report_progress")}\` with the exact error and STOP — do NOT reply or resolve any thread until the fix is live on the remote. Resolving a thread without the fix landing misleads the reviewer.
+   - **once the fix is live on the remote**, for each thread you acted on:
      - reply ONCE via \`${t("reply_to_review_comment")}\`. The \`comment_id\` parameter takes the root comment's numeric \`id=\` (from the first \`comment author=...\` tag in the \`${t("get_review_comments")}\` output) — NOT the \`thread=\` value; that's a separate GraphQL ID used by resolve. The runtime dedupes identical bodies within a session.
      - **immediately** call \`${t("resolve_review_thread")}\` with that thread's \`thread=\` value as \`thread_id\`. Resolve every thread where you (a) made the requested code change in full — partial fixes leave the thread open — OR (b) replied with a substantive answer the user explicitly asked for. Do NOT resolve threads where you pushed back on the request and the disagreement is unresolved; leave those open for the human to mediate.
    - call \`${t("report_progress")}\` with a brief summary`,
@@ -548,10 +556,10 @@ ${PR_SUMMARY_FORMAT}`,
    - fix the issue using your native file and shell tools
    - verify the fix by re-running the exact CI command
    - review the diff before committing — verify only the fix is present, no debug artifacts, no unrelated changes. the fix should be clean enough that a senior engineer would approve without hesitation.
-   - commit locally via shell (\`git add . && git commit -m "..."\`)
+   - ${commitStep}
 
 6. Finalize:
-   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
+   - ${finalizeStep} (same push/prepush guidance as Build mode in *SYSTEM*)
    - call \`${t("report_progress")}\` with the diagnosis and fix summary (or the exact push error if push failed)`,
     },
     {
@@ -567,8 +575,8 @@ ${PR_SUMMARY_FORMAT}`,
    - Call \`${t("git_fetch")}\` to fetch the base branch.
 
 3. **Merge Attempt**:
-   - Run \`git merge origin/<base_branch>\` via shell.
-   - If it succeeds automatically, confirm a clean working tree, push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*), and call \`${t("report_progress")}\` with a brief success note or the exact push error if push failed — **then stop; do not run steps 4–5.**
+   - Run \`git merge ${signedCommits ? "--no-commit " : ""}origin/<base_branch>\` via shell.
+   - If it succeeds automatically, ${signedCommits ? `conclude it via \`${t("commit_changes")}\` (it turns the pending merge into a signed merge commit on the remote)` : `confirm a clean working tree, push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)`}, and call \`${t("report_progress")}\` with a brief success note or the exact error if it failed — **then stop; do not run steps 4–5.**
    - If it fails (conflicts), resolve them manually (continue to steps 4–5).
 
 4. **Resolve Conflicts**:
@@ -578,8 +586,8 @@ ${PR_SUMMARY_FORMAT}`,
 
 5. **Finalize**:
    - Run a final verification (build/test) to ensure the resolution works.
-   - \`git add . && git commit -m "resolve merge conflicts"\`
-   - confirm a clean working tree, then push via \`${t("push_branch")}\` (same push/prepush guidance as Build mode in *SYSTEM*)
+   - ${signedCommits ? `\`git add .\`, then conclude via \`${t("commit_changes")}\` with message "resolve merge conflicts"` : `\`git add . && git commit -m "resolve merge conflicts"\``}
+   - ${finalizeStep} (same push/prepush guidance as Build mode in *SYSTEM*)
    - Call \`${t("report_progress")}\` with a summary of what was resolved (or the exact push error if push failed)`,
     },
     {
@@ -599,7 +607,7 @@ ${PR_SUMMARY_FORMAT}`,
    - if code changes are needed: review your own diff before committing — verify only intended changes are present, no debug artifacts remain, and the changes are clean enough that a senior engineer would approve without hesitation
 
 4. Finalize:
-   - if code changes were made, push to a pull request (new or existing) using \`${t("push_branch")}\` and \`${t("create_pull_request")}\` as needed. \`git status\` must be clean before you finish (see *SYSTEM* Git rules if push fails).
+   - if code changes were made, get them onto a pull request (new or existing) using ${signedCommits ? `\`${t("commit_changes")}\`` : `\`${t("push_branch")}\``} and \`${t("create_pull_request")}\` as needed. \`git status\` must be clean before you finish (see *SYSTEM* Git rules if this fails).
    - call \`${t("report_progress")}\` once with results — include exact tool errors if push or PR creation failed
    - if the task involved labeling, commenting, or other GitHub operations, perform those directly`,
     },

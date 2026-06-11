@@ -13,6 +13,9 @@ interface InstructionsContext {
   modes: Mode[];
   agentId: AgentId;
   outputSchema?: Record<string, unknown> | undefined;
+  /** commits are created via the GitHub API (commit_changes tool) so GitHub
+   * signs them — flips the Git instructions to the signed-commits flow. */
+  signedCommits: boolean;
   /** absolute path to the seeded learnings tmpfile, or null when the file
    * couldn't be seeded for some reason. main.ts always seeds, so in
    * practice this is always set; the null case keeps the type honest. */
@@ -275,7 +278,21 @@ Use \`${t("git")}\` for local git commands (status, log, add, commit, checkout, 
 - \`${t("checkout_pr")}\` - checkout a PR branch (fetches and configures push for forks)
 - \`${t("delete_branch")}\` - delete a remote branch (requires push: enabled)
 - \`${t("push_tags")}\` - push tags (requires push: enabled)
+${
+  ctx.signedCommits
+    ? `
+#### Signed commits (enabled for this repository)
 
+This repository requires GitHub-signed commits, which local git commits can never satisfy. This OVERRIDES any other instruction (including mode instructions) to commit via git or push via \`${t("push_branch")}\`:
+- Do NOT use git commit or \`${t("push_branch")}\` for same-repo branches — both are blocked. Instead: edit files, then call \`${t("commit_changes")}\` with a commit message. It commits every working-tree change (or a \`files\` subset) directly to the remote branch as a GitHub-signed (Verified) commit. There is no separate push step.
+- New branches: create locally as usual (git checkout -b); the remote branch is created on the first \`${t("commit_changes")}\` call.
+- To integrate remote changes (concurrent pushes, base branch): \`${t("git_fetch")}\`, then git merge --no-commit <ref>, resolve conflicts, git add the results, then \`${t("commit_changes")}\` — it concludes the merge as a signed merge commit.
+- \`${t("commit_changes")}\` commits EVERY working-tree change by default — review \`git status\` first and clean up stray artifacts (or pass \`files\`).
+- cherry-pick/revert: use \`-n\`/\`--no-commit\` so no local commit is created, then \`${t("commit_changes")}\`.
+- Fork PRs are the exception: signing is impossible there, so commit and push normally (those commits will be unsigned).
+`
+    : ""
+}
 Rules:
 - All code changes must be pushed to a pull request (new or existing) before the run ends. This environment is ephemeral — unpushed work is lost permanently. \`git status\` must be clean when you finish.
 - Protected branches (default branch) are blocked from direct pushes in restricted mode. Do not use \`git push\` directly — it will fail without credentials.
