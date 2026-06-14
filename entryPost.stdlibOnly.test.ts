@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The GHA `post:` hook runs `node action/entryPost.ts` directly against the
@@ -79,18 +79,16 @@ describe("entryPost.ts stdlib-only invariant (#834)", () => {
     expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
   });
 
-  it("walks the full transitive graph (entryPost + 3 utils)", () => {
+  it("walks the full transitive graph (entryPost + all util imports)", () => {
     const result = walk(ENTRY_FILE);
-    expect(result.visited.size).toBeGreaterThanOrEqual(4);
-  });
-
-  it("matches the modules entryPost actually imports today", () => {
-    const direct = extractImports(ENTRY_FILE).sort();
-    expect(direct).toEqual([
-      "./utils/codexRefreshDetect.ts",
-      "./utils/ghaCore.ts",
-      "./utils/postApiFetch.ts",
-      "node:fs",
+    const visited = [...result.visited]
+      .map((f) => relative(import.meta.dirname, f).replaceAll("\\", "/"))
+      .sort();
+    expect(visited).toEqual([
+      "entryPost.ts",
+      "utils/codexRefreshDetect.ts",
+      "utils/ghaCore.ts",
+      "utils/postApiFetch.ts",
     ]);
   });
 });
