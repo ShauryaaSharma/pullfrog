@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { agents } from "./agents/index.ts";
+import { subagentDeniedToolNames } from "./agents/subagentToolGates.ts";
 import { reportProgress } from "./mcp/comment.ts";
 import { startInstallation } from "./mcp/dependencies.ts";
 import { startMcpHttpServer, type ToolContext } from "./mcp/server.ts";
@@ -392,6 +393,10 @@ export async function main(): Promise<MainResult> {
     log.info(`» MCP server started at ${mcpHttpServer.url}`);
     timer.checkpoint("mcpServer");
 
+    // derive the subagent deny list from the same tool set the server just
+    // registered, so the gate can never drift from the registered tools.
+    const subagentDeniedTools = subagentDeniedToolNames(toolContext, outputSchema);
+
     // seed the rolling repo-level learnings tmpfile for every run. the
     // agent reads the file at startup (path is surfaced in the LEARNINGS
     // section of the prompt) and may edit it during the post-run
@@ -567,6 +572,7 @@ export async function main(): Promise<MainResult> {
       resolvedModel,
       mcpServerUrl: mcpHttpServer.url,
       tmpdir,
+      subagentDeniedTools,
       // PULLFROG_DATA_DIR (/var/lib/pullfrog) holds codex auth.json + any
       // future pullfrog-managed on-disk secrets. bash via MCP tmpfs-overlays
       // it; agent native FS tools deny it via the same secretDenyPaths plumbing

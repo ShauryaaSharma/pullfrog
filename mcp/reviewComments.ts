@@ -762,6 +762,7 @@ export const ResolveReviewThread = type({
 export function ResolveReviewThreadTool(ctx: ToolContext) {
   return tool({
     name: "resolve_review_thread",
+    mutates: true,
     description:
       "Mark a review thread as resolved using GitHub's GraphQL API. " +
       "Only call this after addressing the review feedback, implementing fixes, testing them, and posting a reply. " +

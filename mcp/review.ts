@@ -15,15 +15,9 @@ import { patchWorkflowRunFields } from "../utils/patchWorkflowRunFields.ts";
 import { retry } from "../utils/retry.ts";
 import { deleteProgressComment } from "./comment.ts";
 import type { ToolContext } from "./server.ts";
-import { execute, tool } from "./shared.ts";
+import { execute, getHttpStatus, tool } from "./shared.ts";
 
 export type { CommentableLines };
-
-function getHttpStatus(err: unknown): number | undefined {
-  if (typeof err !== "object" || err === null) return undefined;
-  const status = (err as Record<string, unknown>).status;
-  return typeof status === "number" ? status : undefined;
-}
 
 /**
  * detect GitHub's generic server-side 422 ("An internal error occurred,
@@ -269,6 +263,7 @@ export function duplicateReviewDecision(params: {
  */
 export function reviewSkipDecision(params: {
   approved: boolean;
+  requestChanges?: boolean;
   body: string | null | undefined;
   hasComments: boolean;
   prApproveEnabled: boolean;
@@ -277,7 +272,9 @@ export function reviewSkipDecision(params: {
   if (!params.approved) {
     return {
       kind: "no-issues",
-      reason: "no issues found — nothing to post",
+      reason: params.requestChanges
+        ? "request_changes with no body or comments — nothing to block on"
+        : "no issues found — nothing to post",
     };
   }
   if (!params.prApproveEnabled) {
@@ -316,7 +313,12 @@ export const CreatePullRequestReview = type({
     .optional(),
   approved: type.boolean
     .describe(
-      "Set to true to submit as an approval. Use for `> ✅ No new issues found.` reviews where the PR is mergeable as-is and nothing in the body warrants code changes — approving also suppresses the Fix-button footer affordance so users don't dispatch a fix run on non-actionable feedback. Reserve approved: false for `> ℹ️ ...` (minor suggestions inline), `> [!IMPORTANT]` (recommended changes), and `> [!CAUTION]` (critical) reviews. Defaults to false (comment-only review). Rejections are not supported."
+      "Set to true to submit as an approval. Use for `> ✅ No new issues found.` reviews where the PR is mergeable as-is and nothing in the body warrants code changes — approving also suppresses the Fix-button footer affordance so users don't dispatch a fix run on non-actionable feedback. Reserve approved: false for `> ℹ️ ...` (minor suggestions inline), `> [!IMPORTANT]` (recommended changes), and `> [!CAUTION]` (critical) reviews. Defaults to false (comment-only review). Mutually exclusive with request_changes."
+    )
+    .optional(),
+  request_changes: type.boolean
+    .describe(
+      "Set to true to submit a blocking REQUEST_CHANGES review — the PR cannot merge until the requested changes are made and the review is dismissed or re-reviewed. Reserve for changes you consider required, not optional suggestions. Mutually exclusive with approved; a contentless request (no body and no comments) is skipped."
     )
     .optional(),
   commit_id: type.string
@@ -361,10 +363,12 @@ export const CreatePullRequestReview = type({
 export function CreatePullRequestReviewTool(ctx: ToolContext) {
   return tool({
     name: "create_pull_request_review",
+    mutates: true,
     description:
       "Submit a review for an existing pull request. " +
       'Example: `create_pull_request_review({ pull_number: 1234, body: "LGTM", approved: true, comments: [{ path: "src/api.ts", line: 42, body: "nit: rename" }] })`. ' +
       "Each call creates a permanent, visible review on the PR — NEVER submit test or diagnostic reviews. " +
+      "Set `approved: true` to approve, `request_changes: true` to submit a blocking review, or neither for a plain comment review (the three are mutually exclusive). " +
       "Reviews with no body AND no comments are silently skipped (nothing to post). " +
       "IMPORTANT: 95%+ of feedback should be in 'comments' array with file paths and line numbers. " +
       "Only use 'body' for a 1-2 sentence summary with urgency and critical callouts. " +
@@ -375,262 +379,293 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
       " CONSTRAINT: Inline comments can ONLY target files and lines that appear in the PR diff." +
       " Comments anchored outside a diff hunk are dropped automatically (with a note appended to the review body) — the rest of the review still posts.",
     parameters: CreatePullRequestReview,
-    execute: execute(async ({ pull_number, body, approved, commit_id, comments = [] }) => {
-      if (body) body = fixDoubleEscapedString(body);
+    execute: execute(
+      async ({ pull_number, body, approved, request_changes, commit_id, comments = [] }) => {
+        if (approved && request_changes) {
+          throw new Error(
+            "approved and request_changes are mutually exclusive — set at most one. an approval cannot also block."
+          );
+        }
+        if (body) body = fixDoubleEscapedString(body);
 
-      // set issue context (PRs are issues)
-      ctx.toolState.issueNumber = pull_number;
+        // set issue context (PRs are issues)
+        ctx.toolState.issueNumber = pull_number;
 
-      // guard against duplicate review submissions in the same session.
-      // see duplicateReviewDecision for the rationale — short version: the
-      // agent occasionally submits twice (substantive review + canonical
-      // "no issues found" follow-up) and the second is always redundant.
-      // legit re-reviews after new commits are still allowed because
-      // checkout_pr advances toolState.checkoutSha past the prior reviewedSha.
-      const dup = duplicateReviewDecision({
-        existing: ctx.toolState.review,
-        currentCheckoutSha: ctx.toolState.checkoutSha,
-      });
-      if (dup) {
-        log.info(`skipping duplicate review submission: ${dup.reason}`);
-        return {
-          success: true,
-          skipped: true,
-          reason: dup.reason,
-          reviewId: dup.reviewId,
-        };
-      }
+        // guard against duplicate review submissions in the same session.
+        // see duplicateReviewDecision for the rationale — short version: the
+        // agent occasionally submits twice (substantive review + canonical
+        // "no issues found" follow-up) and the second is always redundant.
+        // legit re-reviews after new commits are still allowed because
+        // checkout_pr advances toolState.checkoutSha past the prior reviewedSha.
+        const dup = duplicateReviewDecision({
+          existing: ctx.toolState.review,
+          currentCheckoutSha: ctx.toolState.checkoutSha,
+        });
+        if (dup) {
+          log.info(`skipping duplicate review submission: ${dup.reason}`);
+          return {
+            success: true,
+            skipped: true,
+            reason: dup.reason,
+            reviewId: dup.reviewId,
+          };
+        }
 
-      // skip empty COMMENT reviews before any GitHub call. see reviewSkipDecision
-      // for the cases (no-issues vs empty-downgraded-approve) and why GitHub 422s
-      // the shape we'd otherwise POST.
-      const skip = reviewSkipDecision({
-        approved: approved ?? false,
-        body,
-        hasComments: comments.length > 0,
-        prApproveEnabled: ctx.prApproveEnabled,
-      });
-      if (skip) {
-        log.info(`skipping review submission: ${skip.reason}`);
-        return { success: true, skipped: true, reason: skip.reason };
-      }
+        // skip empty COMMENT reviews before any GitHub call. see reviewSkipDecision
+        // for the cases (no-issues vs empty-downgraded-approve) and why GitHub 422s
+        // the shape we'd otherwise POST.
+        const skip = reviewSkipDecision({
+          approved: approved ?? false,
+          requestChanges: request_changes ?? false,
+          body,
+          hasComments: comments.length > 0,
+          prApproveEnabled: ctx.prApproveEnabled,
+        });
+        if (skip) {
+          log.info(`skipping review submission: ${skip.reason}`);
+          return { success: true, skipped: true, reason: skip.reason };
+        }
 
-      // enforce prApproveEnabled: downgrade APPROVE to COMMENT if disabled.
-      // by this point we already returned if the downgrade would produce an
-      // empty COMMENT (the skip above), so every downgrade that reaches here
-      // carries either a body or inline comments.
-      let event: "APPROVE" | "COMMENT" = approved ? "APPROVE" : "COMMENT";
-      if (event === "APPROVE" && !ctx.prApproveEnabled) {
-        log.info("prApproveEnabled is disabled — downgrading APPROVE to COMMENT");
-        event = "COMMENT";
-      }
+        // prApproveEnabled gates binding verdicts: a repo that hasn't opted in gets
+        // neither an APPROVE nor a blocking REQUEST_CHANGES from the bot — both
+        // downgrade to COMMENT (the feedback still posts, it just isn't binding). by
+        // this point we already returned if the downgrade would produce an empty
+        // COMMENT (the skip above), so every downgrade here carries body or comments.
+        let event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES" = approved
+          ? "APPROVE"
+          : request_changes
+            ? "REQUEST_CHANGES"
+            : "COMMENT";
+        if ((event === "APPROVE" || event === "REQUEST_CHANGES") && !ctx.prApproveEnabled) {
+          log.info(`prApproveEnabled is disabled — downgrading ${event} to COMMENT`);
+          event = "COMMENT";
+        }
 
-      const params: RestEndpointMethodTypes["pulls"]["createReview"]["parameters"] = {
-        owner: ctx.repo.owner,
-        repo: ctx.repo.name,
-        pull_number,
-        event,
-      };
-      let latestHeadSha: string | undefined;
-      if (commit_id) {
-        params.commit_id = commit_id;
-      } else {
-        const pr = await ctx.octokit.rest.pulls.get({
+        const params: RestEndpointMethodTypes["pulls"]["createReview"]["parameters"] = {
           owner: ctx.repo.owner,
           repo: ctx.repo.name,
           pull_number,
-        });
-        latestHeadSha = pr.data.head.sha;
-        // anchor to checkout sha so line numbers match the diff the agent analyzed
-        params.commit_id = ctx.toolState.checkoutSha ?? latestHeadSha;
-        if (ctx.toolState.checkoutSha && latestHeadSha !== ctx.toolState.checkoutSha) {
-          log.info(
-            `anchoring review to checkout ${ctx.toolState.checkoutSha.slice(0, 7)} ` +
-              `(HEAD is now ${latestHeadSha.slice(0, 7)})`
-          );
-        }
-      }
-
-      runDiffCoveragePreflight({ ctx });
-
-      type ReviewComment = NonNullable<typeof params.comments>[number];
-      const reviewComments = comments.map((comment) => {
-        let commentBody = fixDoubleEscapedString(comment.body || "");
-        if (comment.suggestion !== undefined) {
-          const suggestionBlock = "```suggestion\n" + comment.suggestion + "\n```";
-          commentBody = commentBody ? commentBody + "\n\n" + suggestionBlock : suggestionBlock;
-        }
-        const side = comment.side || "RIGHT";
-        const reviewComment: ReviewComment = {
-          path: comment.path,
-          line: comment.line,
-          body: commentBody,
-          side,
+          event,
         };
-        if (comment.start_line != null && comment.start_line !== comment.line) {
-          reviewComment.start_line = comment.start_line;
-          reviewComment.start_side = side;
-        }
-        return reviewComment;
-      });
-
-      // pre-validate inline comments against the current PR diff. drop any
-      // comment that does not anchor to a line inside a hunk, rather than
-      // letting GitHub 422 and sink the whole review.
-      let droppedComments: DroppedComment[] = [];
-      if (reviewComments.length > 0) {
-        const commentableMap = await buildCommentableMap(ctx, pull_number);
-        const validation = validateInlineComments(reviewComments, commentableMap);
-        droppedComments = validation.dropped;
-        if (droppedComments.length > 0) {
-          log.info(
-            `dropping ${droppedComments.length}/${reviewComments.length} inline comment(s) that do not anchor to PR diff lines`
-          );
-        }
-        // always reassign so all-dropped reviews leave params.comments empty
-        // instead of carrying the original invalid set (which would 422).
-        params.comments = validation.valid;
-      }
-
-      // if we dropped comments, surface them in the review body so the
-      // author (and the agent, on retry) can see what was skipped.
-      if (droppedComments.length > 0) {
-        const note = formatDroppedCommentsNote(droppedComments);
-        body = body ? body + note : note.replace(/^\n\n/, "");
-      }
-
-      // after dropping, an empty non-approve review has nothing left to post.
-      if (!approved && !body && !params.comments?.length) {
-        log.info("review has no body and all inline comments were dropped — skipping submission");
-        return {
-          success: true,
-          skipped: true,
-          reason: "all inline comments were invalid — nothing to post",
-          droppedComments,
-        };
-      }
-
-      // no body → single-step createReview (no footer needed)
-      // has body → pending + submit so we can build footer with Fix links using review ID
-      //
-      // wrap the submission in `retry` so GitHub's transient 422 "internal
-      // error" body (distinct from anchor / body-length / suggestion 422s,
-      // which all cite the specific cause) clears on its own instead of
-      // surfacing through the generic 422 handler — that framing sent the
-      // agent dropping valid inline comments chasing a non-issue.
-      // `shouldRetry` scopes retries to the transient body only, so real
-      // validation 422s still fail fast.
-      let result;
-      try {
-        result = await retry(
-          () =>
-            body
-              ? createAndSubmitWithFooter(ctx, params, {
-                  body,
-                  approved: approved ?? false,
-                  hasComments: (params.comments?.length ?? 0) > 0,
-                })
-              : createReviewWithStrandedRecovery(ctx, params),
-          {
-            delaysMs: TRANSIENT_REVIEW_RETRY_DELAYS_MS,
-            shouldRetry: isTransientReviewError,
-            label: "review submission",
+        let latestHeadSha: string | undefined;
+        if (commit_id) {
+          params.commit_id = commit_id;
+        } else {
+          const pr = await ctx.octokit.rest.pulls.get({
+            owner: ctx.repo.owner,
+            repo: ctx.repo.name,
+            pull_number,
+          });
+          latestHeadSha = pr.data.head.sha;
+          // anchor to checkout sha so line numbers match the diff the agent analyzed
+          params.commit_id = ctx.toolState.checkoutSha ?? latestHeadSha;
+          if (ctx.toolState.checkoutSha && latestHeadSha !== ctx.toolState.checkoutSha) {
+            log.info(
+              `anchoring review to checkout ${ctx.toolState.checkoutSha.slice(0, 7)} ` +
+                `(HEAD is now ${latestHeadSha.slice(0, 7)})`
+            );
           }
-        );
-      } catch (err: unknown) {
-        // GitHub's transient 422 "internal error" is distinct from anchor /
-        // body-length / suggestion validation failures — framing it with the
-        // generic "likely causes (1)(2)(3)" prompt sends the agent dropping
-        // comments that were never the problem. after bounded in-tool retry
-        // we surface a dedicated message that tells the agent to wait-and-
-        // retry or fall back to a body-only review.
-        if (isTransientReviewError(err)) {
+        }
+
+        runDiffCoveragePreflight({ ctx });
+
+        type ReviewComment = NonNullable<typeof params.comments>[number];
+        const reviewComments = comments.map((comment) => {
+          let commentBody = fixDoubleEscapedString(comment.body || "");
+          if (comment.suggestion !== undefined) {
+            const suggestionBlock = "```suggestion\n" + comment.suggestion + "\n```";
+            commentBody = commentBody ? commentBody + "\n\n" + suggestionBlock : suggestionBlock;
+          }
+          const side = comment.side || "RIGHT";
+          const reviewComment: ReviewComment = {
+            path: comment.path,
+            line: comment.line,
+            body: commentBody,
+            side,
+          };
+          if (comment.start_line != null && comment.start_line !== comment.line) {
+            reviewComment.start_line = comment.start_line;
+            reviewComment.start_side = side;
+          }
+          return reviewComment;
+        });
+
+        // pre-validate inline comments against the current PR diff. drop any
+        // comment that does not anchor to a line inside a hunk, rather than
+        // letting GitHub 422 and sink the whole review.
+        let droppedComments: DroppedComment[] = [];
+        if (reviewComments.length > 0) {
+          const commentableMap = await buildCommentableMap(ctx, pull_number);
+          const validation = validateInlineComments(reviewComments, commentableMap);
+          droppedComments = validation.dropped;
+          if (droppedComments.length > 0) {
+            log.info(
+              `dropping ${droppedComments.length}/${reviewComments.length} inline comment(s) that do not anchor to PR diff lines`
+            );
+          }
+          // always reassign so all-dropped reviews leave params.comments empty
+          // instead of carrying the original invalid set (which would 422).
+          params.comments = validation.valid;
+        }
+
+        // if we dropped comments, surface them in the review body so the
+        // author (and the agent, on retry) can see what was skipped.
+        if (droppedComments.length > 0) {
+          const note = formatDroppedCommentsNote(droppedComments);
+          body = body ? body + note : note.replace(/^\n\n/, "");
+        }
+
+        // after dropping, an empty non-approve review has nothing left to post.
+        if (!approved && !body && !params.comments?.length) {
+          log.info("review has no body and all inline comments were dropped — skipping submission");
+          return {
+            success: true,
+            skipped: true,
+            reason: "all inline comments were invalid — nothing to post",
+            droppedComments,
+          };
+        }
+
+        // no body → single-step createReview (no footer needed)
+        // has body → pending + submit so we can build footer with Fix links using review ID
+        //
+        // wrap the submission in `retry` so GitHub's transient 422 "internal
+        // error" body (distinct from anchor / body-length / suggestion 422s,
+        // which all cite the specific cause) clears on its own instead of
+        // surfacing through the generic 422 handler — that framing sent the
+        // agent dropping valid inline comments chasing a non-issue.
+        // `shouldRetry` scopes retries to the transient body only, so real
+        // validation 422s still fail fast.
+        let result;
+        try {
+          result = await retry(
+            () =>
+              body
+                ? createAndSubmitWithFooter(ctx, params, {
+                    body,
+                    approved: approved ?? false,
+                    hasComments: (params.comments?.length ?? 0) > 0,
+                  })
+                : createReviewWithStrandedRecovery(ctx, params),
+            {
+              delaysMs: TRANSIENT_REVIEW_RETRY_DELAYS_MS,
+              shouldRetry: isTransientReviewError,
+              label: "review submission",
+            }
+          );
+        } catch (err: unknown) {
+          // GitHub's transient 422 "internal error" is distinct from anchor /
+          // body-length / suggestion validation failures — framing it with the
+          // generic "likely causes (1)(2)(3)" prompt sends the agent dropping
+          // comments that were never the problem. after bounded in-tool retry
+          // we surface a dedicated message that tells the agent to wait-and-
+          // retry or fall back to a body-only review.
+          if (isTransientReviewError(err)) {
+            const rawMsg = err instanceof Error ? err.message : String(err);
+            throw new Error(
+              `GitHub returned a transient 422 "internal error" on the reviews endpoint after ${TRANSIENT_REVIEW_RETRY_DELAYS_MS.length + 1} attempts. ` +
+                `This is a GitHub-side issue, not a problem with your review content. ` +
+                `Do NOT modify or drop inline comments — their content is not the cause. ` +
+                `Wait ~30 seconds and call this tool once more with the SAME arguments. ` +
+                `If it still fails, submit a body-only review (move all inline feedback into \`body\` as text) so nothing is lost. ` +
+                `GitHub said: ${rawMsg}`,
+              { cause: err }
+            );
+          }
+          if (getHttpStatus(err) !== 422 || !params.comments?.length) throw err;
+
+          const details = params.comments.map((c) => {
+            const line = c.line ?? 0;
+            const startLine = c.start_line ?? line;
+            const range = startLine !== line ? `${startLine}-${line}` : `${line}`;
+            return `${c.path}:${range} (${c.side ?? "RIGHT"})`;
+          });
+          // a 422 on createReview-with-comments is USUALLY about comment
+          // anchors, but could also be about body length, invalid suggestion
+          // blocks, etc. include the verbatim GitHub error so the agent can
+          // diagnose non-anchor 422s without us having to enumerate every
+          // possible GitHub validation rule.
           const rawMsg = err instanceof Error ? err.message : String(err);
+          const checkoutRef = formatMcpToolRef(ctx.agentId, "checkout_pr");
           throw new Error(
-            `GitHub returned a transient 422 "internal error" on the reviews endpoint after ${TRANSIENT_REVIEW_RETRY_DELAYS_MS.length + 1} attempts. ` +
-              `This is a GitHub-side issue, not a problem with your review content. ` +
-              `Do NOT modify or drop inline comments — their content is not the cause. ` +
-              `Wait ~30 seconds and call this tool once more with the SAME arguments. ` +
-              `If it still fails, submit a body-only review (move all inline feedback into \`body\` as text) so nothing is lost. ` +
+            `GitHub rejected the review with 422 even after pre-validation. ` +
+              `Likely causes (check "GitHub said" below to narrow down): ` +
+              `(1) new commits pushed after pre-validation — call \`${checkoutRef}\` again to refresh the diff snapshot, then resubmit; ` +
+              `(2) the review body exceeded GitHub's ~65KB limit — shorten it and retry; ` +
+              `(3) a \`suggestion\` block is malformed (missing backticks, extra backticks, or wrong indentation) — inspect the affected comments below. ` +
+              `If none apply, move the failing comments into the review body as text so the rest still posts. ` +
+              `Affected comments: ${details.join(", ")}. ` +
               `GitHub said: ${rawMsg}`,
             { cause: err }
           );
         }
-        if (getHttpStatus(err) !== 422 || !params.comments?.length) throw err;
+        log.debug(`createReview response: ${JSON.stringify(result.data)}`);
+        if (!result.data.id) {
+          throw new Error(`createReview returned invalid data: ${JSON.stringify(result.data)}`);
+        }
+        const reviewId = result.data.id;
+        const reviewNodeId = result.data.node_id;
+        log.info(`» created review ${reviewId} on pull request #${pull_number}`);
 
-        const details = params.comments.map((c) => {
-          const line = c.line ?? 0;
-          const startLine = c.start_line ?? line;
-          const range = startLine !== line ? `${startLine}-${line}` : `${line}`;
-          return `${c.path}:${range} (${c.side ?? "RIGHT"})`;
+        // reviewedSha = what the agent actually reviewed (checkout SHA), not the
+        // submission anchor (current HEAD). this ensures postReviewCleanup dispatches
+        // a follow-up if the agent doesn't handle new commits inline.
+        const actuallyReviewedSha = ctx.toolState.checkoutSha ?? params.commit_id;
+        ctx.toolState.review = {
+          id: reviewId,
+          nodeId: reviewNodeId,
+          reviewedSha: actuallyReviewedSha,
+        };
+
+        ctx.toolState.wasUpdated = true;
+
+        // a submitted review obsoletes the progress comment — the review IS the
+        // durable artifact. owned here (not in main.ts) so cleanup is atomic with
+        // submission and survives any path out of the run (success, timeout,
+        // crash). deleteProgressComment sets progressComment = null, so a later
+        // report_progress call short-circuits to a no-op.
+        // best-effort: a cleanup failure must not turn a successful review into
+        // a tool-call failure visible to the agent.
+        await deleteProgressComment(ctx).catch((err) => {
+          log.debug(`progress comment cleanup after review failed: ${err}`);
         });
-        // a 422 on createReview-with-comments is USUALLY about comment
-        // anchors, but could also be about body length, invalid suggestion
-        // blocks, etc. include the verbatim GitHub error so the agent can
-        // diagnose non-anchor 422s without us having to enumerate every
-        // possible GitHub validation rule.
-        const rawMsg = err instanceof Error ? err.message : String(err);
-        const checkoutRef = formatMcpToolRef(ctx.agentId, "checkout_pr");
-        throw new Error(
-          `GitHub rejected the review with 422 even after pre-validation. ` +
-            `Likely causes (check "GitHub said" below to narrow down): ` +
-            `(1) new commits pushed after pre-validation — call \`${checkoutRef}\` again to refresh the diff snapshot, then resubmit; ` +
-            `(2) the review body exceeded GitHub's ~65KB limit — shorten it and retry; ` +
-            `(3) a \`suggestion\` block is malformed (missing backticks, extra backticks, or wrong indentation) — inspect the affected comments below. ` +
-            `If none apply, move the failing comments into the review body as text so the rest still posts. ` +
-            `Affected comments: ${details.join(", ")}. ` +
-            `GitHub said: ${rawMsg}`,
-          { cause: err }
-        );
-      }
-      log.debug(`createReview response: ${JSON.stringify(result.data)}`);
-      if (!result.data.id) {
-        throw new Error(`createReview returned invalid data: ${JSON.stringify(result.data)}`);
-      }
-      const reviewId = result.data.id;
-      const reviewNodeId = result.data.node_id;
-      log.info(`» created review ${reviewId} on pull request #${pull_number}`);
 
-      // reviewedSha = what the agent actually reviewed (checkout SHA), not the
-      // submission anchor (current HEAD). this ensures postReviewCleanup dispatches
-      // a follow-up if the agent doesn't handle new commits inline.
-      const actuallyReviewedSha = ctx.toolState.checkoutSha ?? params.commit_id;
-      ctx.toolState.review = {
-        id: reviewId,
-        nodeId: reviewNodeId,
-        reviewedSha: actuallyReviewedSha,
-      };
+        // detect commits pushed since checkout and guide the agent to review them
+        // inline instead of dispatching a separate workflow run
+        if (
+          ctx.toolState.checkoutSha &&
+          latestHeadSha &&
+          latestHeadSha !== ctx.toolState.checkoutSha
+        ) {
+          const fromSha = ctx.toolState.checkoutSha;
+          const toSha = latestHeadSha;
+          // store old checkoutSha as beforeSha so the next checkout_pr computes an incremental diff
+          ctx.toolState.beforeSha = fromSha;
+          // advance checkoutSha so the next review submission tracks correctly (just in case, checkout_pr will overwrite it again)
+          ctx.toolState.checkoutSha = toSha;
 
-      ctx.toolState.wasUpdated = true;
+          log.info(
+            `new commits detected during review: ${fromSha.slice(0, 7)}..${toSha.slice(0, 7)}`
+          );
 
-      // a submitted review obsoletes the progress comment — the review IS the
-      // durable artifact. owned here (not in main.ts) so cleanup is atomic with
-      // submission and survives any path out of the run (success, timeout,
-      // crash). deleteProgressComment sets progressComment = null, so a later
-      // report_progress call short-circuits to a no-op.
-      // best-effort: a cleanup failure must not turn a successful review into
-      // a tool-call failure visible to the agent.
-      await deleteProgressComment(ctx).catch((err) => {
-        log.debug(`progress comment cleanup after review failed: ${err}`);
-      });
-
-      // detect commits pushed since checkout and guide the agent to review them
-      // inline instead of dispatching a separate workflow run
-      if (
-        ctx.toolState.checkoutSha &&
-        latestHeadSha &&
-        latestHeadSha !== ctx.toolState.checkoutSha
-      ) {
-        const fromSha = ctx.toolState.checkoutSha;
-        const toSha = latestHeadSha;
-        // store old checkoutSha as beforeSha so the next checkout_pr computes an incremental diff
-        ctx.toolState.beforeSha = fromSha;
-        // advance checkoutSha so the next review submission tracks correctly (just in case, checkout_pr will overwrite it again)
-        ctx.toolState.checkoutSha = toSha;
-
-        log.info(
-          `new commits detected during review: ${fromSha.slice(0, 7)}..${toSha.slice(0, 7)}`
-        );
+          return {
+            success: true,
+            reviewId,
+            html_url: result.data.html_url,
+            state: result.data.state,
+            user: result.data.user?.login,
+            submitted_at: result.data.submitted_at,
+            droppedComments: droppedComments.length > 0 ? droppedComments : undefined,
+            newCommits: {
+              from: fromSha,
+              to: toSha,
+              instructions:
+                `new commits were pushed while you were reviewing. ` +
+                `call \`${formatMcpToolRef(ctx.agentId, "checkout_pr")}\` again to fetch the latest version — it will compute the incremental diff automatically. ` +
+                `submit another review covering only the new changes. do not repeat feedback from your previous review.`,
+            },
+          };
+        }
 
         return {
           success: true,
@@ -640,27 +675,9 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
           user: result.data.user?.login,
           submitted_at: result.data.submitted_at,
           droppedComments: droppedComments.length > 0 ? droppedComments : undefined,
-          newCommits: {
-            from: fromSha,
-            to: toSha,
-            instructions:
-              `new commits were pushed while you were reviewing. ` +
-              `call \`${formatMcpToolRef(ctx.agentId, "checkout_pr")}\` again to fetch the latest version — it will compute the incremental diff automatically. ` +
-              `submit another review covering only the new changes. do not repeat feedback from your previous review.`,
-          },
         };
       }
-
-      return {
-        success: true,
-        reviewId,
-        html_url: result.data.html_url,
-        state: result.data.state,
-        user: result.data.user?.login,
-        submitted_at: result.data.submitted_at,
-        droppedComments: droppedComments.length > 0 ? droppedComments : undefined,
-      };
-    }),
+    ),
   });
 }
 

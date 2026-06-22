@@ -69,6 +69,7 @@ export const Comment = type({
 export function CreateCommentTool(ctx: ToolContext) {
   return tool({
     name: "create_issue_comment",
+    mutates: true,
     description:
       "Create a comment on a GitHub issue or PR. " +
       'Example: `create_issue_comment({ issueNumber: 1234, body: "Thanks for the report." })`. ' +
@@ -130,6 +131,7 @@ export const EditComment = type({
 export function EditCommentTool(ctx: ToolContext) {
   return tool({
     name: "edit_issue_comment",
+    mutates: true,
     description: "Edit a GitHub issue comment by its ID",
     parameters: EditComment,
     execute: execute(async ({ commentId, body }) => {
@@ -360,6 +362,7 @@ export async function reportProgress(
 export function ReportProgressTool(ctx: ToolContext) {
   return tool({
     name: "report_progress",
+    mutates: true,
     description:
       "Share progress on the associated GitHub issue/PR. The first call creates a comment; subsequent calls update it in place. " +
       'Example: `report_progress({ body: "Implemented the auth check and added tests." })`. ' +
@@ -493,6 +496,7 @@ export function duplicateReplyDecision(params: {
 export function ReplyToReviewCommentTool(ctx: ToolContext) {
   return tool({
     name: "reply_to_review_comment",
+    mutates: true,
     description:
       "Reply to a PR review comment thread (NOT issue comments — this only works for inline review comments on PR diffs). " +
       'Example: `reply_to_review_comment({ pull_number: 1234, comment_id: 567890, body: "Fixed by adding a null check." })`. ' +

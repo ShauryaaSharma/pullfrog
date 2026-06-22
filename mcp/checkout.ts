@@ -810,6 +810,7 @@ export function CheckoutPrTool(ctx: ToolContext) {
 
   return tool({
     name: "checkout_pr",
+    mutates: true,
     timeoutMs: 600_000,
     description:
       "Checkout a pull request branch locally. This fetches the PR branch and sets up push configuration for fork PRs. " +

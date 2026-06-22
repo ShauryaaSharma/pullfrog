@@ -32,13 +32,13 @@ import {
   PushBranchTool,
   PushTagsTool,
 } from "./git.ts";
-import { IssueTool } from "./issue.ts";
+import { CloseIssueTool, IssueTool, ReopenIssueTool } from "./issue.ts";
 import { GetIssueCommentsTool } from "./issueComments.ts";
 import { GetIssueEventsTool } from "./issueEvents.ts";
 import { IssueInfoTool } from "./issueInfo.ts";
-import { AddLabelsTool } from "./labels.ts";
+import { AddLabelsTool, RemoveLabelsTool } from "./labels.ts";
 import { SetOutputTool } from "./output.ts";
-import { CreatePullRequestTool, UpdatePullRequestBodyTool } from "./pr.ts";
+import { ClosePullRequestTool, CreatePullRequestTool, UpdatePullRequestBodyTool } from "./pr.ts";
 import { PullRequestInfoTool } from "./prInfo.ts";
 import { CreatePullRequestReviewTool } from "./review.ts";
 import {
@@ -47,7 +47,7 @@ import {
   ResolveReviewThreadTool,
 } from "./reviewComments.ts";
 import { SelectModeTool } from "./selectMode.ts";
-import { addTools } from "./shared.ts";
+import { addTools, type PullfrogTool } from "./shared.ts";
 import { KillBackgroundTool, ShellTool } from "./shell.ts";
 import { UploadFileTool } from "./upload.ts";
 
@@ -124,14 +124,16 @@ function isAddressInUse(error: unknown): boolean {
 
 type JsonSchema = Record<string, unknown>;
 
-function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any, any>[] {
-  const tools: Tool<any, any>[] = [
+function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): PullfrogTool[] {
+  const tools: PullfrogTool[] = [
     StartDependencyInstallationTool(ctx),
     AwaitDependencyInstallationTool(ctx),
     CreateCommentTool(ctx),
     EditCommentTool(ctx),
     ReplyToReviewCommentTool(ctx),
     IssueTool(ctx),
+    CloseIssueTool(ctx),
+    ReopenIssueTool(ctx),
     IssueInfoTool(ctx),
     GetIssueCommentsTool(ctx),
     GetIssueEventsTool(ctx),
@@ -144,6 +146,7 @@ function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any
     ResolveReviewThreadTool(ctx),
     GetCheckSuiteLogsTool(ctx),
     AddLabelsTool(ctx),
+    RemoveLabelsTool(ctx),
     GitTool(ctx),
     GitFetchTool(ctx),
     UploadFileTool(ctx),
@@ -163,7 +166,10 @@ function buildCommonTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any
   return tools;
 }
 
-function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): Tool<any, any>[] {
+export function buildOrchestratorTools(
+  ctx: ToolContext,
+  outputSchema?: JsonSchema
+): PullfrogTool[] {
   const tools = [
     ...buildCommonTools(ctx, outputSchema),
     ReportProgressTool(ctx),
@@ -173,6 +179,7 @@ function buildOrchestratorTools(ctx: ToolContext, outputSchema?: JsonSchema): To
     DeleteBranchTool(ctx),
     CreatePullRequestTool(ctx),
     UpdatePullRequestBodyTool(ctx),
+    ClosePullRequestTool(ctx),
   ];
   // only registered in signed-commits mode so the tool never tempts agents
   // on repos where plain git commit + push_branch is the canonical flow

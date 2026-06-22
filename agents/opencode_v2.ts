@@ -72,8 +72,8 @@ import { getDevDependencyVersion } from "../utils/version.ts";
 import { resolveVertexOpenCodeModel } from "../utils/vertex.ts";
 import { GIT_NATIVE_READ_DENY_OPENCODE, GIT_NATIVE_WRITE_DENY_OPENCODE } from "./nativeFsDenies.ts";
 import {
+  buildOpencodeSubagentGateSource,
   PULLFROG_OPENCODE_GATE_PLUGIN_FILENAME,
-  PULLFROG_OPENCODE_GATE_PLUGIN_SOURCE,
 } from "./opencodePlugin.ts";
 import {
   autoSelectModel,
@@ -1019,7 +1019,7 @@ export const opencode = agent({
     mkdirSync(opencodePluginDir, { recursive: true });
     writeFileSync(
       join(opencodePluginDir, PULLFROG_OPENCODE_GATE_PLUGIN_FILENAME),
-      PULLFROG_OPENCODE_GATE_PLUGIN_SOURCE
+      buildOpencodeSubagentGateSource(ctx.subagentDeniedTools)
     );
 
     const agentBrowserVersion = getDevDependencyVersion("agent-browser");

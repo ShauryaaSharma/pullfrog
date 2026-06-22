@@ -475,6 +475,7 @@ export const KillBackgroundParams = type({
 export function KillBackgroundTool(ctx: ToolContext) {
   return tool({
     name: "kill_background",
+    mutates: true,
     description: `Kill a background process by its handle. Use this to stop dev servers or other long-running processes started with shell({ background: true }).`,
     parameters: KillBackgroundParams,
     execute: execute(async (params) => {

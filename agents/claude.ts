@@ -49,8 +49,8 @@ import { getDevDependencyVersion } from "../utils/version.ts";
 import { applyClaudeVertexEnv } from "../utils/vertex.ts";
 import {
   buildClaudePretoolGateSettings,
+  buildClaudePretoolGateSource,
   CLAUDE_PRETOOL_GATE_FILENAME,
-  CLAUDE_PRETOOL_GATE_SOURCE,
 } from "./claudePretoolGate.ts";
 import { startGateServer } from "./gateServer.ts";
 import { GIT_NATIVE_READ_DENY_CLAUDE, GIT_NATIVE_WRITE_DENY_CLAUDE } from "./nativeFsDenies.ts";
@@ -149,7 +149,7 @@ function writePretoolGateAssets(ctx: AgentRunContext): {
   settingsPath: string;
 } {
   const scriptPath = join(ctx.tmpdir, CLAUDE_PRETOOL_GATE_FILENAME);
-  writeFileSync(scriptPath, CLAUDE_PRETOOL_GATE_SOURCE);
+  writeFileSync(scriptPath, buildClaudePretoolGateSource(ctx.subagentDeniedTools));
   chmodSync(scriptPath, 0o755);
   const settingsPath = join(ctx.tmpdir, "pullfrog-claude-settings.json");
   const settings = buildClaudePretoolGateSettings(scriptPath, CLAUDE_EXEC_TOOL_DENY_RULES);

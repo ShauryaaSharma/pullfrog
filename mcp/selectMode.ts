@@ -120,6 +120,7 @@ export function SelectModeTool(ctx: ToolContext) {
 
   return tool({
     name: "select_mode",
+    mutates: true,
     description:
       "Select a mode and receive step-by-step guidance on how to handle the task. Call this to understand the best workflow for the current mode. " +
       'Example: `select_mode({ mode: "Review" })` or `select_mode({ mode: "Plan", issue_number: 1234 })`.',

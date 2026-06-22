@@ -346,6 +346,7 @@ export function PushBranchTool(ctx: ToolContext) {
 
   return tool({
     name: "push_branch",
+    mutates: true,
     description:
       "Push the current branch to the remote repository. Omit branchName to push the current branch (recommended). " +
       'Example: `push_branch({})` to push the current branch. Example: `push_branch({ branchName: "pr-1" })` to push a specific local branch. ' +
@@ -540,6 +541,7 @@ export function CommitChangesTool(ctx: ToolContext) {
 
   return tool({
     name: "commit_changes",
+    mutates: true,
     description:
       "Commit working-tree changes directly to the remote branch as a GitHub-signed (Verified) commit — this repository has signed commits enabled, so use this INSTEAD of git commit + push_branch. " +
       "Edit files locally, then call this tool: it detects every working-tree change (new, modified, deleted files), or commits a subset via `files`. " +
@@ -1036,6 +1038,7 @@ export function DeleteBranchTool(ctx: ToolContext) {
 
   return tool({
     name: "delete_branch",
+    mutates: true,
     description:
       "Delete a remote branch. Requires push: enabled permission. " +
       "Deletion of the repository's default branch is always blocked regardless of permission mode.",
@@ -1089,6 +1092,7 @@ export function PushTagsTool(ctx: ToolContext) {
 
   return tool({
     name: "push_tags",
+    mutates: true,
     description: "Push a tag to remote. Requires push: enabled permission.",
     parameters: PushTags,
     execute: execute(async (params) => {
