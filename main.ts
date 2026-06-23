@@ -56,7 +56,7 @@ import { resolveOutputSchema, resolvePayload, resolvePromptInput } from "./utils
 import { runProxyResolution } from "./utils/proxy.ts";
 import { fetchPreviousSnapshot, persistSummary, seedSummaryFile } from "./utils/prSummary.ts";
 import { handleAgentResult } from "./utils/run.ts";
-import { resolveRunContextData } from "./utils/runContextData.ts";
+import { isActionPinnedToSha, resolveRunContextData } from "./utils/runContextData.ts";
 import { renderRunError } from "./utils/runErrorRenderer.ts";
 import {
   finalizeSuccessRun,
@@ -198,6 +198,7 @@ export async function main(): Promise<MainResult> {
   const payload = resolvePayload(resolvedPromptInput, runContext.repoSettings);
   toolState.model = payload.model;
   toolState.oss = runContext.oss;
+  toolState.shaPinned = isActionPinnedToSha();
   if (payload.event.trigger === "pull_request_synchronize") {
     primaryRepoState(toolState).beforeSha = payload.event.before_sha;
   }

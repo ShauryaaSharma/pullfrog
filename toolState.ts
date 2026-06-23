@@ -211,6 +211,33 @@ export interface ToolState {
   output?: string | undefined;
   usageEntries: AgentUsage[];
   model?: string | undefined;
+  // set by main.ts when the BYOK fallback engaged (configured model needed
+  // a provider key the runner didn't have). carried into PR-comment footers
+  // so users can see "Using <free model> (credentials for <configured> not
+  // configured)" rather than just being silently downgraded. literal record
+  // of an event that happened — matches the ToolState design rule.
+  modelFallback?: { from: string } | undefined;
+  // true when the run fell back to the default proxy model purely because the
+  // repo has no model selected (Router billing + "auto"). carried into footers
+  // so the user can see they're on the cost-optimized default — a weaker
+  // reviewer than a frontier model — and pick one. literal record of an event
+  // that happened, matching the ToolState design rule.
+  unselectedProxyDefault?: boolean | undefined;
+  // set in proxy.ts when a no-card Router account had a model (or the
+  // intelligent tier) selected and the server clamped it to the efficient
+  // default — custom picks are card-gated wholesale. carried into footers so
+  // the PR shows "Using <Kimi K2> (<Claude Opus> needs a card on file)"
+  // rather than silently presenting Kimi as the user's pick. literal record
+  // of an event — matches the ToolState design rule. `reason` distinguishes
+  // the card gate ("card") from a pick that has no openRouterResolve yet and
+  // no stored provider key ("noRouterPath", a model OpenRouter doesn't serve
+  // yet).
+  modelClamped?: { from: string; reason: "card" | "noRouterPath" } | undefined;
+  // true when the action is pinned to a full commit SHA (vs `@v0`). carried
+  // into footers so the user sees the maintenance nudge in the PR, not just
+  // the buried GHA log annotation — a SHA pin freezes the post-run cleanup
+  // step. see isActionPinnedToSha in runContextData.ts.
+  shaPinned?: boolean | undefined;
   // true when the run's model costs are covered by the Pullfrog for OSS
   // program. carried into footers (incl. error comments built from toolState
   // alone) so the "via Pullfrog for OSS" attribution is consistent everywhere.

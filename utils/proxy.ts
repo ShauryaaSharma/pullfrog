@@ -19,6 +19,7 @@
  */
 
 import * as core from "@actions/core";
+import { DEFAULT_PROXY_MODEL, isCardGatedModel, resolveOpenRouterModel } from "../models.ts";
 import type { ToolState } from "../toolState.ts";
 import * as yes from "../yes/index.ts";
 import { apiFetch } from "./apiFetch.ts";
@@ -149,6 +150,7 @@ async function resolveProxyModel(ctx: {
   proxyModel?: string | undefined;
   oidcCredentials: OidcCredentials | null;
   repo: { owner: string; name: string };
+  toolState: ToolState;
 }): Promise<void> {
   // env override = BYOK escape hatch, don't proxy
   if (process.env.PULLFROG_MODEL?.trim()) return;
@@ -169,8 +171,63 @@ async function resolveProxyModel(ctx: {
   process.env.OPENROUTER_API_KEY = key;
   core.setSecret(key);
   ctx.payload.proxyModel = ctx.proxyModel;
+  // reflect the effective (proxy) model now — an error comment built between
+  // here and main.ts's post-resolution refinement would otherwise show the
+  // stale configured slug (a clamped frontier pick rendering as if it ran).
+  // main.ts re-sets this to the same value.
+  ctx.toolState.model = ctx.proxyModel;
   const label = ctx.oss ? "oss" : "router";
   log.info(`» proxy: ${label} → ${ctx.proxyModel}`);
+
+  // Router run with no model selected that landed on the cost-optimized
+  // efficient default (Kimi K2) rather than a frontier model — nudge the user
+  // to pick one. a card on file flips the auto default to the intelligent tier
+  // (Opus), so `proxyModel !== DEFAULT_PROXY_MODEL` and we stay quiet: nudging
+  // "pick a stronger model" while already on Opus would be nonsense. OSS
+  // deliberately forces the default (cost-bounded, picker hidden), so exclude it.
+  ctx.toolState.unselectedProxyDefault =
+    !ctx.oss && !ctx.payload.model && ctx.proxyModel === DEFAULT_PROXY_MODEL;
+  if (ctx.toolState.unselectedProxyDefault) {
+    log.warning(
+      `» no model selected — using the cost-optimized default (${ctx.proxyModel}); ` +
+        "pick a model in your Pullfrog repo settings for stronger reviews."
+    );
+  }
+
+  // Router account with a model (or the intelligent tier) selected that the
+  // server clamped to the efficient default. record the configured slug + the
+  // binding constraint so the footer can disclose the downgrade rather than
+  // silently presenting Kimi as the model the user picked. mutually exclusive
+  // with unselectedProxyDefault (that path requires no model selected). the
+  // resolveOpenRouterModel guard skips no-op clamps — a pick that resolves to
+  // the efficient default anyway (Kimi, `auto/efficient`) was not downgraded.
+  // two distinct constraints:
+  //   - "card": a Router-resolvable pick on a no-card account — custom picks
+  //     are card-gated wholesale (no-card accounts run Auto only).
+  //   - "noRouterPath": a pick with no openRouterResolve yet and no stored
+  //     provider key (a model OpenRouter doesn't serve yet) — a card wouldn't
+  //     change the outcome, so don't ask for one. free picks never reach this
+  //     branch: run-context skips the mint for them, so they run as picked.
+  if (
+    !ctx.oss &&
+    ctx.payload.model &&
+    ctx.proxyModel === DEFAULT_PROXY_MODEL &&
+    resolveOpenRouterModel(ctx.payload.model) !== DEFAULT_PROXY_MODEL
+  ) {
+    if (isCardGatedModel(ctx.payload.model)) {
+      ctx.toolState.modelClamped = { from: ctx.payload.model, reason: "card" };
+      log.warning(
+        `» ${ctx.payload.model} needs a card on file — using the efficient default ` +
+          `(${ctx.proxyModel}); add a card in your Pullfrog org billing settings.`
+      );
+    } else {
+      ctx.toolState.modelClamped = { from: ctx.payload.model, reason: "noRouterPath" };
+      log.warning(
+        `» ${ctx.payload.model} has no Router path yet — using the efficient default ` +
+          `(${ctx.proxyModel}); add its provider key in your Pullfrog settings to run it.`
+      );
+    }
+  }
 }
 
 /**
@@ -200,6 +257,7 @@ export async function runProxyResolution(ctx: {
       proxyModel: ctx.proxyModel,
       oidcCredentials: ctx.oidcCredentials,
       repo: ctx.repo,
+      toolState: ctx.toolState,
     });
   } catch (error) {
     if (error instanceof BillingError) {

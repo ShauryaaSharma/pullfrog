@@ -40,7 +40,11 @@ export interface ModelAlias {
   preferred: boolean;
   /** whether this alias is free and requires no API key */
   isFree: boolean;
-  /** slug of a replacement model — presence implies this model is deprecated */
+  /** slug of a replacement model to resolve through. presence means this alias
+   * never runs as-is — resolution redirects to the replacement and it's hidden
+   * from pickers. covers permanent deprecation AND riding out a temporarily
+   * unavailable model: point it at a cheaper tier (downgrade) or a working
+   * sibling/higher tier (upgrade), then clear it when the model returns. */
   fallback: string | undefined;
   /** dynamic-resolution discriminant — see ModelRouting docs */
   routing: ModelRouting | undefined;
@@ -62,7 +66,9 @@ interface ModelDef {
   preferred?: boolean;
   envVars?: readonly string[];
   isFree?: boolean;
-  /** slug of a replacement model — presence implies this model is deprecated */
+  /** slug of a replacement model to resolve through — permanent deprecation or
+   * temporary unavailability (downgrade/upgrade until the model returns). see
+   * ModelAlias.fallback. */
   fallback?: string;
   /** dynamic-resolution discriminant — see ModelRouting docs */
   routing?: ModelRouting;
@@ -95,22 +101,15 @@ export const providers = {
     displayName: "Anthropic",
     envVars: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
     models: {
-      // OpenRouter serves claude-fable-5, but models.dev's OpenRouter mirror
-      // hasn't indexed it yet (shipped 2026-06-09), so the catalog drift gate
-      // can't validate an openRouterResolve. omit it until the mirror catches
-      // up; direct BYOK / Claude Code resolves anthropic/claude-fable-5 fine.
-      //
-      // not `preferred` while fable is still gated behind limited Anthropic
-      // model access — the `opencode models` catalog lists it as authorized for
-      // any Anthropic key, so auto-select would pick it and hard-fail (most
-      // orgs' keys 404 on claude-fable-5 today). opus is the universally-
-      // available flagship, so auto-select and the "Recommended" UI badge point
-      // there; fable stays selectable for users with access. flip `preferred`
-      // back to fable once it's broadly available (and add its `openRouterResolve`
-      // once the mirror indexes it). see ModelSelector's LIMITED_AVAILABILITY note. #959.
+      // claude-fable-5 is disabled globally — access has been revoked, so it
+      // can't run as-is anywhere (BYOK, Claude Code, or Router). the fallback
+      // redirects all resolution to opus and hides it from pickers; opus is the
+      // universally-available flagship, the AUTO_INTELLIGENT tier target, and
+      // the recommended pick. clear the fallback if fable access returns (#959).
       "claude-fable": {
         displayName: "Claude Fable",
         resolve: "anthropic/claude-fable-5",
+        fallback: "anthropic/claude-opus",
         subagentModel: "claude-sonnet",
       },
       "claude-opus": {
@@ -276,8 +275,8 @@ export const providers = {
     models: {
       "kimi-k2": {
         displayName: "Kimi K2",
-        resolve: "moonshotai/kimi-k2.6",
-        openRouterResolve: "openrouter/moonshotai/kimi-k2.6",
+        resolve: "moonshotai/kimi-k2.7-code",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.7-code",
         preferred: true,
       },
     },
@@ -359,8 +358,10 @@ export const providers = {
       },
       "kimi-k2": {
         displayName: "Kimi K2",
+        // opencode Zen serves only up to k2.6; the OpenRouter fallback (used for
+        // router/oss proxy runs) takes the newer k2.7-code.
         resolve: "opencode/kimi-k2.6",
-        openRouterResolve: "openrouter/moonshotai/kimi-k2.6",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.7-code",
       },
       "minimax-m2.5": {
         displayName: "MiniMax M2",
@@ -398,6 +399,11 @@ export const providers = {
         resolve: "opencode-go/glm-5.1",
         openRouterResolve: "openrouter/z-ai/glm-5.1",
         preferred: true,
+      },
+      "kimi-k2": {
+        displayName: "Kimi K2",
+        resolve: "opencode-go/kimi-k2.7-code",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.7-code",
       },
     },
   }),
@@ -533,8 +539,8 @@ export const providers = {
       },
       "kimi-k2": {
         displayName: "Kimi K2",
-        resolve: "openrouter/moonshotai/kimi-k2.6",
-        openRouterResolve: "openrouter/moonshotai/kimi-k2.6",
+        resolve: "openrouter/moonshotai/kimi-k2.7-code",
+        openRouterResolve: "openrouter/moonshotai/kimi-k2.7-code",
       },
       "minimax-m2.5": {
         displayName: "MiniMax M2",
@@ -613,17 +619,69 @@ export const modelAliases: ModelAlias[] = Object.entries(providers).flatMap(
     }))
 );
 
-/** OpenRouter target when Router or OSS funding is active and `repo.model` is null. */
-const defaultProxyAlias = modelAliases.find((a) => a.slug === "deepseek/deepseek-pro");
-if (!defaultProxyAlias?.openRouterResolve) {
-  throw new Error("DEFAULT_PROXY_MODEL: deepseek/deepseek-pro missing openRouterResolve");
-}
-export const DEFAULT_PROXY_MODEL = defaultProxyAlias.openRouterResolve;
-const defaultProxyDisplayName = defaultProxyAlias.displayName;
+// ── auto tiers ───────────────────────────────────────────────────────────────
 
-/** short label for the model auto-select picks today (console hint copy). */
-export function getAutoSelectHintModel(): string {
-  return defaultProxyDisplayName;
+/**
+ * `repo.model` sentinels for the two managed auto tiers. stored verbatim in
+ * the DB (they pass the `provider/model` shape check) and resolved to a
+ * concrete alias by `resolveDisplayAlias` below, so every downstream consumer
+ * (CLI resolve, OpenRouter resolve, footer label) handles them transparently.
+ *
+ * `efficient` mirrors the OSS/default subsidy model (Kimi K2 — fast + cheap);
+ * `intelligent` is the frontier pick (Claude Opus). a `null` model means the
+ * tier hasn't been pinned: callers default by card status via `defaultAutoTier`.
+ */
+export const AUTO_EFFICIENT = "auto/efficient";
+export const AUTO_INTELLIGENT = "auto/intelligent";
+export type AutoTier = typeof AUTO_EFFICIENT | typeof AUTO_INTELLIGENT;
+
+const AUTO_TIER_TARGET: Record<AutoTier, string> = {
+  [AUTO_EFFICIENT]: "moonshotai/kimi-k2",
+  [AUTO_INTELLIGENT]: "anthropic/claude-opus",
+};
+
+export function isAutoTier(slug: string | null | undefined): slug is AutoTier {
+  return slug === AUTO_EFFICIENT || slug === AUTO_INTELLIGENT;
+}
+
+/**
+ * the tier to default to when the user hasn't pinned one. card on file →
+ * intelligent (they've signalled willingness to pay for frontier reviews);
+ * otherwise → efficient (safe, cheap). server (`run-context`) and the console
+ * picker both call this so the displayed default and the runtime default agree.
+ */
+export function defaultAutoTier(hasCard: boolean): AutoTier {
+  return hasCard ? AUTO_INTELLIGENT : AUTO_EFFICIENT;
+}
+
+/**
+ * the auto tier that actually runs for an account, enforcing the card gate:
+ * the intelligent tier (Opus) requires a card on file, so a no-card account is
+ * always clamped to efficient (Kimi) — whether intelligent was the card-based
+ * default or an explicit pick made while a card was once present. keeps a trial
+ * balance from being torched on a premium model before the user has a card.
+ * `model` may be null, an `auto/*` sentinel, or a concrete pick being
+ * clamped — callers route concrete picks here only when `!hasCard` (carded
+ * concrete picks resolve directly), so a concrete `model` always lands on the
+ * efficient tier via the no-card early return.
+ */
+export function resolveAutoTier(params: { model: string | null; hasCard: boolean }): AutoTier {
+  if (!params.hasCard) return AUTO_EFFICIENT;
+  return isAutoTier(params.model) ? params.model : defaultAutoTier(params.hasCard);
+}
+
+/**
+ * Router-resolvable — the set a card on file unlocks. custom (non-Auto) picks
+ * are card-gated wholesale on the Router: the console locks the Custom tab
+ * without a card and the server clamps any stored pick to the efficient tier.
+ * a pick with no openRouterResolve (a model OpenRouter doesn't serve yet)
+ * lands on the efficient default with or without a card, so "add a card to
+ * run this model" messaging would be false for it — hence the predicate.
+ * resolveOpenRouterModel walks display aliases, so auto sentinels and
+ * deprecated slugs are judged by the model that actually runs.
+ */
+export function isCardGatedModel(slug: string): boolean {
+  return resolveOpenRouterModel(slug) !== undefined;
 }
 
 // ── resolution ─────────────────────────────────────────────────────────────────
@@ -645,7 +703,9 @@ const MAX_FALLBACK_DEPTH = 10;
  * deprecated and internal-only aliases by filtering on `!a.fallback && !a.hidden`.
  */
 export function resolveDisplayAlias(slug: string): ModelAlias | undefined {
-  let current = slug;
+  // auto-tier sentinels aren't real aliases — map them to their concrete
+  // target first so CLI/OpenRouter resolution and display labels all work.
+  let current = isAutoTier(slug) ? AUTO_TIER_TARGET[slug] : slug;
   const visited = new Set<string>();
   for (let i = 0; i < MAX_FALLBACK_DEPTH; i++) {
     if (visited.has(current)) return undefined;
@@ -675,6 +735,26 @@ export function resolveCliModel(slug: string): string | undefined {
  */
 export function resolveOpenRouterModel(slug: string): string | undefined {
   return resolveDisplayAlias(slug)?.openRouterResolve;
+}
+
+// ── default proxy model ──────────────────────────────────────────────────────────
+
+/**
+ * OpenRouter target when Router or OSS funding is active and `repo.model` is null.
+ * resolved through the efficient tier's fallback chain, so if that tier's backing
+ * model is given a `fallback` (e.g. to ride out a temporary outage) the OSS/Router
+ * default follows the substitute instead of pinning the unavailable model.
+ */
+const defaultProxyAlias = resolveDisplayAlias(AUTO_EFFICIENT);
+if (!defaultProxyAlias?.openRouterResolve) {
+  throw new Error(`DEFAULT_PROXY_MODEL: ${AUTO_EFFICIENT} has no openRouterResolve`);
+}
+export const DEFAULT_PROXY_MODEL = defaultProxyAlias.openRouterResolve;
+const defaultProxyDisplayName = defaultProxyAlias.displayName;
+
+/** short label for the model auto-select picks today (console hint copy). */
+export function getAutoSelectHintModel(): string {
+  return defaultProxyDisplayName;
 }
 
 // ── bedrock routing ────────────────────────────────────────────────────────────

@@ -82,6 +82,10 @@ describe("openRouterResolve models.dev validity", async () => {
 
   for (const alias of modelAliases) {
     if (!alias.openRouterResolve) continue;
+    // a fallback alias never runs as-is — resolution redirects to the terminal,
+    // whose openRouterResolve is validated instead. skip its (possibly stale,
+    // e.g. temporarily-unavailable) own target, mirroring the `resolve` loop.
+    if (alias.fallback) continue;
     if (seen.has(alias.openRouterResolve)) continue;
     seen.add(alias.openRouterResolve);
 
@@ -136,6 +140,10 @@ describe("openRouterResolve OpenRouter API validity", async () => {
 
   for (const alias of modelAliases) {
     if (!alias.openRouterResolve) continue;
+    // fallback aliases redirect to a terminal that's validated on its own; their
+    // own target may be deprecated or temporarily unavailable. skip, mirroring
+    // the `resolve` loop.
+    if (alias.fallback) continue;
     const orModelId = alias.openRouterResolve.slice("openrouter/".length);
     if (seen.has(orModelId)) continue;
     seen.add(orModelId);

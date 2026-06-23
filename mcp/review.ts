@@ -886,6 +886,10 @@ async function createAndSubmitWithFooter(
         : undefined,
       customParts,
       model: ctx.toolState.model,
+      fallbackFrom: ctx.toolState.modelFallback?.from,
+      clamped: ctx.toolState.modelClamped,
+      unselectedProxyDefault: ctx.toolState.unselectedProxyDefault,
+      shaPinned: ctx.toolState.shaPinned,
       oss: ctx.oss,
     });
 

@@ -100,7 +100,7 @@ describe("deriveSubagentModels", () => {
       expect(deriveSubagentModels("deepseek/deepseek-v4-pro")).toEqual({ reviewer: undefined });
     });
     it("moonshot kimi", () => {
-      expect(deriveSubagentModels("moonshotai/kimi-k2.6")).toEqual({ reviewer: undefined });
+      expect(deriveSubagentModels("moonshotai/kimi-k2.7-code")).toEqual({ reviewer: undefined });
     });
     it("opencode big-pickle", () => {
       expect(deriveSubagentModels("opencode/big-pickle")).toEqual({ reviewer: undefined });

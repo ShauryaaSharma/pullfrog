@@ -5,6 +5,7 @@
 
 export type {
   AuthorPermission,
+  AutoTier,
   ModelAlias,
   ModelProvider,
   Payload,
@@ -17,16 +18,22 @@ export type {
   XrepoConfig,
 } from "../external.ts";
 export {
+  AUTO_EFFICIENT,
+  AUTO_INTELLIGENT,
   DEFAULT_PROXY_MODEL,
+  defaultAutoTier,
   getAutoSelectHintModel,
   getModelEnvVars,
   getModelManagedCredentials,
   getModelProvider,
   getProviderDisplayName,
+  isAutoTier,
+  isCardGatedModel,
   modelAliases,
   parseModel,
   providers,
   pullfrogMcpName,
+  resolveAutoTier,
   resolveCliModel,
   resolveDisplayAlias,
   resolveModelSlug,
