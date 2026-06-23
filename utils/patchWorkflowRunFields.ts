@@ -1,8 +1,9 @@
 import type { AgentUsage } from "../agents/shared.ts";
 import type { ToolContext } from "../mcp/server.ts";
+import * as yes from "../yes/index.ts";
 import { apiFetch } from "./apiFetch.ts";
 import { log } from "./cli.ts";
-import { retry } from "./retry.ts";
+import { isTransientNetworkError } from "./isTransientNetworkError.ts";
 
 /**
  * String-valued PATCH fields (all serialized identically on the wire):
@@ -61,7 +62,7 @@ export async function patchWorkflowRunFields(
   }
   if (Object.keys(body).length === 0) return;
   try {
-    await retry(
+    await yes.op(
       async () => {
         const response = await apiFetch({
           path: `/api/workflow-run/${ctx.runId}`,
@@ -76,11 +77,13 @@ export async function patchWorkflowRunFields(
         if (!response.ok) throw new Error(`PATCH workflow-run: ${response.status}`);
       },
       {
-        maxAttempts: 3,
-        delayMs: 2000,
-        label: "patchWorkflowRunFields",
+        retries: [2000, 4000],
+        name: "patchWorkflowRunFields",
+        // only retry transient network errors; explicit HTTP failures throw
+        // a status-bearing message and should fail fast.
+        bail: (error) => !isTransientNetworkError(error),
       }
-    );
+    )();
   } catch (error) {
     log.warning(`patchWorkflowRunFields exhausted retries: ${error}`);
   }

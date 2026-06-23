@@ -12,7 +12,7 @@ import {
 } from "../utils/diffCoverage.ts";
 import { fixDoubleEscapedString } from "../utils/fixDoubleEscapedString.ts";
 import { patchWorkflowRunFields } from "../utils/patchWorkflowRunFields.ts";
-import { retry } from "../utils/retry.ts";
+import * as yes from "../yes/index.ts";
 import { deleteProgressComment } from "./comment.ts";
 import type { ToolContext } from "./server.ts";
 import { execute, getHttpStatus, tool } from "./shared.ts";
@@ -531,16 +531,16 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
         // no body → single-step createReview (no footer needed)
         // has body → pending + submit so we can build footer with Fix links using review ID
         //
-        // wrap the submission in `retry` so GitHub's transient 422 "internal
+        // wrap the submission in `yes.op` so GitHub's transient 422 "internal
         // error" body (distinct from anchor / body-length / suggestion 422s,
         // which all cite the specific cause) clears on its own instead of
         // surfacing through the generic 422 handler — that framing sent the
         // agent dropping valid inline comments chasing a non-issue.
-        // `shouldRetry` scopes retries to the transient body only, so real
+        // `bail` scopes retries to the transient body only, so real
         // validation 422s still fail fast.
         let result;
         try {
-          result = await retry(
+          result = await yes.op(
             () =>
               body
                 ? createAndSubmitWithFooter(ctx, params, {
@@ -550,11 +550,11 @@ export function CreatePullRequestReviewTool(ctx: ToolContext) {
                   })
                 : createReviewWithStrandedRecovery(ctx, params),
             {
-              delaysMs: TRANSIENT_REVIEW_RETRY_DELAYS_MS,
-              shouldRetry: isTransientReviewError,
-              label: "review submission",
+              retries: TRANSIENT_REVIEW_RETRY_DELAYS_MS,
+              bail: (err) => !isTransientReviewError(err),
+              name: "review submission",
             }
-          );
+          )();
         } catch (err: unknown) {
           // GitHub's transient 422 "internal error" is distinct from anchor /
           // body-length / suggestion validation failures — framing it with the

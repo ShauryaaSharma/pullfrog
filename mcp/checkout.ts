@@ -9,8 +9,8 @@ import { countLines, createDiffCoverageState } from "../utils/diffCoverage.ts";
 import { $git, $gitFetchWithDeepen } from "../utils/gitAuth.ts";
 import { executeLifecycleHook } from "../utils/lifecycle.ts";
 import { computeIncrementalDiff } from "../utils/rangeDiff.ts";
-import { retry } from "../utils/retry.ts";
 import { $ } from "../utils/shell.ts";
+import * as yes from "../yes/index.ts";
 import { rejectIfLeadingDash } from "./git.ts";
 import { commentableLinesForFile } from "./review.ts";
 import type { ToolContext } from "./server.ts";
@@ -448,7 +448,7 @@ export async function checkoutPrBranch(
     //   - pull/N/head webhook race (`couldn't find remote ref pull/N/head`) —
     //     handled by the outer retry below (see issue #591)
     log.debug(`» fetching PR #${pr.number} (${localBranch})...`);
-    await retry(
+    await yes.op(
       async () => {
         try {
           await $gitFetchWithDeepen(
@@ -469,12 +469,11 @@ export async function checkoutPrBranch(
         }
       },
       {
-        delaysMs: PULL_REF_RETRY_DELAYS_MS,
-        label: `pull/${pr.number}/head fetch`,
-        shouldRetry: (e) =>
-          PULL_REF_MISSING_PATTERN.test(e instanceof Error ? e.message : String(e)),
+        retries: PULL_REF_RETRY_DELAYS_MS,
+        name: `pull/${pr.number}/head fetch`,
+        bail: (e) => !PULL_REF_MISSING_PATTERN.test(e instanceof Error ? e.message : String(e)),
       }
-    );
+    )();
 
     // checkout the branch
     $("git", ["checkout", localBranch], { log: false });

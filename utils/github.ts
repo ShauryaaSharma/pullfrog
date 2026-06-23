@@ -4,9 +4,9 @@ import { dirname, join } from "node:path";
 import * as core from "@actions/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { Octokit } from "@octokit/rest";
+import * as yes from "../yes/index.ts";
 import { apiFetch } from "./apiFetch.ts";
 import { isGitHubActions } from "./globals.ts";
-import { retry } from "./retry.ts";
 
 /** OIDC audience for Pullfrog API token exchanges */
 const OIDC_AUDIENCE = "pullfrog-api";
@@ -437,10 +437,11 @@ export function isTransientTokenError(error: unknown): boolean {
 
 export async function acquireNewToken(opts?: AcquireTokenOptions): Promise<string> {
   if (opts?.oidc || isOIDCAvailable()) {
-    return await retry(() => acquireTokenViaOIDC(opts), {
-      label: "token exchange",
-      shouldRetry: isTransientTokenError,
-    });
+    return await yes.op(() => acquireTokenViaOIDC(opts), {
+      name: "token exchange",
+      retries: [1000, 2000],
+      bail: (error) => !isTransientTokenError(error),
+    })();
   }
   // running inside GitHub Actions but the OIDC env vars are absent — the
   // workflow is missing `permissions: id-token: write`. surface an

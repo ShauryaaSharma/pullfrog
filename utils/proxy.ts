@@ -20,6 +20,7 @@
 
 import * as core from "@actions/core";
 import type { ToolState } from "../toolState.ts";
+import * as yes from "../yes/index.ts";
 import { apiFetch } from "./apiFetch.ts";
 import { isLocalApiUrl } from "./apiUrl.ts";
 import {
@@ -32,7 +33,6 @@ import { log, writeSummary } from "./cli.ts";
 import { reportErrorToComment } from "./errorReport.ts";
 import { fetchIdTokenFromStash, isTransientTokenError, type OidcCredentials } from "./github.ts";
 import type { ResolvedPayload } from "./payload.ts";
-import { retry } from "./retry.ts";
 
 async function mintProxyKey(ctx: {
   oidcCredentials: OidcCredentials | null;
@@ -110,10 +110,11 @@ async function buildProxyTokenHeaders(ctx: {
     // retry transients — core.getIDToken (the previous mint path) retried
     // 5xx internally, and a soft-skip here degrades the run to BYOK
     const creds = ctx.oidcCredentials;
-    const oidcToken = await retry(() => fetchIdTokenFromStash(creds), {
-      label: "ID token mint",
-      shouldRetry: isTransientTokenError,
-    });
+    const oidcToken = await yes.op(() => fetchIdTokenFromStash(creds), {
+      name: "ID token mint",
+      retries: [1000, 2000],
+      bail: (error) => !isTransientTokenError(error),
+    })();
     return { Authorization: `Bearer ${oidcToken}` };
   }
   if (isLocalApiUrl()) {
