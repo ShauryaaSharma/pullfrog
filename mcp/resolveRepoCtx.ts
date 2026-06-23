@@ -18,6 +18,8 @@ export interface RepoCtx {
   octokit: OctokitWithPlugins;
   /** git token scoped to the repo's tier */
   gitToken: string;
+  /** re-mint this tier's git token on an auth-class push failure (push retries) */
+  refreshGitToken: ((stale: string) => Promise<string>) | undefined;
 }
 
 // read-tier octokit clients, memoized by read token. keying by token (rather
@@ -50,6 +52,7 @@ export function resolveRepoCtx(ctx: ToolContext, repo?: string | undefined): Rep
       access: state.access,
       octokit: ctx.octokit,
       gitToken: ctx.gitToken,
+      refreshGitToken: ctx.refreshGitToken,
     };
   }
 
@@ -69,5 +72,6 @@ export function resolveRepoCtx(ctx: ToolContext, repo?: string | undefined): Rep
     access: "read",
     octokit: readOctokit,
     gitToken: ctx.readToken,
+    refreshGitToken: ctx.refreshGitToken,
   };
 }

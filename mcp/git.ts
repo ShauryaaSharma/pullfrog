@@ -289,10 +289,12 @@ async function runPrepushHook(ctx: ToolContext, retryTool: string): Promise<bool
 // reverse (true transient labeled `unknown`) just falls back to current
 // behavior. so we only mark as transient when the error string is
 // unambiguously a network/server-side fault, not a refusal.
-export type PushErrorKind = "concurrent-push" | "transient" | "unknown";
+export type PushErrorKind = "concurrent-push" | "transient" | "transient-auth" | "unknown";
 
 const CONCURRENT_PUSH_PATTERNS = ["fetch first", "non-fast-forward", "cannot lock ref"] as const;
 
+// network/server-side faults — the token is fine, the wire blipped. retry the
+// same token with backoff.
 const TRANSIENT_PATTERNS: RegExp[] = [
   /RPC failed/i,
   /early EOF/,
@@ -313,57 +315,76 @@ const TRANSIENT_PATTERNS: RegExp[] = [
   /returned error: 5\d\d/i,
   /HTTP 429/,
   /returned error: 429/i,
-  // github installation tokens can 401 for seconds after minting while
-  // replicating (@octokit/auth-app retries the same class). git push
-  // surfaces it as "Invalid username or token", distinct from 403
-  // permission denied — safe to backoff-retry with the same token.
+];
+
+// installation-token 401s on git push. GitHub intermittently mints a token its
+// git edge never accepts — it 401s for the token's whole life, so retrying the
+// same token never recovers. the cure is to re-mint a fresh token instance and
+// retry with it (see pushWithRetry). distinct from 403 permission denied.
+const TRANSIENT_AUTH_PATTERNS: RegExp[] = [
   /Invalid username or token/,
   /Authentication failed for 'https:\/\/github\.com\//,
 ];
 
 export function classifyPushError(msg: string): PushErrorKind {
   if (CONCURRENT_PUSH_PATTERNS.some((p) => msg.includes(p))) return "concurrent-push";
+  if (TRANSIENT_AUTH_PATTERNS.some((p) => p.test(msg))) return "transient-auth";
   if (TRANSIENT_PATTERNS.some((p) => p.test(msg))) return "transient";
   return "unknown";
 }
 
 // exponential backoff delays before retry attempts 2-6. attempt 1 is the
-// original push. total worst-case added latency: ~60s. larger than it looks
-// like it needs to be, on purpose: github installation-token replication lag
-// can exceed 20s, and the same token surfaces as "Invalid username or token"
-// until it propagates to the push edge. re-minting does not help (a fresh
-// token has the same lag), so the cure is to wait out the propagation with
-// the same token. a short window reddens CI (notably the push-restricted
-// e2e); ~60s rides it out while still bounding a permanently-failing push.
+// original push. used for network transients (5xx/reset/timeout) where the
+// token is fine and the wire blipped. auth transients don't wait this out —
+// they re-mint the token and retry on a short delay.
 const TRANSIENT_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000, 30000];
 
 /**
- * push with backoff retry on transient failures (network 5xx, connection
- * reset, and the freshly-minted-token 401 github surfaces as "Invalid
- * username or token" while the installation token replicates across edges —
- * see TRANSIENT_PATTERNS). concurrent-push and permission rejections are not
- * retried — they need caller intervention.
+ * push with retry on transient failures. two transient classes:
  *
- * shared by push_branch, push_tags, and delete_branch so all three are
- * equally resilient to github's post-mint replication lag. before this,
- * only push_branch retried, so a tag push or branch delete that happened to
- * hit an un-replicated edge failed outright even though the token was valid.
+ * - network/server-side (5xx, connection reset, timeout — TRANSIENT_PATTERNS):
+ *   the token is valid, so back off and retry the SAME token.
+ * - installation-token 401 ("Invalid username or token" — TRANSIENT_AUTH_PATTERNS):
+ *   GitHub intermittently hands out a token its git edge never accepts; the
+ *   token is poisoned for its whole life, so re-mint a fresh token via
+ *   `refreshGitToken` and retry with it (the actual cure). when no refresh is
+ *   available (external GH_TOKEN), it falls back to same-token backoff.
+ *
+ * concurrent-push and permission rejections are not retried — they need caller
+ * intervention. shared by push_branch, push_tags, and delete_branch.
  */
 async function pushWithRetry(
   args: string[],
   token: string,
+  refreshGitToken: ((stale: string) => Promise<string>) | undefined,
   cwd: string = process.cwd()
 ): Promise<void> {
+  let currentToken = token;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
     try {
-      await $git("push", args, { token, cwd });
+      await $git("push", args, { token: currentToken, cwd });
       if (attempt > 0) log.info(`push succeeded on attempt ${attempt + 1}`);
       return;
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      if (classifyPushError(msg) === "transient" && attempt < TRANSIENT_RETRY_DELAYS_MS.length) {
+      const kind = classifyPushError(msg);
+      if (
+        (kind === "transient" || kind === "transient-auth") &&
+        attempt < TRANSIENT_RETRY_DELAYS_MS.length
+      ) {
+        // auth-class: re-mint a fresh token (the poisoned one never recovers)
+        // and retry on a short delay. network-class: keep the token, back off.
+        if (kind === "transient-auth" && refreshGitToken) {
+          currentToken = await refreshGitToken(currentToken);
+          const delay = Math.round(1000 * (0.75 + Math.random() * 0.5));
+          log.info(
+            `push attempt ${attempt + 1} failed (auth), re-minted token, retrying in ${delay}ms: ${msg.slice(0, 300)}`
+          );
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
         // jitter avoids lockstep retries when several agents are hit by the
         // same upstream blip simultaneously.
         const baseDelay = TRANSIENT_RETRY_DELAYS_MS[attempt] ?? 5000;
@@ -486,7 +507,7 @@ export function PushBranchTool(ctx: ToolContext) {
       // transient — it surfaces here so we can render the integrate-and-retry
       // recovery the agent needs.
       try {
-        await pushWithRetry(pushArgs, rc.gitToken, cwd);
+        await pushWithRetry(pushArgs, rc.gitToken, rc.refreshGitToken, cwd);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (classifyPushError(msg) === "concurrent-push") {
@@ -1154,7 +1175,11 @@ export function DeleteBranchTool(ctx: ToolContext) {
       // branches and tags; a tag-only match would silently remove the tag.
       // rejectSpecialRef guarantees branchName is a bare name, so the
       // branchName construction here can't collide with user-supplied refs.
-      await pushWithRetry(["origin", "--delete", `refs/heads/${params.branchName}`], ctx.gitToken);
+      await pushWithRetry(
+        ["origin", "--delete", `refs/heads/${params.branchName}`],
+        ctx.gitToken,
+        ctx.refreshGitToken
+      );
       log.info(`» deleted branch ${params.branchName}`);
       return { success: true, deleted: params.branchName };
     }),
@@ -1184,7 +1209,7 @@ export function PushTagsTool(ctx: ToolContext) {
 
       validateTagName(params.tag);
       const pushArgs = [...(params.force ? ["-f"] : []), "origin", `refs/tags/${params.tag}`];
-      await pushWithRetry(pushArgs, ctx.gitToken);
+      await pushWithRetry(pushArgs, ctx.gitToken, ctx.refreshGitToken);
       log.info(`» pushed tag ${params.tag}`);
       return { success: true, tag: params.tag };
     }),

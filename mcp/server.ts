@@ -59,6 +59,10 @@ export interface ToolContext {
   octokit: OctokitWithPlugins;
   githubInstallationToken: string;
   gitToken: string;
+  // re-mint the git-scoped token matching the passed value, for push retries
+  // when GitHub hands out a git token its push edge never accepts. undefined on
+  // the external-GH_TOKEN path. see pushWithRetry + resolveTokens.
+  refreshGitToken: ((stale: string) => Promise<string>) | undefined;
   // contents:read token over the cross-repo READ set (read-tier secondary
   // clones). undefined on single-repo runs. see resolveRepoCtx.
   readToken: string | undefined;

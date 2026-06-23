@@ -425,6 +425,7 @@ export async function main(): Promise<MainResult> {
         return getGitHubInstallationToken();
       },
       gitToken: tokenRef.gitToken,
+      refreshGitToken: tokenRef.refreshGitToken,
       readToken: tokenRef.readToken,
       xrepo: payload.xrepo,
       apiToken: runContext.apiToken,

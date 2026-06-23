@@ -56,6 +56,11 @@ export type TokenRef = {
   // of read-only secondaries). only minted on `--xrepo` runs; undefined
   // otherwise. resolveRepoCtx routes read-tier secondaries to this token.
   readToken?: string | undefined;
+  // re-mint the git-scoped token matching `stale` (the write gitToken or the
+  // read readToken) for push retries, when GitHub hands out a token its
+  // git-over-HTTPS edge never accepts. undefined on the external-GH_TOKEN path
+  // (can't be re-minted). single-flight per token.
+  refreshGitToken?: ((stale: string) => Promise<string>) | undefined;
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
@@ -172,14 +177,14 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
 
   mcpTokenValue = mcpToken;
   let currentMcpToken = mcpToken;
+  let currentGitToken = gitToken;
+  let currentReadToken = readToken;
 
   // GitHub can invalidate an installation token before expiry (see #891).
   // single-flight: concurrent 401s share one mint, and a caller whose token
   // was already replaced by a parallel refresh gets the replacement without
   // minting again. cleared on settle so a transient refresh failure doesn't
   // poison the rest of the run (acquireNewToken retries transients itself).
-  // note: gitToken deliberately has no refresh path — git auth failures are
-  // stringly (no structured 401) and #891 only evidenced MCP-API 401s.
   let refreshPromise: Promise<string> | undefined;
   refreshMcpTokenFn = (stale) => {
     assert(mcpTokenValue, "tokens already disposed");
@@ -209,6 +214,60 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
     return refreshPromise;
   };
 
+  // GitHub intermittently mints a git token its git-over-HTTPS edge never
+  // accepts — it 401s as "Invalid username or token" for the token's whole
+  // life, so retrying the same token never recovers. re-minting draws a fresh
+  // token instance, which is the actual cure. dispatches by which current
+  // git-scoped token `stale` matches (write gitToken or read readToken),
+  // single-flight per token, and revokes the superseded one.
+  let gitRefreshPromise: Promise<string> | undefined;
+  let readRefreshPromise: Promise<string> | undefined;
+  const refreshGitToken = (stale: string): Promise<string> => {
+    assert(mcpTokenValue, "tokens already disposed");
+    if (stale === currentGitToken) {
+      gitRefreshPromise ??= acquireNewToken({
+        repos: writeRepos,
+        permissions: gitPermissions,
+        oidc: params.oidc ?? undefined,
+      })
+        .then((fresh) => {
+          if (isGitHubActions) core.setSecret(fresh);
+          void revokeGitHubInstallationToken(currentGitToken);
+          currentGitToken = fresh;
+          log.warning("» GitHub rejected the git token; re-acquired a fresh git token");
+          return fresh;
+        })
+        .finally(() => {
+          gitRefreshPromise = undefined;
+        });
+      return gitRefreshPromise;
+    }
+    if (currentReadToken && stale === currentReadToken) {
+      const read = currentReadToken;
+      readRefreshPromise ??= acquireNewToken({
+        repos: params.xrepo?.read,
+        permissions: { contents: "read" },
+        oidc: params.oidc ?? undefined,
+      })
+        .then((fresh) => {
+          if (isGitHubActions) core.setSecret(fresh);
+          void revokeGitHubInstallationToken(read);
+          currentReadToken = fresh;
+          log.warning("» GitHub rejected the read token; re-acquired a fresh read token");
+          return fresh;
+        })
+        .finally(() => {
+          readRefreshPromise = undefined;
+        });
+      return readRefreshPromise;
+    }
+    // `stale` was already replaced by a parallel refresh — hand back the
+    // fresh token of whichever tier it belonged to.
+    return Promise.resolve(
+      stale === readToken ? (currentReadToken ?? currentGitToken) : currentGitToken
+    );
+  };
+
   let disposingRef: PromiseWithResolvers<void> | undefined;
 
   const dispose = async () => {
@@ -221,11 +280,11 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
     try {
       mcpTokenValue = undefined;
       refreshMcpTokenFn = undefined;
-      // revoke all minted tokens (a refresh may have replaced the original MCP token)
+      // revoke all minted tokens (a refresh may have replaced any of them)
       await Promise.all([
-        revokeGitHubInstallationToken(gitToken),
+        revokeGitHubInstallationToken(currentGitToken),
         revokeGitHubInstallationToken(currentMcpToken),
-        ...(readToken ? [revokeGitHubInstallationToken(readToken)] : []),
+        ...(currentReadToken ? [revokeGitHubInstallationToken(currentReadToken)] : []),
       ]);
     } finally {
       removeSignalHandler();
@@ -240,6 +299,7 @@ export async function resolveTokens(params: ResolveTokensParams): Promise<TokenR
     gitToken,
     mcpToken,
     readToken,
+    refreshGitToken,
     [Symbol.asyncDispose]: dispose,
   };
 }
