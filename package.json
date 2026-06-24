@@ -14,7 +14,7 @@
     "test": "vitest",
     "test:catalog": "vitest run --config vitest.main.config.ts",
     "typecheck": "tsc --noEmit",
-    "build": "nub esbuild.config.js && tsc -p tsconfig.exports.json",
+    "build": "node esbuild.config.js && tsc -p tsconfig.exports.json",
     "check:entrypoints": "nub scripts/check-entrypoint-imports.ts",
     "docker": "nub docker.ts",
     "play": "nub play.ts",
