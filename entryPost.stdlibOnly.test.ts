@@ -91,4 +91,14 @@ describe("entryPost.ts stdlib-only invariant (#834)", () => {
       "utils/postApiFetch.ts",
     ]);
   });
+
+  it("locks down the direct-import surface of entryPost.ts (including stdlib)", () => {
+    const direct = extractImports(ENTRY_FILE).sort();
+    expect(direct).toEqual([
+      "./utils/codexRefreshDetect.ts",
+      "./utils/ghaCore.ts",
+      "./utils/postApiFetch.ts",
+      "node:fs",
+    ]);
+  });
 });
